@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Converto – Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --g1: #0d2818;
+  --g2: #1b4332;
+  --g3: #2d7a4f;
+  --g4: #40916c;
+  --g5: #74c69d;
+  --gold: #f4a100;
+  --gold2: #ffd166;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --purple: #8b5cf6;
+  --bg: #0a1f12;
+  --card: #112318;
+  --card2: #162d1e;
+  --border: rgba(64,145,108,0.2);
+  --txt: #e8f5ee;
+  --mu: #6b9e82;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--txt);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Background pattern */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(45,122,79,0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(244,161,0,0.08) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* HEADER */
+.header {
+  position: relative;
+  z-index: 10;
+  padding: 32px 40px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-mark {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, var(--g3), var(--g4));
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  box-shadow: 0 4px 16px rgba(45,122,79,0.4);
+}
+
+.logo-text {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.logo-text span {
+  color: var(--g5);
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  color: var(--mu);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* HERO */
+.hero {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  padding: 48px 40px 40px;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--g5);
+}
+
+.hero p {
+  color: var(--mu);
+  font-size: 1rem;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* MERCHANT SELECTOR */
+.merchant-bar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 40px 32px;
+}
+
+.merchant-label {
+  font-size: 0.8rem;
+  color: var(--mu);
+  font-family: 'DM Mono', monospace;
+}
+
+.merchant-select {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  color: var(--txt);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.merchant-select:focus {
+  border-color: var(--g4);
+}
+
+/* MAIN GRID */
+.grid {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 0 40px 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* CARDS */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.25s;
+  border-radius: 16px;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--g4);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+}
+
+.card:hover::before { opacity: 1; }
+
+.card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  margin-bottom: 18px;
+  flex-shrink: 0;
+}
+
+.card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: -0.3px;
+}
+
+.card-desc {
+  font-size: 0.82rem;
+  color: var(--mu);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.3px;
+}
+
+.card-tag {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 100px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+}
+
+/* Green cards */
+.card-green .card-icon { background: rgba(45,122,79,0.2); }
+.card-green::before { background: linear-gradient(135deg, rgba(45,122,79,0.08), transparent); }
+.card-green .card-action { background: rgba(45,122,79,0.2); color: var(--g5); }
+.card-green:hover .card-action { background: var(--g3); color: #fff; }
+
+/* Gold cards */
+.card-gold .card-icon { background: rgba(244,161,0,0.15); }
+.card-gold::before { background: linear-gradient(135deg, rgba(244,161,0,0.08), transparent); }
+.card-gold .card-action { background: rgba(244,161,0,0.15); color: var(--gold2); }
+.card-gold:hover .card-action { background: var(--gold); color: #000; }
+
+/* Blue cards */
+.card-blue .card-icon { background: rgba(59,130,246,0.15); }
+.card-blue::before { background: linear-gradient(135deg, rgba(59,130,246,0.08), transparent); }
+.card-blue .card-action { background: rgba(59,130,246,0.15); color: #93c5fd; }
+.card-blue:hover .card-action { background: var(--blue); color: #fff; }
+
+/* Purple cards */
+.card-purple .card-icon { background: rgba(139,92,246,0.15); }
+.card-purple::before { background: linear-gradient(135deg, rgba(139,92,246,0.08), transparent); }
+.card-purple .card-action { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+.card-purple:hover .card-action { background: var(--purple); color: #fff; }
+
+/* Tags */
+.tag-live { background: rgba(34,197,94,0.15); color: #4ade80; }
+.tag-admin { background: rgba(244,161,0,0.15); color: var(--gold2); }
+.tag-api { background: rgba(59,130,246,0.15); color: #93c5fd; }
+.tag-super { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+
+/* WIDE CARD */
+.card-wide {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.card-wide .card-icon { margin-bottom: 0; }
+
+.card-wide .card-content { flex: 1; }
+.card-wide .card-title { margin-bottom: 4px; }
+.card-wide .card-desc { margin-bottom: 0; }
+
+/* API STATS */
+.api-stats {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.api-stat {
+  text-align: center;
+  padding: 10px 16px;
+  background: rgba(45,122,79,0.1);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.api-stat-val {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--g5);
+  font-family: 'DM Mono', monospace;
+}
+
+.api-stat-label {
+  font-size: 0.65rem;
+  color: var(--mu);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* SECTION DIVIDER */
+.section-title {
+  position: relative;
+  z-index: 10;
+  padding: 8px 40px 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--mu);
+  font-family: 'DM Mono', monospace;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* FOOTER */
+.footer {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  padding: 24px 40px 32px;
+  color: var(--mu);
+  font-size: 0.75rem;
+  font-family: 'DM Mono', monospace;
+}
+
+@media (max-width: 600px) {
+  .header { padding: 20px; }
+  .hero { padding: 28px 20px 20px; }
+  .merchant-bar { padding: 0 20px 24px; }
+  .grid { padding: 0 20px 32px; gap: 12px; }
+  .section-title { padding: 8px 20px 12px; }
+  .card-wide { flex-direction: column; }
+  .api-stats { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark">🔄</div>
+    <div class="logo-text">Con<span>verto</span></div>
+  </div>
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span id="serverStatus">API wird geprüft...</span>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="hero">
+  <h1>Dein <em>Kontrollzentrum</em></h1>
+  <p>Alle Bereiche der Converto Plattform auf einen Blick</p>
+</div>
+
+<!-- MERCHANT SELECTOR -->
+<div class="merchant-bar">
+  <span class="merchant-label">Händler:</span>
+  <select class="merchant-select" id="merchantSelect" onchange="updateMerchant()">
+    <option value="sosuapesce">🐟 Sosua Pescado</option>
+  </select>
+</div>
+
+<!-- HAUPTBEREICHE -->
+<div class="section-title">Hauptbereiche</div>
+<div class="grid">
+
+  <!-- Kommunikation -->
+  <a class="card card-green" id="link-comm" href="#">
+    <span class="card-tag tag-live">Live</span>
+    <div class="card-icon">💬</div>
+    <div class="card-title">Kommunikationscenter</div>
+    <div class="card-desc">WhatsApp Nachrichten senden & empfangen. Konversationen verwalten, Übersetzung DE↔ES↔EN.</div>
+    <div class="card-action">Öffnen →</div>
+  </a>
+
+  <!-- Landingpage -->
+  <a class="card card-green" id="link-landing" href="#">
+    <span class="card-tag tag-live">Public</span>
+    <div class="card-icon">🌊</div>
+    <div class="card-title">Händler Landingpage</div>
+    <div class="card-desc">Öffentliche Seite für Kunden. Catch of the Day, Produkte, Agenten-Referral Links.</div>
+    <div class="card-action">Ansehen →</div>
+  </a>
+
+  <!-- Agenten -->
+  <a class="card card-gold" id="link-agents" href="#">
+    <span class="card-tag tag-admin">Agenten</span>
+    <div class="card-icon">👥</div>
+    <div class="card-title">Agenten Dashboard</div>
+    <div class="card-desc">Agenten verwalten, Provisionen einsehen, Referral Codes generieren und tracken.</div>
+    <div class="card-action">Verwalten →</div>
+  </a>
+
+</div>
+
+<!-- VERWALTUNG -->
+<div class="section-title">Verwaltung</div>
+<div class="grid">
+
+  <!-- Admin -->
+  <a class="card card-gold" id="link-admin" href="#">
+    <span class="card-tag tag-admin">Admin</span>
+    <div class="card-icon">⚙️</div>
+    <div class="card-title">Händler Admin</div>
+    <div class="card-desc">Produkte & Preise verwalten, Einstellungen, Öffnungszeiten, WhatsApp konfigurieren.</div>
+    <div class="card-action">Einstellungen →</div>
+  </a>
+
+  <!-- Superadmin -->
+  <a class="card card-purple" href="superadmin.html">
+    <span class="card-tag tag-super">Super</span>
+    <div class="card-icon">👑</div>
+    <div class="card-title">Superadmin</div>
+    <div class="card-desc">Alle Händler verwalten, neue Händler anlegen, Plattform-Übersicht und Statistiken.</div>
+    <div class="card-action">Plattform →</div>
+  </a>
+
+  <!-- Dashboard -->
+  <a class="card card-blue" id="link-dashboard" href="#">
+    <span class="card-tag tag-api">Analytics</span>
+    <div class="card-icon">📊</div>
+    <div class="card-title">Analytics Dashboard</div>
+    <div class="card-desc">Umsatz, Bestellungen, Agenten-Performance, WhatsApp Statistiken auf einen Blick.</div>
+    <div class="card-action">Öffnen →</div>
+  </a>
+
+</div>
+
+<!-- API / TECHNIK -->
+<div class="section-title">Technik & API</div>
+<div class="grid">
+
+  <!-- Railway API - Wide Card -->
+  <a class="card card-blue card-wide" href="https://converto-server-production.up.railway.app/api/health" target="_blank">
+    <div class="card-icon">⚡</div>
+    <div class="card-content">
+      <div class="card-title">Railway API Server</div>
+      <div class="card-desc">Node.js Express Server – WhatsApp, Stripe, Auth, alle API Endpoints</div>
+    </div>
+    <div class="api-stats">
+      <div class="api-stat">
+        <div class="api-stat-val" id="apiStatus">—</div>
+        <div class="api-stat-label">Status</div>
+      </div>
+      <div class="api-stat">
+        <div class="api-stat-val">v1.0</div>
+        <div class="api-stat-label">Version</div>
+      </div>
+    </div>
+  </a>
+
+  <!-- GitHub -->
+  <a class="card card-blue" href="https://github.com/officepuertoplata-coder/sosuapesce" target="_blank">
+    <div class="card-icon">🐙</div>
+    <div class="card-title">GitHub Frontend</div>
+    <div class="card-desc">Repository für die Frontend-Dateien (HTML, CSS, JS). Änderungen hier → live in Sekunden.</div>
+    <div class="card-action">Repository →</div>
+  </a>
+
+  <!-- Supabase -->
+  <a class="card card-blue" href="https://supabase.com/dashboard/project/oxybanupdrfopjionekk" target="_blank">
+    <div class="card-icon">🗄️</div>
+    <div class="card-title">Supabase Datenbank</div>
+    <div class="card-desc">Alle Daten: Händler, Agenten, Bestellungen, Konversationen, Nachrichten.</div>
+    <div class="card-action">Datenbank →</div>
+  </a>
+
+  <!-- Meta -->
+  <a class="card card-blue" href="https://developers.facebook.com/apps/332667220955173/whatsapp-business/wa-dev-console/" target="_blank">
+    <div class="card-icon">📱</div>
+    <div class="card-title">Meta WhatsApp</div>
+    <div class="card-desc">WhatsApp Business API, Access Token erneuern, Webhook konfigurieren, Testnachrichten.</div>
+    <div class="card-action">Meta Console →</div>
+  </a>
+
+</div>
+
+<div class="footer">
+  converto-server-production.up.railway.app &nbsp;·&nbsp; oxybanupdrfopjionekk.supabase.co &nbsp;·&nbsp; v1.0.0
+</div>
+
+<script>
+var BASE = 'https://officepuertoplata-coder.github.io/sosuapesce';
+var API = 'https://converto-server-production.up.railway.app';
+var merchant = 'sosuapesce';
+
+function updateMerchant() {
+  merchant = document.getElementById('merchantSelect').value;
+  updateLinks();
+}
+
+function updateLinks() {
+  document.getElementById('link-comm').href = BASE + '/comm.html?m=' + merchant;
+  document.getElementById('link-landing').href = BASE + '/index.html?m=' + merchant;
+  document.getElementById('link-agents').href = BASE + '/agentes.html?m=' + merchant;
+  document.getElementById('link-admin').href = BASE + '/admin.html?m=' + merchant;
+  document.getElementById('link-dashboard').href = BASE + '/dashboard.html?m=' + merchant;
+}
+
+// Check API status
+async function checkAPI() {
+  try {
+    const r = await fetch(API + '/api/health');
+    const d = await r.json();
+    document.getElementById('apiStatus').textContent = '✅ OK';
+    document.getElementById('serverStatus').textContent = 'API Online';
+  } catch(e) {
+    document.getElementById('apiStatus').textContent = '❌ Offline';
+    document.getElementById('serverStatus').textContent = 'API Offline';
+  }
+}
+
+updateLinks();
+checkAPI();
+</script>
+</body>
+</html>
