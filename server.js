@@ -171,20 +171,53 @@ app.get('/api/availability/today/:merchantId', async (req, res) => {
       .eq('merchant_id', req.params.merchantId).eq('date', today).single();
 
     if (!avail) {
+      // Keine heutige Verfügbarkeit – Produkte als Vorlage laden
       const { data: products } = await supabase
         .from('merchant_products').select('*')
         .eq('merchant_id', req.params.merchantId).eq('available', true)
-        .order('sort_order');
+        .order('sort_order', { ascending: true });
+
+      console.log('Fallback products:', products?.length, 'for merchant:', req.params.merchantId);
+
       return res.json({
         id: null, date: today, published: false,
         delivery_active: false, pickup_active: true, note: '',
-        daily_products: (products || []).map(p => ({
-          product_id: p.id, name: p.name, price_today: p.price,
-          unit: p.unit, unit_label: p.unit_label,
-          quantity_start: 0, quantity_left: 0, active: false
-        }))
+        available_until: '17:00',
+        daily_products: (products || []).map(function(p) {
+          return {
+            product_id: p.id,
+            name: p.name,
+            price_today: p.price || 0,
+            unit: p.unit || 'piece',
+            unit_label: p.unit_label || 'Stück',
+            quantity_start: 0,
+            quantity_left: 0,
+            active: false,
+            step_quantity: p.step_quantity || 0.5
+          };
+        })
       });
     }
+
+    // Vorhandene Verfügbarkeit – daily_products neu laden falls leer
+    if (!avail.daily_products || avail.daily_products.length === 0) {
+      const { data: products } = await supabase
+        .from('merchant_products').select('*')
+        .eq('merchant_id', req.params.merchantId).eq('available', true)
+        .order('sort_order', { ascending: true });
+
+      avail.daily_products = (products || []).map(function(p) {
+        return {
+          product_id: p.id, name: p.name,
+          price_today: p.price || 0,
+          unit: p.unit || 'piece',
+          unit_label: p.unit_label || 'Stück',
+          quantity_start: 0, quantity_left: 0,
+          active: false, step_quantity: p.step_quantity || 0.5
+        };
+      });
+    }
+
     res.json(avail);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
