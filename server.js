@@ -780,6 +780,40 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 });
 
 // ═══════════════════════════════════════════════════════════
+// SUBSCRIBERS
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/subscribers/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('subscribers').select('*')
+      .eq('merchant_id', req.params.merchantId)
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/subscribers/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('subscribers').update(req.body)
+      .eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, subscriber: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/subscribers', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('subscribers').insert(req.body).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, subscriber: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════════════════════
 
