@@ -51,32 +51,7 @@ async function sendMailerLiteBroadcast(subject, htmlContent, groupId) {
         filter: { groups: [gId] }   // ← war: groups: [gId] (falsch!)
       })
     });
-async function addToMailerLite(email, name, merchantSlug) {
-  try {
-    const fetch = require('node-fetch');
-    const groupId = process.env.MAILERLITE_GROUP_ID || '185762150664373856';
-    const res = await fetch('https://connect.mailerlite.com/api/subscribers', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + process.env.MAILERLITE_API_KEY,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        email: email,
-        fields: { name: name || '', merchant: merchantSlug || '' },
-        groups: [groupId],
-        status: 'active'
-      })
-    });
-    const data = await res.json();
-    console.log('MailerLite subscriber added:', email, data.data?.id);
-    return data.data?.id;
-  } catch(e) {
-    console.error('MailerLite error:', e.message);
-    return null;
-  }
-}
+
     const createData = await createRes.json();
     console.log('ML create:', JSON.stringify(createData));
 
