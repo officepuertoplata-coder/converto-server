@@ -18,73 +18,78 @@ app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ── HELPERS ─────────────────────────────────────────────
-// ── MAILERLITE ────────────────────────────────────────────
-async function sendMailerLiteBroadcast(subject, htmlContent, groupId) {
+// ═══════════════════════════════════════════════════════════
+// RESEND HELPERS
+// ═══════════════════════════════════════════════════════════
+
+// Tagesangebot an alle aktiven Subscriber senden
+async function sendResendBroadcast(merchantId, subject, htmlContent, fromName) {
   try {
-    const fetch = require('node-fetch');
-    const gId = groupId || process.env.MAILERLITE_GROUP_ID || '185762150664373856';
-    const apiKey = process.env.MAILERLITE_API_KEY;
-
+    const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      console.log('MAILERLITE_API_KEY fehlt – E-Mail übersprungen');
+      console.log('RESEND_API_KEY fehlt – E-Mail übersprungen');
       return null;
     }
 
-    // Schritt 1: Kampagne erstellen
-    const createRes = await fetch('https://connect.mailerlite.com/api/campaigns', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + apiKey,
-        'Content-Type':  'application/json',
-        'Accept':        'application/json'
-      },
-      body: JSON.stringify({
-        name:  subject + ' – ' + new Date().toLocaleDateString('de-AT'),
-        type:  'regular',
-        emails: [{
-          subject:    subject,
-          from_name:  'Sosua Pescado',
-          from_email: process.env.MAILERLITE_FROM_EMAIL || 'office@ynhald.com',
-          content:    htmlContent
-        }],
-        filter: { groups: [gId] }   // ← war: groups: [gId] (falsch!)
-      })
-    });
+    // Subscriber aus Supabase laden
+    const { data: subscribers } = await supabase
+      .from('subscribers')
+      .select('email, name')
+      .eq('merchant_id', merchantId)
+      .eq('status', 'active')
+      .eq('active', true)
+      .not('email', 'is', null);
 
-    const createData = await createRes.json();
-    console.log('ML create:', JSON.stringify(createData));
-
-    const campaignId = createData.data?.id;
-    if (!campaignId) {
-      console.error('ML campaign creation failed:', JSON.stringify(createData));
-      return null;
+    if (!subscribers || subscribers.length === 0) {
+      console.log('Keine E-Mail Subscriber gefunden für merchant:', merchantId);
+      return 'no_subscribers';
     }
 
-    // Schritt 2: Sofort senden (war komplett fehlend!)
-    const scheduleRes = await fetch(
-      'https://connect.mailerlite.com/api/campaigns/' + campaignId + '/schedule',
-      {
-        method: 'POST',
+    console.log('Sending to', subscribers.length, 'subscribers via Resend');
+
+    const fetch = require('node-fetch');
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    const from = (fromName || 'Sosua Pescado') + ' <' + fromEmail + '>';
+
+    // Batch senden (max 100 pro Request)
+    const batches = [];
+    for (let i = 0; i < subscribers.length; i += 100) {
+      batches.push(subscribers.slice(i, i + 100));
+    }
+
+    let totalSent = 0;
+    for (const batch of batches) {
+      const emails = batch.map(sub => ({
+        from,
+        to:      [sub.email],
+        subject: subject,
+        html:    htmlContent
+      }));
+
+      const res = await fetch('https://api.resend.com/emails/batch', {
+        method:  'POST',
         headers: {
           'Authorization': 'Bearer ' + apiKey,
-          'Content-Type':  'application/json',
-          'Accept':        'application/json'
+          'Content-Type':  'application/json'
         },
-        body: JSON.stringify({ delivery: 'instant' })
-      }
-    );
-    const scheduleData = await scheduleRes.json();
-    console.log('ML schedule:', JSON.stringify(scheduleData));
+        body: JSON.stringify(emails)
+      });
 
-    return campaignId;
+      const data = await res.json();
+      console.log('Resend batch response:', JSON.stringify(data));
+      if (data.data) totalSent += data.data.length;
+    }
 
+    return totalSent;
   } catch(e) {
-    console.error('MailerLite campaign error:', e.message);
+    console.error('Resend broadcast error:', e.message);
     return null;
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// OTHER HELPERS
+// ═══════════════════════════════════════════════════════════
 
 function generateToken() {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -97,7 +102,7 @@ async function sendWhatsApp(merchantId, to, message) {
       .eq('id', merchantId).single();
 
     const phoneId = merchant?.meta_phone_number_id || process.env.META_PHONE_NUMBER_ID;
-    const token = merchant?.meta_access_token || process.env.META_ACCESS_TOKEN;
+    const token   = merchant?.meta_access_token    || process.env.META_ACCESS_TOKEN;
 
     let cleanTo = to.replace('whatsapp:', '').replace(/\s/g, '');
     if (cleanTo.startsWith('+')) cleanTo = cleanTo.substring(1);
@@ -123,8 +128,8 @@ async function sendWhatsApp(merchantId, to, message) {
 // HEALTH & AUTH
 // ═══════════════════════════════════════════════════════════
 
-app.get('/', (req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.0' }));
-app.get('/api/health', (req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.0' }));
+app.get('/',          (req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.0' }));
+app.get('/api/health',(req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.0' }));
 
 app.post('/api/auth/login', async (req, res) => {
   const { slug, password, role } = req.body;
@@ -238,7 +243,6 @@ app.get('/api/availability/today/:merchantId', async (req, res) => {
       .eq('merchant_id', req.params.merchantId).eq('date', today).single();
 
     if (!avail) {
-      // Keine heutige Verfügbarkeit – Produkte als Vorlage laden
       const { data: products } = await supabase
         .from('merchant_products').select('*')
         .eq('merchant_id', req.params.merchantId).eq('available', true)
@@ -252,21 +256,17 @@ app.get('/api/availability/today/:merchantId', async (req, res) => {
         available_until: '17:00',
         daily_products: (products || []).map(function(p) {
           return {
-            product_id: p.id,
-            name: p.name,
+            product_id: p.id, name: p.name,
             price_today: p.price || 0,
             unit: p.unit || 'piece',
             unit_label: p.unit_label || 'Stück',
-            quantity_start: 0,
-            quantity_left: 0,
-            active: false,
-            step_quantity: p.step_quantity || 0.5
+            quantity_start: 0, quantity_left: 0,
+            active: false, step_quantity: p.step_quantity || 0.5
           };
         })
       });
     }
 
-    // Vorhandene Verfügbarkeit – daily_products neu laden falls leer
     if (!avail.daily_products || avail.daily_products.length === 0) {
       const { data: products } = await supabase
         .from('merchant_products').select('*')
@@ -353,7 +353,7 @@ app.post('/api/sessions', async (req, res) => {
   try {
     const { merchant_id, service_type, customer_wa, customer_name,
             customer_language, availability_id } = req.body;
-    const token = generateToken();
+    const token     = generateToken();
     const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
 
     const { data: session, error } = await supabase
@@ -384,18 +384,16 @@ app.get('/api/sessions/:token', async (req, res) => {
     const { data: config } = await supabase
       .from('merchant_session_config').select('*').eq('merchant_id', session.merchant_id).single();
 
-    let availability = null;
     const today = new Date().toISOString().split('T')[0];
     const { data: avail } = await supabase
       .from('daily_availability').select('*, daily_products(*)')
       .eq('merchant_id', session.merchant_id)
       .eq(session.availability_id ? 'id' : 'date', session.availability_id || today)
       .eq('published', true).single();
-    availability = avail;
 
     let products = [];
-    if (availability?.daily_products?.length > 0) {
-      products = availability.daily_products.filter(p => p.active && p.quantity_left > 0);
+    if (avail?.daily_products?.length > 0) {
+      products = avail.daily_products.filter(p => p.active && p.quantity_left > 0);
     } else {
       const { data: allProducts } = await supabase
         .from('merchant_products').select('*')
@@ -407,7 +405,7 @@ app.get('/api/sessions/:token', async (req, res) => {
       }));
     }
 
-    res.json({ session, merchant, config, availability, products });
+    res.json({ session, merchant, config, availability: avail || null, products });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -429,20 +427,24 @@ app.post('/api/sessions/:token/order', async (req, res) => {
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
 
     const { data: order, error } = await supabase.from('orders').insert({
-      session_id: session.id, merchant_id: session.merchant_id,
-      customer_wa: session.customer_wa, customer_name: session.customer_name,
-      items: session.items, subtotal: session.subtotal,
-      delivery_fee: session.delivery_fee, total: session.total,
-      delivery_type: session.delivery_type,
+      session_id:       session.id,
+      merchant_id:      session.merchant_id,
+      customer_wa:      session.customer_wa,
+      customer_name:    session.customer_name,
+      items:            session.items,
+      subtotal:         session.subtotal,
+      delivery_fee:     session.delivery_fee,
+      total:            session.total,
+      delivery_type:    session.delivery_type,
       delivery_address: session.delivery_address,
-      note: session.note, status: 'new'
+      note:             session.note,
+      status:           'new'
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
 
     await supabase.from('customer_sessions').update({ status: 'confirmed' }).eq('id', session.id);
 
-    // WhatsApp Bestätigungen
     const itemsList = (session.items || [])
       .map(i => `  • ${i.name}: ${i.quantity} ${i.unit_label || ''} = ${i.total}€`).join('\n');
 
@@ -531,8 +533,8 @@ app.post('/api/whatsapp/send', async (req, res) => {
 });
 
 app.get('/api/whatsapp/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
   if (mode === 'subscribe' && token === process.env.META_WEBHOOK_TOKEN) {
     console.log('✅ Webhook verified');
@@ -554,27 +556,24 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
         if (!value?.messages) continue;
 
         for (const msg of value.messages) {
-          const from = msg.from;
-          const text = (msg.text?.body || '').toLowerCase().trim();
+          const from    = msg.from;
+          const text    = (msg.text?.body || '').toLowerCase().trim();
           const phoneId = value.metadata?.phone_number_id;
 
           const { data: merchant } = await supabase
             .from('merchants').select('id, slug').eq('meta_phone_number_id', phoneId).single();
           if (!merchant) continue;
 
-          // Nachricht speichern
           await supabase.from('comm_messages').insert({
             merchant_id: merchant.id, direction: 'inbound',
             content_type: 'text', original_text: msg.text?.body || '', source: 'whatsapp'
           }).catch(() => {});
 
-          // Keywords
-          const stopWords = ['stop', 'abmelden', 'cancelar'];
-          const subWords = ['subscribe', 'anmelden', 'suscribir', 'info', 'notify'];
+          const stopWords  = ['stop', 'abmelden', 'cancelar'];
+          const subWords   = ['subscribe', 'anmelden', 'suscribir', 'info', 'notify'];
           const orderWords = ['bestellen', 'order', 'comprar', 'kaufen', 'pedido'];
 
           if (stopWords.some(k => text.includes(k))) {
-            // STOP - Abmelden
             await supabase.from('subscribers')
               .update({ active: false, status: 'inactive', opted_out_at: new Date().toISOString() })
               .eq('whatsapp', '+' + from).eq('merchant_id', merchant.id);
@@ -582,10 +581,10 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
               '✅ Du wurdest abgemeldet. Schreibe "INFO" um dich wieder anzumelden.');
 
           } else if (text === 'ja' || text === 'yes' || text === 'si' || text === 'sí') {
-            // DOUBLE OPT-IN Bestätigung
             const { data: pending } = await supabase.from('subscribers')
               .select('id').eq('whatsapp', '+' + from)
-              .eq('merchant_id', merchant.id).eq('status', 'pending').single().catch(() => ({ data: null }));
+              .eq('merchant_id', merchant.id).eq('status', 'pending')
+              .single().catch(() => ({ data: null }));
             if (pending) {
               await supabase.from('subscribers')
                 .update({ active: true, status: 'active',
@@ -597,8 +596,8 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             }
 
           } else if (subWords.some(k => text.includes(k))) {
-            // SCHRITT 1 - Double Opt-in Anfrage
-            const { data: m2 } = await supabase.from('merchants').select('name').eq('id', merchant.id).single().catch(() => ({ data: null }));
+            const { data: m2 } = await supabase.from('merchants').select('name')
+              .eq('id', merchant.id).single().catch(() => ({ data: null }));
             const mName = m2?.name || 'uns';
             await supabase.from('subscribers').upsert({
               whatsapp: '+' + from, merchant_id: merchant.id,
@@ -631,21 +630,33 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
   } catch (e) { console.error('Webhook error:', e); }
 });
 
+// ═══════════════════════════════════════════════════════════
+// EMAIL ENDPOINTS (Resend)
+// ═══════════════════════════════════════════════════════════
 
-// ── MAILERLITE ENDPOINTS ──────────────────────────────────
-
-// Email Opt-in (von Landingpage oder Session)
-app.post('/api/mailerlite/subscribe', async (req, res) => {
+// Email Opt-in – direkt in Supabase subscribers speichern
+app.post('/api/email/subscribe', async (req, res) => {
   try {
-    const { email, name, merchant_slug } = req.body;
+    const { email, name, merchant_id, merchant_slug } = req.body;
     if (!email) return res.status(400).json({ error: 'Email fehlt' });
 
-    const id = await addToMailerLite(email, name, merchant_slug);
-    if (id) {
-      res.json({ success: true, subscriber_id: id });
-    } else {
-      res.status(400).json({ error: 'Fehler beim Hinzufügen' });
+    // Merchant ID aus Slug holen falls nötig
+    let mId = merchant_id;
+    if (!mId && merchant_slug) {
+      const { data: m } = await supabase
+        .from('merchants').select('id').eq('slug', merchant_slug).single();
+      mId = m?.id;
     }
+    if (!mId) return res.status(400).json({ error: 'Merchant nicht gefunden' });
+
+    const { data, error } = await supabase.from('subscribers').upsert({
+      email, name: name || '', merchant_id: mId,
+      channel: 'email', status: 'active', active: true,
+      opted_in_at: new Date().toISOString()
+    }, { onConflict: 'email,merchant_id' }).select().single();
+
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, subscriber: data });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -655,24 +666,24 @@ app.post('/api/mailerlite/daily-offer', async (req, res) => {
     const { merchant_id, availability_id, products, note, merchant_name, wa_number } = req.body;
 
     const waLink = wa_number
-      ? 'https://wa.me/' + wa_number.replace('+','') + '?text=Bestellen'
+      ? 'https://wa.me/' + wa_number.replace('+', '') + '?text=Bestellen'
       : null;
 
-    // HTML E-Mail aufbauen
     const productRows = (products || []).map(p =>
-      '<tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">' + p.name + '</td>' +
+      '<tr>' +
+      '<td style="padding:8px 0;border-bottom:1px solid #f0f0f0">' + p.name + '</td>' +
       '<td style="padding:8px 0;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#2d7a4f">' +
-      (p.price_today || 0).toFixed(2) + '€ ' + (p.unit_label || '') + '</td></tr>'
+      (p.price_today || 0).toFixed(2) + '€ ' + (p.unit_label || '') + '</td>' +
+      '</tr>'
     ).join('');
 
     const waButton = waLink
       ? '<a href="' + waLink + '" style="display:inline-block;background:#25d366;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;margin-top:20px">💬 Jetzt per WhatsApp bestellen</a>'
       : '';
 
-    const today = new Date().toLocaleDateString('de-AT', { weekday:'long', day:'numeric', month:'long' });
+    const today = new Date().toLocaleDateString('de-AT', { weekday: 'long', day: 'numeric', month: 'long' });
 
-    const html = `
-<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px">
@@ -692,17 +703,16 @@ app.post('/api/mailerlite/daily-offer', async (req, res) => {
       </div>
     </div>
     <div style="background:#f9f9f9;padding:16px 32px;font-size:12px;color:#999;text-align:center">
-      Du erhältst diese E-Mail weil du dich für unser Tagesangebot angemeldet hast.<br>
-      <a href="{{unsubscribe}}" style="color:#999">Abmelden</a>
+      Du erhältst diese E-Mail weil du dich für unser Tagesangebot angemeldet hast.
     </div>
   </div>
 </body>
 </html>`;
 
     const subject = '🐟 ' + merchant_name + ' – Angebot ' + today;
-    const campaignId = await sendMailerLiteBroadcast(subject, html);
+    const sent    = await sendResendBroadcast(merchant_id, subject, html, merchant_name);
 
-    res.json({ success: true, campaign_id: campaignId });
+    res.json({ success: true, sent });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -720,8 +730,8 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
   if (event.type === 'checkout.session.completed') {
     const stripeSession = event.data.object;
-    const sessionToken = stripeSession.metadata?.session_token;
-    const merchantSlug = stripeSession.metadata?.merchant_slug;
+    const sessionToken  = stripeSession.metadata?.session_token;
+    const merchantSlug  = stripeSession.metadata?.merchant_slug;
 
     try {
       if (sessionToken) {
@@ -733,11 +743,17 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
                       stripe_session_id: stripeSession.id }).eq('id', cs.id);
 
           const { data: order } = await supabase.from('orders').insert({
-            session_id: cs.id, merchant_id: cs.merchant_id,
-            customer_wa: cs.customer_wa, items: cs.items,
-            subtotal: cs.subtotal, delivery_fee: cs.delivery_fee,
-            total: cs.total, delivery_type: cs.delivery_type,
-            note: cs.note, status: 'new', paid_at: new Date().toISOString()
+            session_id:   cs.id,
+            merchant_id:  cs.merchant_id,
+            customer_wa:  cs.customer_wa,
+            items:        cs.items,
+            subtotal:     cs.subtotal,
+            delivery_fee: cs.delivery_fee,
+            total:        cs.total,
+            delivery_type: cs.delivery_type,
+            note:         cs.note,
+            status:       'new',
+            paid_at:      new Date().toISOString()
           }).select().single();
 
           if (cs.customer_wa && order.data) {
@@ -750,10 +766,11 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
           .from('merchants').select('id').eq('slug', merchantSlug).single();
         if (merchant) {
           await supabase.from('sales').insert({
-            merchant_id: merchant.id,
-            amount_rds: stripeSession.amount_total / 100,
-            status: 'completed', stripe_session_id: stripeSession.id,
-            customer_email: stripeSession.customer_email
+            merchant_id:       merchant.id,
+            amount_rds:        stripeSession.amount_total / 100,
+            status:            'completed',
+            stripe_session_id: stripeSession.id,
+            customer_email:    stripeSession.customer_email
           });
         }
       }
