@@ -37,7 +37,6 @@ async function sendResendBroadcast(merchantId, subject, htmlContent, fromName) {
       .select('email, name')
       .eq('merchant_id', merchantId)
       .eq('status', 'active')
-      .eq('active', true)
       .not('email', 'is', null);
 
     if (!subscribers || subscribers.length === 0) {
