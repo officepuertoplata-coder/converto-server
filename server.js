@@ -20,62 +20,65 @@ app.use(express.urlencoded({ extended: true }));
 
 // ── HELPERS ─────────────────────────────────────────────
 // ── MAILERLITE ────────────────────────────────────────────
-async function addToMailerLite(email, name, merchantSlug) {
-  try {
-    const fetch = require('node-fetch');
-    const groupId = process.env.MAILERLITE_GROUP_ID || '185762150664373856';
-    
-    // Subscriber anlegen/aktualisieren
-    const res = await fetch('https://connect.mailerlite.com/api/subscribers', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + process.env.MAILERLITE_API_KEY,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        email: email,
-        fields: { name: name || '', merchant: merchantSlug || '' },
-        groups: [groupId],
-        status: 'active'
-      })
-    });
-    const data = await res.json();
-    console.log('MailerLite subscriber added:', email, data.data?.id);
-    return data.data?.id;
-  } catch(e) {
-    console.error('MailerLite error:', e.message);
-    return null;
-  }
-}
-
 async function sendMailerLiteBroadcast(subject, htmlContent, groupId) {
   try {
     const fetch = require('node-fetch');
     const gId = groupId || process.env.MAILERLITE_GROUP_ID || '185762150664373856';
+    const apiKey = process.env.MAILERLITE_API_KEY;
 
-    const res = await fetch('https://connect.mailerlite.com/api/campaigns', {
+    if (!apiKey) {
+      console.log('MAILERLITE_API_KEY fehlt – E-Mail übersprungen');
+      return null;
+    }
+
+    // Schritt 1: Kampagne erstellen
+    const createRes = await fetch('https://connect.mailerlite.com/api/campaigns', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + process.env.MAILERLITE_API_KEY,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type':  'application/json',
+        'Accept':        'application/json'
       },
       body: JSON.stringify({
-        name: subject + ' - ' + new Date().toLocaleDateString('de-AT'),
-        type: 'regular',
-        status: 'draft',
+        name:  subject + ' – ' + new Date().toLocaleDateString('de-AT'),
+        type:  'regular',
         emails: [{
-          subject: subject,
-          from_name: 'Sosua Pescado',
-          from: process.env.MAILERLITE_FROM_EMAIL || 'noreply@sosuapesce.com',
-          content: htmlContent
+          subject:    subject,
+          from_name:  'Sosua Pescado',
+          from_email: process.env.MAILERLITE_FROM_EMAIL || 'office@ynhald.com',
+          content:    htmlContent
         }],
-        groups: [gId]
+        filter: { groups: [gId] }   // ← war: groups: [gId] (falsch!)
       })
     });
-    const data = await res.json();
-    return data.data?.id;
+
+    const createData = await createRes.json();
+    console.log('ML create:', JSON.stringify(createData));
+
+    const campaignId = createData.data?.id;
+    if (!campaignId) {
+      console.error('ML campaign creation failed:', JSON.stringify(createData));
+      return null;
+    }
+
+    // Schritt 2: Sofort senden (war komplett fehlend!)
+    const scheduleRes = await fetch(
+      'https://connect.mailerlite.com/api/campaigns/' + campaignId + '/schedule',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + apiKey,
+          'Content-Type':  'application/json',
+          'Accept':        'application/json'
+        },
+        body: JSON.stringify({ delivery: 'instant' })
+      }
+    );
+    const scheduleData = await scheduleRes.json();
+    console.log('ML schedule:', JSON.stringify(scheduleData));
+
+    return campaignId;
+
   } catch(e) {
     console.error('MailerLite campaign error:', e.message);
     return null;
