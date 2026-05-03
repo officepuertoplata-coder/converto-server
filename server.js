@@ -429,25 +429,23 @@ app.put('/api/orders/:id/status', async (req, res) => {
 
 app.post('/api/broadcast', async (req, res) => {
   try {
-    const { merchant_id, merchant_slug, message, availability_id } = req.body;
-    const { data: subscribers } = await supabase
-      .from('subscribers').select('whatsapp_number')
-      .eq('merchant_slug', merchant_slug || '').eq('active', true);
-
+    const { merchant_id, message, availability_id, recipients } = req.body;
+    let query = supabase.from('subscribers').select('whatsapp, email')
+      .eq('merchant_id', merchant_id).eq('active', true);
+    if (recipients !== 'all') query = query.neq('status', 'pending');
+    const { data: subscribers } = await query;
     if (!subscribers?.length) return res.json({ success: true, sent: 0 });
-
     let sent = 0;
     for (const sub of subscribers) {
-      const result = await sendWhatsApp(merchant_id, sub.whatsapp_number, message);
-      if (result) sent++;
-      await new Promise(r => setTimeout(r, 200));
+      if (sub.whatsapp) {
+        const result = await sendWhatsApp(merchant_id, sub.whatsapp, message);
+        if (result) sent++;
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
-
     if (availability_id) {
-      await supabase.from('daily_availability')
-        .update({ broadcast_sent: true }).eq('id', availability_id);
+      await supabase.from('daily_availability').update({ broadcast_sent: true }).eq('id', availability_id);
     }
-
     res.json({ success: true, sent, total: subscribers.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -509,20 +507,40 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           const orderWords = ['bestellen', 'order', 'comprar', 'kaufen', 'pedido'];
 
           if (stopWords.some(k => text.includes(k))) {
+            // STOP - Abmelden
             await supabase.from('subscribers')
-              .update({ active: false })
-              .eq('whatsapp_number', '+' + from)
-              .eq('merchant_slug', merchant.slug);
+              .update({ active: false, status: 'inactive', opted_out_at: new Date().toISOString() })
+              .eq('whatsapp', '+' + from).eq('merchant_id', merchant.id);
             await sendWhatsApp(merchant.id, '+' + from,
               '✅ Du wurdest abgemeldet. Schreibe "INFO" um dich wieder anzumelden.');
 
+          } else if (text === 'ja' || text === 'yes' || text === 'si' || text === 'sí') {
+            // DOUBLE OPT-IN Bestätigung
+            const { data: pending } = await supabase.from('subscribers')
+              .select('id').eq('whatsapp', '+' + from)
+              .eq('merchant_id', merchant.id).eq('status', 'pending').single().catch(() => ({ data: null }));
+            if (pending) {
+              await supabase.from('subscribers')
+                .update({ active: true, status: 'active',
+                          opted_in_at: new Date().toISOString(),
+                          consent_text: 'Kunde hat JA geantwortet. Zeitstempel: ' + new Date().toISOString() })
+                .eq('id', pending.id);
+              await sendWhatsApp(merchant.id, '+' + from,
+                '✅ Perfekt! Du bist jetzt angemeldet und bekommst unser Tagesangebot direkt per WhatsApp.\n\nSchreibe jederzeit STOP zum Abmelden. 🙏');
+            }
+
           } else if (subWords.some(k => text.includes(k))) {
+            // SCHRITT 1 - Double Opt-in Anfrage
+            const { data: m2 } = await supabase.from('merchants').select('name').eq('id', merchant.id).single().catch(() => ({ data: null }));
+            const mName = m2?.name || 'uns';
             await supabase.from('subscribers').upsert({
-              whatsapp_number: '+' + from, merchant_slug: merchant.slug,
-              source: 'whatsapp_keyword', active: true
-            }, { onConflict: 'whatsapp_number,merchant_slug' });
+              whatsapp: '+' + from, merchant_id: merchant.id,
+              source: 'whatsapp_keyword', active: false, status: 'pending'
+            }, { onConflict: 'whatsapp,merchant_id' }).catch(() => {});
             await sendWhatsApp(merchant.id, '+' + from,
-              '✅ Angemeldet! Du bekommst ab sofort Benachrichtigungen.\n\nSchreibe "STOP" zum Abmelden.');
+              '👋 Hallo! Möchtest du das Tagesangebot von ' + mName + ' per WhatsApp erhalten?\n\n' +
+              'Du bekommst täglich:\n🛒 Aktuelle Produkte & Preise\n🔗 Direkt-Bestelllink\n\n' +
+              'Antworte JA zum Bestätigen\nSchreibe STOP zum Ablehnen');
 
           } else if (orderWords.some(k => text.includes(k))) {
             const today = new Date().toISOString().split('T')[0];
