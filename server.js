@@ -18,7 +18,71 @@ app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ── HELPERS ───────────────────────────────────────────────
+// ── HELPERS ─────────────────────────────────────────────
+// ── MAILERLITE ────────────────────────────────────────────
+async function addToMailerLite(email, name, merchantSlug) {
+  try {
+    const fetch = require('node-fetch');
+    const groupId = process.env.MAILERLITE_GROUP_ID || '185762150664373856';
+    
+    // Subscriber anlegen/aktualisieren
+    const res = await fetch('https://connect.mailerlite.com/api/subscribers', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.MAILERLITE_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        email: email,
+        fields: { name: name || '', merchant: merchantSlug || '' },
+        groups: [groupId],
+        status: 'active'
+      })
+    });
+    const data = await res.json();
+    console.log('MailerLite subscriber added:', email, data.data?.id);
+    return data.data?.id;
+  } catch(e) {
+    console.error('MailerLite error:', e.message);
+    return null;
+  }
+}
+
+async function sendMailerLiteBroadcast(subject, htmlContent, groupId) {
+  try {
+    const fetch = require('node-fetch');
+    const gId = groupId || process.env.MAILERLITE_GROUP_ID || '185762150664373856';
+
+    const res = await fetch('https://connect.mailerlite.com/api/campaigns', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.MAILERLITE_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        name: subject + ' - ' + new Date().toLocaleDateString('de-AT'),
+        type: 'regular',
+        status: 'draft',
+        emails: [{
+          subject: subject,
+          from_name: 'Sosua Pescado',
+          from: process.env.MAILERLITE_FROM_EMAIL || 'noreply@sosuapesce.com',
+          content: htmlContent
+        }],
+        groups: [gId]
+      })
+    });
+    const data = await res.json();
+    return data.data?.id;
+  } catch(e) {
+    console.error('MailerLite campaign error:', e.message);
+    return null;
+  }
+}
+
+──
 function generateToken() {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
@@ -562,6 +626,81 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       }
     }
   } catch (e) { console.error('Webhook error:', e); }
+});
+
+
+// ── MAILERLITE ENDPOINTS ──────────────────────────────────
+
+// Email Opt-in (von Landingpage oder Session)
+app.post('/api/mailerlite/subscribe', async (req, res) => {
+  try {
+    const { email, name, merchant_slug } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email fehlt' });
+
+    const id = await addToMailerLite(email, name, merchant_slug);
+    if (id) {
+      res.json({ success: true, subscriber_id: id });
+    } else {
+      res.status(400).json({ error: 'Fehler beim Hinzufügen' });
+    }
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Tagesangebot als E-Mail senden (beim Publizieren)
+app.post('/api/mailerlite/daily-offer', async (req, res) => {
+  try {
+    const { merchant_id, availability_id, products, note, merchant_name, wa_number } = req.body;
+
+    const waLink = wa_number
+      ? 'https://wa.me/' + wa_number.replace('+','') + '?text=Bestellen'
+      : null;
+
+    // HTML E-Mail aufbauen
+    const productRows = (products || []).map(p =>
+      '<tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">' + p.name + '</td>' +
+      '<td style="padding:8px 0;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#2d7a4f">' +
+      (p.price_today || 0).toFixed(2) + '€ ' + (p.unit_label || '') + '</td></tr>'
+    ).join('');
+
+    const waButton = waLink
+      ? '<a href="' + waLink + '" style="display:inline-block;background:#25d366;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;margin-top:20px">💬 Jetzt per WhatsApp bestellen</a>'
+      : '';
+
+    const today = new Date().toLocaleDateString('de-AT', { weekday:'long', day:'numeric', month:'long' });
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+    <div style="background:#1b4332;color:#fff;padding:28px 32px">
+      <div style="font-size:22px;font-weight:800">🐟 ${merchant_name}</div>
+      <div style="font-size:14px;opacity:.7;margin-top:4px">${today}</div>
+    </div>
+    <div style="padding:28px 32px">
+      <div style="font-size:18px;font-weight:700;color:#1b4332;margin-bottom:16px">Unser heutiges Angebot 🎣</div>
+      ${note ? '<div style="background:#f0fdf4;border-left:3px solid #2d7a4f;padding:10px 14px;border-radius:4px;font-size:14px;color:#1b4332;margin-bottom:16px">' + note + '</div>' : ''}
+      <table style="width:100%;border-collapse:collapse">
+        ${productRows}
+      </table>
+      <div style="text-align:center">
+        ${waButton}
+      </div>
+    </div>
+    <div style="background:#f9f9f9;padding:16px 32px;font-size:12px;color:#999;text-align:center">
+      Du erhältst diese E-Mail weil du dich für unser Tagesangebot angemeldet hast.<br>
+      <a href="{{unsubscribe}}" style="color:#999">Abmelden</a>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const subject = '🐟 ' + merchant_name + ' – Angebot ' + today;
+    const campaignId = await sendMailerLiteBroadcast(subject, html);
+
+    res.json({ success: true, campaign_id: campaignId });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ═══════════════════════════════════════════════════════════
