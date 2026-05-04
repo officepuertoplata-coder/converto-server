@@ -816,7 +816,196 @@ app.post('/api/subscribers', async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// LANDINGPAGE BUILDER ENDPOINTS
+// ═══════════════════════════════════════════════════════════
 
+// Serve landing page by slug
+app.get('/:slug', async (req, res, next) => {
+  const { slug } = req.params;
+  // Skip API routes
+  if (slug.startsWith('api') || slug === 'health' || slug === 'favicon.ico') return next();
+  try {
+    const { data, error } = await supabase
+      .from('merchant_pages')
+      .select('html_content, published')
+      .eq('slug', slug)
+      .single();
+    if (error || !data) return res.status(404).send('<h1>Seite nicht gefunden</h1>');
+    if (!data.published) return res.status(404).send('<h1>Diese Seite ist noch nicht veröffentlicht</h1>');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(data.html_content);
+  } catch(e) { res.status(500).send('<h1>Fehler</h1>'); }
+});
+
+// Get page by merchant
+app.get('/api/pages/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('merchant_pages')
+      .select('*')
+      .eq('merchant_id', req.params.merchantId)
+      .single();
+    if (error) return res.json(null);
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Save / update page
+app.post('/api/pages', async (req, res) => {
+  try {
+    const { merchant_id, slug, html_content, sections_json, settings_json, published } = req.body;
+    const { data, error } = await supabase
+      .from('merchant_pages')
+      .upsert({
+        merchant_id, slug, html_content,
+        sections_json: sections_json || [],
+        settings_json: settings_json || {},
+        published: published || false,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'merchant_id' })
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, page: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Publish / unpublish
+app.post('/api/pages/:merchantId/publish', async (req, res) => {
+  try {
+    const { published } = req.body;
+    const { data, error } = await supabase
+      .from('merchant_pages')
+      .update({ published, updated_at: new Date().toISOString() })
+      .eq('merchant_id', req.params.merchantId)
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, page: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Generate landing page via Claude API
+app.post('/api/pages/generate', async (req, res) => {
+  try {
+    const fetch = require('node-fetch');
+    const { merchant_id, settings, extracted_text, prompt } = req.body;
+
+    // Get merchant data
+    const { data: merchant } = await supabase
+      .from('merchants').select('*').eq('id', merchant_id).single();
+    const { data: products } = await supabase
+      .from('merchant_products').select('*')
+      .eq('merchant_id', merchant_id).eq('available', true);
+
+    const systemPrompt = `Du bist ein Experte für Landingpage-Erstellung. 
+Erstelle eine vollständige, professionelle HTML Landingpage.
+Wichtige Regeln:
+- Komplettes HTML mit inline CSS und JS
+- Responsive (Mobile-first)
+- Moderne, professionelle Optik
+- WhatsApp Integration wenn Nummer vorhanden
+- Keine externen Dependencies außer Google Fonts
+- Gib NUR den HTML Code zurück, nichts anderes`;
+
+    const userPrompt = `Erstelle eine Landingpage für folgendes Unternehmen:
+
+FIRMENNAME: ${merchant?.name || settings?.company_name}
+BRANCHE: ${settings?.industry || 'Dienstleistung'}
+BESCHREIBUNG: ${settings?.description || ''}
+ZIELGRUPPE: ${settings?.target_audience || ''}
+USP: ${settings?.usp || ''}
+LEISTUNGEN: ${(products || []).map(p => p.name).join(', ') || settings?.services || ''}
+WHATSAPP: ${merchant?.wa_number || settings?.whatsapp || ''}
+EMAIL: ${settings?.email || ''}
+CTA: ${settings?.cta || 'Kontakt aufnehmen'}
+STIL: ${settings?.style || 'modern, professionell'}
+FARBE: ${settings?.primary_color || '#25D366'}
+SPRACHE: ${settings?.language || 'de'}
+SECTIONS: ${settings?.sections || 'Hero, Leistungen, Über uns, Kontakt'}
+
+${extracted_text ? `ZUSÄTZLICHE INFORMATIONEN AUS DOKUMENTEN:\n${extracted_text}` : ''}
+
+${prompt ? `SPEZIELLE ANWEISUNGEN:\n${prompt}` : ''}
+
+Erstelle eine vollständige HTML Landingpage.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+
+    const data = await response.json();
+    const html = data.content?.[0]?.text || '';
+
+    if (!html) return res.status(500).json({ error: 'Keine HTML generiert', detail: data });
+
+    res.json({ success: true, html });
+  } catch(e) {
+    console.error('Generate error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Extract text from document (base64)
+app.post('/api/pages/extract-doc', async (req, res) => {
+  try {
+    const fetch = require('node-fetch');
+    const { base64, media_type, filename } = req.body;
+
+    const messages = [{
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          source: { type: 'base64', media_type, data: base64 }
+        },
+        {
+          type: 'text',
+          text: `Analysiere dieses Dokument und extrahiere folgende Informationen für eine Landingpage:
+1. Firmenname und Branche
+2. Hauptleistungen/Produkte
+3. Zielgruppe
+4. USP / Alleinstellungsmerkmale
+5. Wichtige Kennzahlen oder Fakten
+6. Tonalität (formal/locker/technisch)
+7. Schlüsselformulierungen die übernommen werden sollen
+
+Antworte in strukturiertem JSON Format.`
+        }
+      ]
+    }];
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+    res.json({ success: true, extracted: text });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.0 läuft auf Port ${PORT}`);
 });
