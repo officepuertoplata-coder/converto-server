@@ -1,4 +1,8 @@
-require('dotenv').config();
+app.post('/api/whatsapp/webhook', async (req, res) => {
+  res.status(200).send('OK');
+  console.log('Webhook body:', JSON.stringify(req.body).substring(0, 500));
+  // ... rest of code
+  require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
