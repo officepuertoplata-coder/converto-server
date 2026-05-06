@@ -562,8 +562,9 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           const text    = (msg.text?.body || '').toLowerCase().trim();
           const phoneId = value.metadata?.phone_number_id;
 
-          const { data: merchant } = await supabase
+          const { data: merchant, error: mErr } = await supabase
             .from('merchants').select('id, slug').eq('meta_phone_number_id', phoneId).single();
+          console.log('Merchant lookup phoneId:', phoneId, 'found:', merchant?.id, 'error:', mErr?.message);
           if (!merchant) continue;
 
           await supabase.from('comm_messages').insert({
