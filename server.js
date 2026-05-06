@@ -102,6 +102,7 @@ async function sendWhatsApp(merchantId, to, message) {
 
     const phoneId = merchant?.meta_phone_number_id || process.env.META_PHONE_NUMBER_ID;
     const token   = merchant?.meta_access_token    || process.env.META_ACCESS_TOKEN;
+    console.log('sendWhatsApp:', { merchantId, to, phoneId: phoneId?.substring(0,8), hasToken: !!token });
 
     let cleanTo = to.replace('whatsapp:', '').replace(/\s/g, '');
     if (cleanTo.startsWith('+')) cleanTo = cleanTo.substring(1);
@@ -116,6 +117,7 @@ async function sendWhatsApp(merchantId, to, message) {
       })
     });
     const data = await response.json();
+    console.log('WhatsApp API response:', JSON.stringify(data));
     return data.messages?.[0]?.id;
   } catch (e) {
     console.error('WhatsApp send error:', e);
