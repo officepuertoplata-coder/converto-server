@@ -549,12 +549,13 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
   res.status(200).send('OK');
   try {
     const body = req.body;
-    console.log('Webhook received:', JSON.stringify(body).substring(0, 500));
+    console.log('Webhook received:', JSON.stringify(body).substring(0, 300));
     if (body.object !== 'whatsapp_business_account') return;
 
     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {
         const value = change.value;
+        console.log('Change field:', change.field, 'has messages:', !!value?.messages, 'msgs count:', value?.messages?.length);
         if (!value?.messages) continue;
 
         for (const msg of value.messages) {
