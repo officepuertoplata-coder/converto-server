@@ -927,6 +927,17 @@ Nur die extrahierten Informationen, kein Kommentar.`
   }
 });
 
+// Seite löschen
+app.delete('/api/pages/:merchantId', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('merchant_pages').delete().eq('merchant_id', req.params.merchantId);
+    if (error) return res.status(400).json({ error: error.message });
+    console.log('Page deleted for merchant:', req.params.merchantId);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── CHAT PATCH: Seite direkt anpassen + speichern ──────────
 app.post('/api/pages/chat-patch', async (req, res) => {
   try {
@@ -1084,6 +1095,11 @@ WHATSAPP: ${s.whatsapp || ''}
 EMAIL: ${s.email || ''}
 BUCHUNGSLINK: ${s.booking_link || ''}
 STIL: ${s.style || 'modern, professionell'}
+${s.impressum_url || s.imp_firma ? `IMPRESSUM URL: ${s.impressum_url || ''}` : ''}
+${s.dsgvo_url ? `DSGVO URL: ${s.dsgvo_url}` : ''}
+${s.agb_url ? `AGB URL: ${s.agb_url}` : ''}
+${s.cookie_url ? `COOKIE POLICY URL: ${s.cookie_url}` : ''}
+${s.imp_firma ? `IMPRESSUM DATEN: ${s.imp_firma}, ${s.imp_adresse || ''}, GF: ${s.imp_gf || ''}, UID: ${s.imp_uid || ''}` : ''}
 SPRACHE(N): ${langLabel}
 SECTIONS: ${sections}
 ${extracted_text ? '\nZUSATZ-INFO:\n' + extracted_text.substring(0, 1000) : ''}
@@ -1110,6 +1126,10 @@ MOBILE (PFLICHT):
 TYPOGRAFIE: Google Fonts Nunito (700,800) + Inter (400,500)
 
 ${isMultilang ? `MEHRSPRACHIG: Sprachwechsler oben rechts (${langs.map(l=>langNames[l]).join(' | ')}). JS wechselt per data-lang Attribut. Standard: ${langNames[langs[0]]}.` : `SPRACHE: Alles auf ${langNames[langs[0]]||'Deutsch'}.`}
+
+${(s.impressum_url || s.dsgvo_url || s.imp_firma) ? `FOOTER RECHTLICHES (PFLICHT wenn Daten vorhanden):
+- Footer muss Links enthalten: ${s.impressum_url ? `<a href="${s.impressum_url}">Impressum</a>` : (s.imp_firma ? '<a href="#impressum">Impressum</a>' : '')} ${s.dsgvo_url ? `<a href="${s.dsgvo_url}">Datenschutz</a>` : ''} ${s.agb_url ? `<a href="${s.agb_url}">AGB</a>` : ''} ${s.cookie_url ? `<a href="${s.cookie_url}">Cookie Policy</a>` : ''}
+${s.sections && s.sections.includes('Impressum') && s.imp_firma ? `- Impressum Section am Ende der Seite mit: Firma: ${s.imp_firma}, Adresse: ${s.imp_adresse}, GF: ${s.imp_gf}, UID: ${s.imp_uid}` : ''}` : ''}
 
 ${waNum ? `PFLICHT WhatsApp Float Button (exakt so einfügen vor </body>):\n${waBtn}` : ''}
 
