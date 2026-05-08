@@ -776,19 +776,32 @@ app.post('/api/pages', async (req, res) => {
     const { merchant_id, slug, html_content, settings_json, published } = req.body;
     if (!merchant_id || !html_content) return res.status(400).json({ error: 'merchant_id und html_content erforderlich' });
 
-    const { data, error } = await supabase
-      .from('merchant_pages')
-      .upsert({
-        merchant_id, slug, html_content,
-        settings_json: settings_json || {},
-        published: published || false,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'merchant_id' })
-      .select().single();
+    // Check if page exists → INSERT or UPDATE
+    const { data: existing } = await supabase
+      .from('merchant_pages').select('id').eq('merchant_id', merchant_id).maybeSingle();
+
+    let data, error;
+    if (existing?.id) {
+      ({ data, error } = await supabase
+        .from('merchant_pages')
+        .update({ slug, html_content,
+          settings_json: settings_json || {},
+          published: published || false,
+          updated_at: new Date().toISOString() })
+        .eq('merchant_id', merchant_id).select().single());
+    } else {
+      ({ data, error } = await supabase
+        .from('merchant_pages')
+        .insert({ merchant_id, slug, html_content,
+          settings_json: settings_json || {},
+          published: published || false })
+        .select().single());
+    }
 
     if (error) { console.error("Pages save error:", error.message); return res.status(400).json({ error: error.message }); }
+    console.log('Page saved OK for:', merchant_id);
     res.json({ success: true, page: data });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error("Pages save exception:", e.message); res.status(500).json({ error: e.message }); }
 });
 
 // Dokument analysieren (Base64 → Claude → extrahierter Text)
