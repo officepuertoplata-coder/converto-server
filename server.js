@@ -1,831 +1,1102 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Landingpage Builder – Converdino</title>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-:root{--wa:#25D366;--wa-d:#128C7E;--bg:#0a1f12;--card:#111f15;--card2:#162a1a;--border:rgba(37,211,102,0.15);--txt:#e8f5ec;--muted:#5d8a6a;--red:#ef4444;--gold:#f4a100;}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;}
-nav{background:rgba(10,31,18,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;position:sticky;top:0;z-index:100;}
-.nav-brand{font-weight:900;font-size:1.1rem;color:var(--wa);text-decoration:none;margin-right:24px;}
-.nav-brand span{color:var(--txt);}
-.nav-link{color:var(--muted);text-decoration:none;font-size:.82rem;padding:0 12px;height:56px;display:flex;align-items:center;border-bottom:2px solid transparent;transition:all .2s;font-weight:600;}
-.nav-link:hover{color:var(--txt);}
-.nav-link.active{color:var(--wa);border-bottom-color:var(--wa);}
-.nav-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
-.layout{display:grid;grid-template-columns:440px 1fr;height:calc(100vh - 56px);}
-.panel{background:var(--card);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;}
-.panel-header{padding:16px 20px 0;border-bottom:1px solid var(--border);}
-.panel-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-.panel-tabs{display:flex;gap:0;overflow-x:auto;}
-.tab{flex-shrink:0;padding:9px 10px;border:none;background:none;color:var(--muted);font-size:.72rem;font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;}
-.tab.active{color:var(--wa);border-bottom-color:var(--wa);}
-.panel-body{padding:18px;flex:1;}
-.fgrp{margin-bottom:12px;}
-.fgrp label{display:block;font-size:.65rem;font-weight:800;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.8px;}
-.fgrp input,.fgrp select,.fgrp textarea{width:100%;padding:8px 11px;background:var(--card2);border:1.5px solid rgba(37,211,102,0.1);border-radius:8px;color:var(--txt);font-size:.83rem;font-family:'Nunito',sans-serif;outline:none;transition:border-color .2s;}
-.fgrp input:focus,.fgrp select:focus,.fgrp textarea:focus{border-color:var(--wa);}
-.fgrp textarea{resize:vertical;min-height:70px;line-height:1.5;}
-.colors-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.color-item label{font-size:.63rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;display:block;margin-bottom:4px;}
-.color-row{display:flex;align-items:center;gap:6px;}
-.color-row input[type="color"]{width:36px;height:32px;padding:2px;border-radius:6px;cursor:pointer;background:var(--card2);border:1.5px solid rgba(37,211,102,0.1);flex-shrink:0;}
-.color-row input[type="text"]{flex:1;padding:6px 8px;font-size:.78rem;}
-.lang-row{display:flex;gap:8px;}
-.lang-check{display:flex;align-items:center;gap:6px;background:var(--card2);border:1.5px solid rgba(37,211,102,0.1);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:.8rem;font-weight:700;transition:border-color .2s;flex:1;justify-content:center;}
-.lang-check:hover{border-color:var(--wa);}
-.lang-check.active{border-color:var(--wa);background:rgba(37,211,102,0.08);color:var(--wa);}
-.lang-check input{accent-color:var(--wa);width:13px;height:13px;}
-.sections-list{display:flex;flex-direction:column;gap:6px;}
-.section-item{display:flex;align-items:center;gap:8px;background:var(--card2);border:1.5px solid rgba(37,211,102,0.1);border-radius:8px;padding:8px 10px;transition:border-color .2s;user-select:none;}
-.section-item.dragging{opacity:.4;border-style:dashed;}
-.section-item.drag-over{border-color:var(--wa);background:rgba(37,211,102,0.08);}
-.drag-handle{cursor:grab;color:var(--muted);font-size:14px;padding:0 2px;}
-.section-name{flex:1;font-size:.8rem;font-weight:700;}
-.section-toggle{position:relative;width:34px;height:18px;flex-shrink:0;}
-.section-toggle input{opacity:0;width:0;height:0;}
-.toggle-slider{position:absolute;inset:0;background:rgba(255,255,255,.1);border-radius:18px;cursor:pointer;transition:.3s;}
-.toggle-slider:before{content:'';position:absolute;width:14px;height:14px;left:2px;top:2px;background:var(--muted);border-radius:50%;transition:.3s;}
-.section-toggle input:checked+.toggle-slider{background:var(--wa);}
-.section-toggle input:checked+.toggle-slider:before{transform:translateX(16px);background:#fff;}
-/* IMAGE UPLOAD STYLES */
-.img-upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
-.img-upload-box{background:var(--card2);border:2px dashed rgba(37,211,102,0.2);border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:all .2s;position:relative;min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;}
-.img-upload-box:hover{border-color:var(--wa);background:rgba(37,211,102,0.05);}
-.img-upload-box.has-img{border-style:solid;border-color:rgba(37,211,102,0.4);}
-.img-upload-box input{display:none;}
-.img-preview{width:100%;height:60px;object-fit:cover;border-radius:6px;margin-bottom:4px;}
-.img-label{font-size:.7rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
-.img-remove{position:absolute;top:4px;right:4px;background:var(--red);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:none;align-items:center;justify-content:center;}
-.img-upload-box.has-img .img-remove{display:flex;}
-.img-extra-list{display:flex;flex-direction:column;gap:8px;}
-.img-extra-item{display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px;}
-.img-extra-thumb{width:48px;height:36px;object-fit:cover;border-radius:5px;flex-shrink:0;}
-.img-extra-info{flex:1;min-width:0;}
-.img-extra-name{font-size:.75rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.img-extra-label{width:100%;margin-top:4px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--txt);font-size:.72rem;font-family:'Nunito',sans-serif;}
-/* SOURCES TAB */
-.upload-area{border:2px dashed rgba(37,211,102,0.2);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;background:var(--card2);}
-.upload-area:hover{border-color:var(--wa);background:rgba(37,211,102,0.05);}
-.upload-area input{display:none;}
-.url-row{display:flex;gap:8px;margin-top:10px;}
-.url-input{flex:1;padding:8px 11px;background:var(--card2);border:1.5px solid rgba(37,211,102,0.1);border-radius:8px;color:var(--txt);font-size:.83rem;font-family:'Nunito',sans-serif;outline:none;transition:border-color .2s;}
-.url-input:focus{border-color:var(--wa);}
-.url-btn{padding:8px 14px;background:var(--wa);color:#fff;border:none;border-radius:8px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;}
-.url-btn:hover{background:var(--wa-d);}
-.url-btn:disabled{opacity:.5;cursor:not-allowed;}
-.doc-list{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
-.doc-item{display:flex;align-items:center;gap:8px;background:rgba(37,211,102,0.05);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:.76rem;}
-.doc-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.doc-remove{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;}
-.doc-remove:hover{color:var(--red);}
-.doc-status{font-size:.65rem;padding:2px 6px;border-radius:4px;white-space:nowrap;}
-.doc-status.done{background:rgba(37,211,102,.15);color:var(--wa);}
-.doc-status.extracting{background:rgba(244,161,0,.15);color:var(--gold);}
-.doc-status.error{background:rgba(239,68,68,.15);color:var(--red);}
-.extracted-box{margin-top:10px;font-size:.75rem;color:var(--muted);background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;max-height:160px;overflow-y:auto;line-height:1.6;white-space:pre-wrap;}
-/* CHAT */
-.chat-area{display:flex;flex-direction:column;height:100%;}
-.chat-messages{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;max-height:260px;background:var(--card2);border-radius:10px;margin-bottom:10px;border:1px solid rgba(37,211,102,0.08);}
-.chat-msg{max-width:88%;padding:8px 11px;border-radius:12px;font-size:.8rem;line-height:1.5;}
-.chat-msg.user{align-self:flex-end;background:var(--wa);color:#fff;border-bottom-right-radius:3px;}
-.chat-msg.ai{align-self:flex-start;background:var(--card);border:1px solid var(--border);border-bottom-left-radius:3px;}
-.chat-msg.system{align-self:center;background:rgba(37,211,102,0.08);color:var(--muted);font-size:.7rem;border-radius:20px;padding:4px 12px;}
-.chat-input-row{display:flex;gap:8px;}
-.chat-input{flex:1;padding:8px 11px;background:var(--card2);border:1.5px solid rgba(37,211,102,0.1);border-radius:8px;color:var(--txt);font-size:.83rem;font-family:'Nunito',sans-serif;outline:none;transition:border-color .2s;}
-.chat-input:focus{border-color:var(--wa);}
-.chat-send{padding:8px 13px;background:var(--wa);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px;}
-.chat-send:hover{background:var(--wa-d);}
-.chat-send:disabled{opacity:.5;cursor:not-allowed;}
-/* BUTTONS */
-.btn{padding:9px 18px;border-radius:10px;border:none;font-size:.85rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px;}
-.btn-primary{background:var(--wa);color:#fff;box-shadow:0 4px 12px rgba(37,211,102,.3);}
-.btn-primary:hover{background:var(--wa-d);}
-.btn-primary:disabled{opacity:.5;cursor:not-allowed;}
-.btn-ghost{background:var(--card2);color:var(--muted);border:1px solid var(--border);}
-.btn-ghost:hover{color:var(--txt);border-color:var(--wa);}
-.btn-sm{padding:6px 11px;font-size:.76rem;}
-.action-bar{padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px;background:var(--card);}
-.preview-panel{display:flex;flex-direction:column;background:#1a1a2e;}
-.preview-header{padding:10px 18px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
-.preview-url{flex:1;padding:5px 11px;background:var(--card2);border:1px solid var(--border);border-radius:8px;font-size:.75rem;font-family:'DM Mono',monospace;color:var(--muted);}
-.preview-frame{flex:1;border:none;background:#fff;}
-.preview-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--muted);}
-.preview-empty-icon{font-size:56px;opacity:.3;}
-.status-bar{padding:7px 18px;background:var(--card);border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--muted);font-family:'DM Mono',monospace;}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
-.status-dot.green{background:var(--wa);box-shadow:0 0 6px var(--wa);}
-.status-dot.loading{background:var(--gold);animation:blink .8s infinite;}
-.status-dot.error{background:var(--red);}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.publish-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700;}
-.publish-badge.draft{background:rgba(244,161,0,.15);color:var(--gold);}
-.publish-badge.live{background:rgba(37,211,102,.15);color:var(--wa);}
-.divider{font-size:.65rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:14px 0 8px;display:flex;align-items:center;gap:8px;}
-.divider::after{content:'';flex:1;height:1px;background:var(--border);}
-#toast{position:fixed;bottom:24px;right:24px;background:var(--wa);color:#fff;padding:11px 18px;border-radius:10px;font-size:.83rem;font-weight:700;transform:translateY(80px);opacity:0;transition:all .3s;z-index:999;}
-#toast.show{transform:translateY(0);opacity:1;}
-#toast.error{background:var(--red);}
-@media(max-width:900px){.layout{grid-template-columns:1fr;grid-template-rows:auto 1fr;}.panel{max-height:55vh;}.preview-panel{height:45vh;}}
-</style>
-</head>
-<body>
-<nav>
-  <a class="nav-brand" href="hub.html">Con<span>verdino</span></a>
-  <a class="nav-link" href="haendler-session.html">📋 Verfügbarkeit</a>
-  <a class="nav-link active" href="#">🌐 Landingpage</a>
-  <div class="nav-right">
-    <span id="navSlug" style="font-size:.78rem;color:var(--muted);"></span>
-    <a class="nav-link" href="hub.html">← Hub</a>
-  </div>
-</nav>
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
 
-<div class="layout">
-  <div class="panel">
-    <div class="panel-header">
-      <div class="panel-top">
-        <div>
-          <div style="font-size:.95rem;font-weight:900;">🌐 Landingpage Builder</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:1px;">AI-gestützte Seitenerstellung</div>
-        </div>
-        <div id="publishBadge" class="publish-badge draft">● Draft</div>
-      </div>
-      <div class="panel-tabs">
-        <button class="tab active" onclick="switchTab('settings')">⚙️ Einstellungen</button>
-        <button class="tab" onclick="switchTab('sections')">☰ Sections</button>
-        <button class="tab" onclick="switchTab('images')">🖼️ Bilder</button>
-        <button class="tab" onclick="switchTab('docs')">📄 Quellen</button>
-        <button class="tab" onclick="switchTab('chat')">💬 AI Chat</button>
-      </div>
-    </div>
+const app = express();
+const PORT = process.env.PORT || 3000;
+const BASE_URL = process.env.BASE_URL || 'https://officepuertoplata-coder.github.io/sosuapesce';
 
-    <!-- SETTINGS TAB -->
-    <div class="panel-body" id="tab-settings">
-      <div class="fgrp"><label>Firmenname</label><input type="text" id="companyName" placeholder="z.B. Ynhald Risikomanagement" oninput="saveSettings()"></div>
-      <div class="fgrp"><label>Branche</label>
-        <select id="industry" onchange="saveSettings()">
-          <option value="b2b_consultant">B2B Beratung / Consulting</option>
-          <option value="risk_management">Risikomanagement</option>
-          <option value="fish_market">Fischmarkt / Lebensmittel</option>
-          <option value="restaurant">Restaurant / Gastronomie</option>
-          <option value="retail">Einzelhandel</option>
-          <option value="service_local">Lokaler Dienstleister</option>
-          <option value="tech">Tech / Software</option>
-          <option value="other">Sonstiges</option>
-        </select>
-      </div>
-      <div class="fgrp"><label>Kurzbeschreibung</label><textarea id="description" placeholder="Was macht dein Unternehmen?" oninput="saveSettings()"></textarea></div>
-      <div class="fgrp"><label>Zielgruppe</label><input type="text" id="targetAudience" placeholder="z.B. KMU, Einkaufsleiter, CFOs" oninput="saveSettings()"></div>
-      <div class="fgrp"><label>USP</label><input type="text" id="usp" placeholder="Was macht dich einzigartig?" oninput="saveSettings()"></div>
-      <div class="fgrp"><label>Leistungen (kommagetrennt)</label><textarea id="services" placeholder="z.B. Lieferantenbewertung, OSINT Analyse" style="min-height:55px;" oninput="saveSettings()"></textarea></div>
-      <div class="fgrp"><label>Call-to-Action</label>
-        <select id="cta" onchange="saveSettings()">
-          <option value="Beratungsgespräch buchen">Beratungsgespräch buchen</option>
-          <option value="Jetzt anfragen">Jetzt anfragen</option>
-          <option value="Kostenlos testen">Kostenlos testen</option>
-          <option value="Demo anfordern">Demo anfordern</option>
-          <option value="Jetzt bestellen">Jetzt bestellen</option>
-          <option value="Kontakt aufnehmen">Kontakt aufnehmen</option>
-        </select>
-      </div>
-      <div class="fgrp"><label>WhatsApp</label><input type="text" id="whatsapp" placeholder="+43..." oninput="saveSettings()"></div>
-      <div class="fgrp"><label>E-Mail</label><input type="email" id="email" placeholder="office@firma.com" oninput="saveSettings()"></div>
-      <div class="fgrp"><label>Buchungslink</label><input type="text" id="bookingLink" placeholder="Calendly, Cal.com..." oninput="saveSettings()"></div>
+// ── SUPABASE ──────────────────────────────────────────────
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-      <div class="divider">Farben</div>
-      <div class="colors-grid">
-        <div class="color-item"><label>Primärfarbe</label><div class="color-row"><input type="color" id="color1" value="#1b4332" oninput="syncColor('color1','color1hex');saveSettings()"><input type="text" id="color1hex" value="#1b4332" oninput="syncColorPicker('color1hex','color1');saveSettings()"></div></div>
-        <div class="color-item"><label>Sekundärfarbe</label><div class="color-row"><input type="color" id="color2" value="#25D366" oninput="syncColor('color2','color2hex');saveSettings()"><input type="text" id="color2hex" value="#25D366" oninput="syncColorPicker('color2hex','color2');saveSettings()"></div></div>
-        <div class="color-item"><label>Akzent 1</label><div class="color-row"><input type="color" id="color3" value="#f4a100" oninput="syncColor('color3','color3hex');saveSettings()"><input type="text" id="color3hex" value="#f4a100" oninput="syncColorPicker('color3hex','color3');saveSettings()"></div></div>
-        <div class="color-item"><label>Akzent 2</label><div class="color-row"><input type="color" id="color4" value="#ffffff" oninput="syncColor('color4','color4hex');saveSettings()"><input type="text" id="color4hex" value="#ffffff" oninput="syncColorPicker('color4hex','color4');saveSettings()"></div></div>
-      </div>
+// ── MIDDLEWARE ────────────────────────────────────────────
+app.use(cors({ origin: '*' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-      <div class="divider">Stil & Sprache</div>
-      <div class="fgrp"><label>Stil</label>
-        <select id="style" onchange="saveSettings()">
-          <option value="modern, professionell, vertrauenswürdig">Modern & Professionell</option>
-          <option value="minimalistisch, clean, elegant">Minimalistisch & Elegant</option>
-          <option value="bold, dynamisch, modern">Bold & Dynamisch</option>
-          <option value="freundlich, warm, einladend">Freundlich & Warm</option>
-          <option value="corporate, seriös, formal">Corporate & Seriös</option>
-          <option value="luxuriös, premium, exklusiv">Luxuriös & Premium</option>
-        </select>
-      </div>
-      <div class="fgrp"><label>Sprachen (mehrere möglich)</label>
-        <div class="lang-row">
-          <label class="lang-check active" id="lang-de"><input type="checkbox" value="de" checked onchange="toggleLang(this);saveSettings()"> 🇩🇪 DE</label>
-          <label class="lang-check" id="lang-en"><input type="checkbox" value="en" onchange="toggleLang(this);saveSettings()"> 🇬🇧 EN</label>
-          <label class="lang-check" id="lang-es"><input type="checkbox" value="es" onchange="toggleLang(this);saveSettings()"> 🇪🇸 ES</label>
-        </div>
-      </div>
-    </div>
+// ═══════════════════════════════════════════════════════════
+// RESEND HELPERS
+// ═══════════════════════════════════════════════════════════
 
-    <!-- SECTIONS TAB -->
-    <div class="panel-body" id="tab-sections" style="display:none;">
-      <p style="font-size:.78rem;color:var(--muted);margin-bottom:12px;line-height:1.5;">Verschiebe Sektionen per Drag & Drop. Toggle zum Aktivieren/Deaktivieren.</p>
-      <div class="sections-list" id="sectionsList"></div>
-    </div>
-
-    <!-- IMAGES TAB -->
-    <div class="panel-body" id="tab-images" style="display:none;">
-      <p style="font-size:.78rem;color:var(--muted);margin-bottom:14px;line-height:1.5;">Lade Bilder hoch – die AI platziert sie automatisch an der richtigen Stelle.</p>
-
-      <div class="divider">Logo & Hero</div>
-      <div class="img-upload-grid">
-        <!-- LOGO -->
-        <div class="img-upload-box" id="logoBox" onclick="document.getElementById('logoInput').click()">
-          <input type="file" id="logoInput" accept="image/*" onchange="handleImageUpload(event,'logo')">
-          <div style="font-size:22px;">🏢</div>
-          <div class="img-label">Logo</div>
-          <div style="font-size:.68rem;color:var(--muted);">Nav + Footer</div>
-          <button class="img-remove" id="logoRemove" onclick="event.stopPropagation();removeImage('logo')">✕</button>
-        </div>
-        <!-- HERO IMAGE -->
-        <div class="img-upload-box" id="heroBox" onclick="document.getElementById('heroInput').click()">
-          <input type="file" id="heroInput" accept="image/*" onchange="handleImageUpload(event,'hero')">
-          <div style="font-size:22px;">🖼️</div>
-          <div class="img-label">Hero Bild</div>
-          <div style="font-size:.68rem;color:var(--muted);">Hauptbild / BG</div>
-          <button class="img-remove" id="heroRemove" onclick="event.stopPropagation();removeImage('hero')">✕</button>
-        </div>
-      </div>
-
-      <div class="divider">Weitere Bilder</div>
-      <div class="upload-area" onclick="document.getElementById('extraImgInput').click()" style="margin-bottom:10px;">
-        <input type="file" id="extraImgInput" accept="image/*" multiple onchange="handleExtraImages(event)">
-        <div style="font-size:20px;margin-bottom:4px;">📸</div>
-        <div style="font-size:.82rem;font-weight:700;">Team, Produkte, Referenzen</div>
-        <div style="font-size:.73rem;color:var(--muted);">Mehrere Bilder gleichzeitig möglich</div>
-      </div>
-      <div class="img-extra-list" id="extraImgList"></div>
-
-      <div id="imgSummary" style="margin-top:12px;font-size:.75rem;color:var(--muted);background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;display:none;">
-        <strong style="color:var(--wa);">✅ Bilder bereit:</strong> <span id="imgCount"></span>
-      </div>
-    </div>
-
-    <!-- DOCS TAB -->
-    <div class="panel-body" id="tab-docs" style="display:none;">
-      <p style="font-size:.78rem;color:var(--muted);margin-bottom:12px;line-height:1.5;">Lade Dokumente hoch <strong>oder</strong> gib eine Website-URL ein.</p>
-      <div class="fgrp">
-        <label>🔗 Website URL analysieren</label>
-        <div class="url-row">
-          <input type="url" class="url-input" id="urlInput" placeholder="https://www.firma.com" onkeydown="if(event.key==='Enter')extractUrl()">
-          <button class="url-btn" id="urlBtn" onclick="extractUrl()">Analysieren</button>
-        </div>
-      </div>
-      <div class="divider">Dokumente</div>
-      <div class="upload-area" onclick="document.getElementById('docInput').click()">
-        <input type="file" id="docInput" accept=".pdf,.doc,.docx,.txt" multiple onchange="handleDocUpload(event)">
-        <div style="font-size:22px;margin-bottom:4px;">📄</div>
-        <div style="font-size:.85rem;font-weight:700;margin-bottom:3px;">Dokumente hochladen</div>
-        <div style="font-size:.75rem;color:var(--muted);">PDF, Word, TXT</div>
-      </div>
-      <div class="doc-list" id="docList"></div>
-      <div id="extractedPreview" style="display:none;margin-top:12px;">
-        <div style="font-size:.65rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Extrahierte Informationen</div>
-        <div class="extracted-box" id="extractedText"></div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;" onclick="applyExtracted()">✨ Felder automatisch ausfüllen</button>
-      </div>
-    </div>
-
-    <!-- CHAT TAB -->
-    <div class="panel-body" id="tab-chat" style="display:none;">
-      <p style="font-size:.78rem;color:var(--muted);margin-bottom:10px;line-height:1.5;">Beschreibe Änderungen – die AI passt gezielt an.</p>
-      <div class="chat-messages" id="chatMessages" style="height:320px;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--card2);border-radius:10px;border:1px solid rgba(37,211,102,0.08);">
-        <div class="chat-msg system">💬 AI Assistent bereit</div>
-        <div class="chat-msg ai">Sag mir was du ändern möchtest – z.B. "Mach den Hero Text kürzer", "Ändere Buttons auf Blau" oder "Füge eine FAQ hinzu".</div>
-      </div>
-    </div>
-
-    <!-- ACTION BAR -->
-    <div class="action-bar" id="actionBar">
-      <button class="btn btn-primary" style="flex:1" id="generateBtn" onclick="generatePage()">✨ Generieren</button>
-      <button class="btn btn-ghost btn-sm" onclick="savePage()" id="saveBtn">💾</button>
-      <button class="btn btn-ghost btn-sm" onclick="togglePublish()" id="publishBtn">🌐 Live</button>
-    </div>
-    <!-- CHAT ACTION BAR (shown when chat tab active) -->
-    <div id="chatActionBar" style="display:none;padding:10px 14px;border-top:1px solid var(--border);background:var(--card);gap:8px;align-items:center;">
-      <input class="chat-input" id="chatInput" style="flex:1;padding:10px 14px;background:var(--card2);border:1.5px solid rgba(37,211,102,0.2);border-radius:10px;color:var(--txt);font-size:.88rem;font-family:Nunito,sans-serif;outline:none;" placeholder="z.B. Ändere die Buttons auf Blau...">
-      <button class="chat-send" id="chatSendBtn" onclick="sendChat()" style="padding:10px 16px;background:var(--wa);color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:16px;flex-shrink:0;">➤</button>
-    </div>
-  </div>
-
-  <!-- PREVIEW PANEL -->
-  <div class="preview-panel">
-    <div class="preview-header">
-      <div style="font-size:.75rem;color:var(--muted);font-family:'DM Mono',monospace;">Vorschau</div>
-      <div class="preview-url" id="previewUrl">converdino.com/[slug]</div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-ghost btn-sm" onclick="openFullscreen()">⛶ Vollbild</button>
-        <button class="btn btn-ghost btn-sm" onclick="copyHtml()">📋 HTML</button>
-      </div>
-    </div>
-    <div id="previewEmpty" class="preview-empty">
-      <div class="preview-empty-icon">🌐</div>
-      <h3 style="font-size:1rem;font-weight:700;">Noch keine Seite generiert</h3>
-      <p style="font-size:.8rem;text-align:center;max-width:260px;line-height:1.6;">Fülle die Einstellungen aus – dann klicke auf Generieren.</p>
-      <button class="btn btn-primary" onclick="generatePage()">✨ Jetzt generieren</button>
-    </div>
-    <iframe id="previewFrame" class="preview-frame" style="display:none;" sandbox="allow-scripts allow-same-origin"></iframe>
-    <div class="status-bar">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">Bereit</span>
-      <span style="margin-left:auto;font-size:.67rem;" id="lastSaved"></span>
-    </div>
-  </div>
-</div>
-
-<div id="toast"></div>
-
-<script>
-const API = 'https://converto-server-production.up.railway.app';
-const params = new URLSearchParams(location.search);
-let merchantId   = params.get('mid') || sessionStorage.getItem('merchantId');
-let merchantSlug = params.get('m')   || sessionStorage.getItem('merchantSlug') || 'ynhald';
-const LS_KEY     = 'lp_settings_' + merchantSlug;
-
-let currentHtml  = '';
-let isPublished  = false;
-let extractedDocs = [];
-
-// Image storage
-const uploadedImages = { logo: null, hero: null, extra: [] };
-
-// ── SECTIONS ──────────────────────────────────────────────
-const SECTIONS_DEFAULT = [
-  {id:'hero',        icon:'🏠',name:'Hero',         active:true},
-  {id:'leistungen',  icon:'⭐',name:'Leistungen',   active:true},
-  {id:'ueber-uns',   icon:'👥',name:'Über uns',     active:true},
-  {id:'prozess',     icon:'🔄',name:'Prozess',      active:false},
-  {id:'statistiken', icon:'📊',name:'Statistiken',  active:false},
-  {id:'referenzen',  icon:'🏆',name:'Referenzen',   active:false},
-  {id:'pricing',     icon:'💰',name:'Pricing',      active:false},
-  {id:'faq',         icon:'❓',name:'FAQ',          active:false},
-  {id:'tagesangebot',icon:'🛒',name:'Tagesangebot', active:false},
-  {id:'team',        icon:'👤',name:'Team',         active:false},
-  {id:'kontakt',     icon:'📞',name:'Kontakt',      active:true},
-];
-let sections = [...SECTIONS_DEFAULT];
-
-// ── INIT ──────────────────────────────────────────────────
-window.onload = async function() {
-  document.getElementById('navSlug').textContent = merchantSlug;
-  document.getElementById('previewUrl').textContent = 'converdino.com/' + merchantSlug;
-  loadSettingsFromLS();
-  renderSections();
-
+async function sendResendBroadcast(merchantId, subject, htmlContent, fromName) {
   try {
-    const r = await fetch(API + '/api/merchants/' + merchantSlug);
-    const m = await r.json();
-    if (m.id) {
-      merchantId = m.id;
-      sessionStorage.setItem('merchantId', m.id);
-      if (!document.getElementById('companyName').value) document.getElementById('companyName').value = m.name || '';
-      if (!document.getElementById('whatsapp').value)    document.getElementById('whatsapp').value    = m.wa_number || '';
-      saveSettings();
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) { console.log('RESEND_API_KEY fehlt'); return null; }
+
+    const { data: subscribers } = await supabase
+      .from('subscribers').select('email, name')
+      .eq('merchant_id', merchantId).eq('status', 'active')
+      .not('email', 'is', null);
+
+    if (!subscribers || subscribers.length === 0) {
+      console.log('Keine E-Mail Subscriber für:', merchantId);
+      return 'no_subscribers';
     }
-  } catch(e) {}
 
-  if (merchantId) {
-    try {
-      const r = await fetch(API + '/api/pages/' + merchantId);
-      if (r.ok) {
-        const p = await r.json();
-        if (p && p.html_content) {
-          currentHtml = p.html_content;
-          isPublished  = p.published;
-          if (p.settings_json) loadSettingsObj(p.settings_json);
-          if (p.settings_json?.sections_order) loadSectionsFromSaved(p.settings_json.sections_order);
-          showPreview(currentHtml);
-          updatePublishBadge();
-          setStatus('Gespeicherte Seite geladen','green');
-          document.getElementById('lastSaved').textContent = 'Letzte Version';
-        }
-      }
-    } catch(e) {}
-  }
-};
+    console.log('Sending to', subscribers.length, 'subscribers via Resend');
+    const fetch = require('node-fetch');
+    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    const from = (fromName || 'Converto') + ' <' + fromEmail + '>';
 
-// ── TABS ──────────────────────────────────────────────────
-function switchTab(tab) {
-  ['settings','sections','images','docs','chat'].forEach(t => {
-    document.getElementById('tab-'+t).style.display = t===tab ? 'block' : 'none';
-  });
-  document.querySelectorAll('.tab').forEach((el,i) => {
-    el.classList.toggle('active', ['settings','sections','images','docs','chat'][i]===tab);
-  });
-  // Show/hide correct action bars
-  const isChat = tab === 'chat';
-  document.getElementById('actionBar').style.display      = isChat ? 'none' : 'flex';
-  const chatBar = document.getElementById('chatActionBar');
-  chatBar.style.display = isChat ? 'flex' : 'none';
-  if (isChat) {
-    setTimeout(() => document.getElementById('chatInput').focus(), 100);
-  }
-}
+    const batches = [];
+    for (let i = 0; i < subscribers.length; i += 100) batches.push(subscribers.slice(i, i + 100));
 
-// ── LOCALSTORAGE ──────────────────────────────────────────
-function saveSettings() {
-  localStorage.setItem(LS_KEY, JSON.stringify(getSettingsObj()));
-}
-function loadSettingsFromLS() {
-  try { const r=localStorage.getItem(LS_KEY); if(r) loadSettingsObj(JSON.parse(r)); } catch(e) {}
-}
-function getSettingsObj() {
-  const langs = Array.from(document.querySelectorAll('.lang-check input:checked')).map(c=>c.value);
-  return {
-    company_name:    document.getElementById('companyName').value,
-    industry:        document.getElementById('industry').value,
-    description:     document.getElementById('description').value,
-    target_audience: document.getElementById('targetAudience').value,
-    usp:             document.getElementById('usp').value,
-    services:        document.getElementById('services').value,
-    cta:             document.getElementById('cta').value,
-    whatsapp:        document.getElementById('whatsapp').value,
-    email:           document.getElementById('email').value,
-    booking_link:    document.getElementById('bookingLink').value,
-    color1:          document.getElementById('color1hex').value,
-    color2:          document.getElementById('color2hex').value,
-    color3:          document.getElementById('color3hex').value,
-    color4:          document.getElementById('color4hex').value,
-    style:           document.getElementById('style').value,
-    languages:       langs,
-    sections_order:  sections.map(s=>({id:s.id,active:s.active})),
-    sections:        sections.filter(s=>s.active).map(s=>s.name).join(', ')
-  };
-}
-function loadSettingsObj(s) {
-  if(!s) return;
-  const set=(id,v)=>{if(v!==undefined&&v!==null) document.getElementById(id).value=v;};
-  set('companyName',s.company_name); set('industry',s.industry);
-  set('description',s.description); set('targetAudience',s.target_audience);
-  set('usp',s.usp); set('services',s.services); set('cta',s.cta);
-  set('whatsapp',s.whatsapp); set('email',s.email); set('bookingLink',s.booking_link);
-  if(s.color1){set('color1hex',s.color1);document.getElementById('color1').value=s.color1;}
-  if(s.color2){set('color2hex',s.color2);document.getElementById('color2').value=s.color2;}
-  if(s.color3){set('color3hex',s.color3);document.getElementById('color3').value=s.color3;}
-  if(s.color4){set('color4hex',s.color4);document.getElementById('color4').value=s.color4;}
-  if(s.style) set('style',s.style);
-  if(s.languages) {
-    document.querySelectorAll('.lang-check input').forEach(cb=>{
-      cb.checked=s.languages.includes(cb.value);
-      cb.closest('.lang-check').classList.toggle('active',cb.checked);
-    });
-  }
-}
-function loadSectionsFromSaved(order) {
-  if(!order) return;
-  const newSecs=[];
-  order.forEach(o=>{const f=SECTIONS_DEFAULT.find(s=>s.id===o.id);if(f) newSecs.push({...f,active:o.active});});
-  SECTIONS_DEFAULT.forEach(s=>{if(!newSecs.find(n=>n.id===s.id)) newSecs.push(s);});
-  sections=newSecs; renderSections();
-}
-
-// ── COLORS ────────────────────────────────────────────────
-function syncColor(p,h){document.getElementById(h).value=document.getElementById(p).value;}
-function syncColorPicker(h,p){const v=document.getElementById(h).value;if(/^#[0-9A-Fa-f]{6}$/.test(v))document.getElementById(p).value=v;}
-function toggleLang(cb){cb.closest('.lang-check').classList.toggle('active',cb.checked);}
-
-// ── SECTIONS DRAG & DROP ──────────────────────────────────
-let dragSrc=null;
-function renderSections() {
-  const list=document.getElementById('sectionsList');
-  list.innerHTML='';
-  sections.forEach((sec,idx)=>{
-    const item=document.createElement('div');
-    item.className='section-item'+(sec.active?' active-sec':'');
-    item.draggable=true; item.dataset.idx=idx;
-    item.innerHTML=`<span class="drag-handle" title="Verschieben">⠿</span><span>${sec.icon}</span><span class="section-name">${sec.name}</span><label class="section-toggle"><input type="checkbox" ${sec.active?'checked':''} onchange="toggleSection(${idx},this.checked)"><span class="toggle-slider"></span></label>`;
-    item.addEventListener('dragstart',e=>{dragSrc=idx;item.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
-    item.addEventListener('dragend',()=>{item.classList.remove('dragging');document.querySelectorAll('.section-item').forEach(el=>el.classList.remove('drag-over'));});
-    item.addEventListener('dragover',e=>{e.preventDefault();item.classList.add('drag-over');});
-    item.addEventListener('dragleave',()=>item.classList.remove('drag-over'));
-    item.addEventListener('drop',e=>{e.preventDefault();if(dragSrc===null||dragSrc===idx)return;const m=sections.splice(dragSrc,1)[0];sections.splice(idx,0,m);dragSrc=null;renderSections();saveSettings();});
-    list.appendChild(item);
-  });
-}
-function toggleSection(idx,checked){sections[idx].active=checked;renderSections();saveSettings();}
-
-// ── IMAGE UPLOAD ──────────────────────────────────────────
-function handleImageUpload(event, role) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const base64 = e.target.result.split(',')[1];
-    const media_type = file.type || 'image/jpeg';
-    uploadedImages[role] = { base64, media_type, role, name: file.name };
-
-    const box = document.getElementById(role+'Box');
-    box.classList.add('has-img');
-
-    // Show preview
-    let preview = box.querySelector('.img-preview');
-    if (!preview) { preview = document.createElement('img'); preview.className='img-preview'; box.insertBefore(preview,box.firstChild); }
-    preview.src = e.target.result;
-
-    updateImgSummary();
-    showToast('✅ ' + (role==='logo'?'Logo':'Hero Bild') + ' hochgeladen');
-  };
-  reader.readAsDataURL(file);
-  event.target.value='';
-}
-
-function removeImage(role) {
-  uploadedImages[role] = null;
-  const box = document.getElementById(role+'Box');
-  box.classList.remove('has-img');
-  const preview = box.querySelector('.img-preview');
-  if (preview) preview.remove();
-  document.getElementById(role+'Input').value='';
-  updateImgSummary();
-}
-
-function handleExtraImages(event) {
-  const files = Array.from(event.target.files);
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const base64 = e.target.result.split(',')[1];
-      const imgObj = { base64, media_type: file.type||'image/jpeg', role:'extra', name:file.name, label:'', id: Date.now()+Math.random() };
-      uploadedImages.extra.push(imgObj);
-      renderExtraImages();
-      updateImgSummary();
-    };
-    reader.readAsDataURL(file);
-  });
-  event.target.value='';
-}
-
-function renderExtraImages() {
-  const list = document.getElementById('extraImgList');
-  list.innerHTML = uploadedImages.extra.map((img,i) => `
-    <div class="img-extra-item">
-      <img class="img-extra-thumb" src="data:${img.media_type};base64,${img.base64}" alt="">
-      <div class="img-extra-info">
-        <div class="img-extra-name">${img.name}</div>
-        <input class="img-extra-label" placeholder="Beschreibung (z.B. Team, Produkt...)" value="${img.label||''}" oninput="uploadedImages.extra[${i}].label=this.value">
-      </div>
-      <button class="doc-remove" onclick="uploadedImages.extra.splice(${i},1);renderExtraImages();updateImgSummary()">✕</button>
-    </div>`).join('');
-}
-
-function updateImgSummary() {
-  const total = (uploadedImages.logo?1:0) + (uploadedImages.hero?1:0) + uploadedImages.extra.length;
-  const summary = document.getElementById('imgSummary');
-  if (total > 0) {
-    summary.style.display='block';
-    const parts=[];
-    if(uploadedImages.logo) parts.push('Logo');
-    if(uploadedImages.hero) parts.push('Hero');
-    if(uploadedImages.extra.length) parts.push(uploadedImages.extra.length+' Weitere');
-    document.getElementById('imgCount').textContent = parts.join(', ');
-  } else {
-    summary.style.display='none';
-  }
-}
-
-function getAllImages() {
-  const imgs = [];
-  if (uploadedImages.logo) imgs.push(uploadedImages.logo);
-  if (uploadedImages.hero) imgs.push(uploadedImages.hero);
-  uploadedImages.extra.forEach(img => imgs.push(img));
-  return imgs;
-}
-
-// ── URL EXTRACT ───────────────────────────────────────────
-async function extractUrl() {
-  const urlVal = document.getElementById('urlInput').value.trim();
-  if (!urlVal || !urlVal.startsWith('http')) { showToast('⚠️ Gültige URL eingeben', true); return; }
-  const btn = document.getElementById('urlBtn');
-  btn.disabled=true; btn.textContent='⏳...';
-  setStatus('Website wird analysiert...','loading');
-  try {
-    const res = await fetch(API+'/api/pages/extract-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:urlVal})});
-    const data = await res.json();
-    if(!data.success) throw new Error(data.error);
-    extractedDocs.push({id:'url-'+Date.now(),name:'🔗 '+urlVal.replace('https://','').split('/')[0],extracted:data.extracted,status:'done'});
-    renderDocList(); showExtractedPreview();
-    document.getElementById('urlInput').value='';
-    showToast('✅ Website analysiert!'); setStatus('Website analysiert ✅','green');
-    addChatMsg('system','🔗 Website analysiert');
-  } catch(e) { setStatus('Fehler: '+e.message,'error'); showToast('⚠️ '+e.message,true); }
-  finally { btn.disabled=false; btn.textContent='Analysieren'; }
-}
-
-// ── DOC UPLOAD ────────────────────────────────────────────
-async function handleDocUpload(event) {
-  const files = Array.from(event.target.files);
-  for(const file of files) {
-    const docId = Date.now()+'-'+file.name;
-    extractedDocs.push({id:docId,name:file.name,extracted:null,status:'extracting'});
-    renderDocList();
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-      const base64 = e.target.result.split(',')[1];
-      try {
-        const res = await fetch(API+'/api/pages/extract-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base64,media_type:file.type||'application/pdf',filename:file.name})});
-        const data = await res.json();
-        const doc = extractedDocs.find(d=>d.id===docId);
-        if(doc&&data.success){doc.extracted=data.extracted;doc.status='done';}
-        else if(doc) doc.status='error';
-        renderDocList(); showExtractedPreview();
-        if(data.success) showToast('✅ '+file.name+' analysiert');
-      } catch(err) {
-        const doc=extractedDocs.find(d=>d.id===docId);
-        if(doc) doc.status='error';
-        renderDocList();
-      }
-    };
-    reader.readAsDataURL(file);
-  }
-  event.target.value='';
-}
-function renderDocList() {
-  document.getElementById('docList').innerHTML=extractedDocs.map(d=>`
-    <div class="doc-item">
-      <span>${d.status==='done'?'✅':d.status==='error'?'❌':'⏳'}</span>
-      <span class="doc-name">${d.name}</span>
-      <span class="doc-status ${d.status}">${d.status==='done'?'Fertig':d.status==='error'?'Fehler':'Lädt...'}</span>
-      <button class="doc-remove" onclick="removeDoc('${d.id}')">✕</button>
-    </div>`).join('');
-}
-function removeDoc(id){extractedDocs=extractedDocs.filter(d=>d.id!==id);renderDocList();showExtractedPreview();}
-function showExtractedPreview() {
-  const all=extractedDocs.filter(d=>d.extracted).map(d=>`[${d.name}]\n${d.extracted}`).join('\n\n---\n\n');
-  const box=document.getElementById('extractedPreview');
-  if(all){box.style.display='block';document.getElementById('extractedText').textContent=all;}
-  else box.style.display='none';
-}
-function applyExtracted() {
-  const all=extractedDocs.filter(d=>d.extracted).map(d=>d.extracted).join('\n\n');
-  if(!all) return;
-  const line=key=>{const m=all.match(new RegExp(key+'[:\\-]?\\s*(.+)','i'));return m?m[1].trim():'';};
-  const fn=line('Firmenname');if(fn&&!document.getElementById('companyName').value)document.getElementById('companyName').value=fn;
-  const desc=line('Beschreibung');if(desc)document.getElementById('description').value=desc;
-  const tg=line('Zielgruppe');if(tg)document.getElementById('targetAudience').value=tg;
-  const usp=line('USP');if(usp)document.getElementById('usp').value=usp;
-  const leist=line('Leistungen');if(leist)document.getElementById('services').value=leist;
-  const email=line('Email|E-Mail');if(email&&email.includes('@'))document.getElementById('email').value=email;
-  saveSettings(); showToast('✅ Felder ausgefüllt!'); switchTab('settings');
-}
-
-// ── GENERATE ──────────────────────────────────────────────
-async function generatePage() {
-  const btn=document.getElementById('generateBtn');
-  btn.disabled=true; btn.innerHTML='<div class="spinner"></div> Generiere...';
-  setStatus('AI generiert Landingpage...','loading');
-  try {
-    const settings=getSettingsObj();
-    const allExtracted=extractedDocs.filter(d=>d.extracted).map(d=>d.extracted).join('\n\n---\n\n');
-    const images=getAllImages();
-
-    const res=await fetch(API+'/api/pages/generate',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({merchant_id:merchantId,settings,extracted_text:allExtracted||null,images:images.length?images:undefined})
-    });
-    const data=await res.json();
-    if(!data.success) throw new Error(data.error||'Generierung fehlgeschlagen');
-
-    currentHtml=data.html;
-    showPreview(currentHtml);
-    setStatus('Landingpage generiert ✅','green');
-    showToast('✨ Landingpage generiert!');
-    addChatMsg('system','✨ Neue Landingpage generiert');
-    await autoSave();
-  } catch(e) {
-    setStatus('Fehler: '+e.message,'error');
-    showToast('⚠️ '+e.message,true);
-  } finally {
-    btn.disabled=false; btn.innerHTML='✨ Generieren';
-  }
-}
-
-// ── PREVIEW ───────────────────────────────────────────────
-function showPreview(html) {
-  document.getElementById('previewEmpty').style.display='none';
-  const frame=document.getElementById('previewFrame');
-  frame.style.display='block'; frame.srcdoc=html;
-}
-function openFullscreen() {
-  if(!currentHtml){showToast('⚠️ Erst generieren',true);return;}
-  const w=window.open('','_blank'); w.document.write(currentHtml); w.document.close();
-}
-function copyHtml() {
-  if(!currentHtml){showToast('⚠️ Erst generieren',true);return;}
-  navigator.clipboard.writeText(currentHtml); showToast('📋 HTML kopiert!');
-}
-
-// ── SAVE ──────────────────────────────────────────────────
-async function autoSave(){await savePage(true);}
-async function savePage(silent) {
-  if(!currentHtml){if(!silent)showToast('⚠️ Erst generieren',true);return;}
-  if(!merchantId){if(!silent)showToast('⚠️ Merchant ID fehlt',true);return;}
-  if(!silent) setStatus('Speichern...','loading');
-  try {
-    const res=await fetch(API+'/api/pages',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({merchant_id:merchantId,slug:merchantSlug,html_content:currentHtml,settings_json:getSettingsObj(),published:isPublished})});
-    const data=await res.json();
-    if(!data.success) throw new Error(data.error);
-    const t=new Date().toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'});
-    document.getElementById('lastSaved').textContent='Gespeichert '+t;
-    if(!silent){setStatus('Gespeichert ✅','green');showToast('💾 Gespeichert!');}
-    else setStatus('Auto-gespeichert ✅','green');
-  } catch(e) {
-    setStatus('Speichern fehlgeschlagen','error');
-    if(!silent) showToast('⚠️ '+e.message,true);
-    console.error('Save error:',e.message);
-  }
-}
-
-// ── PUBLISH ───────────────────────────────────────────────
-async function togglePublish() {
-  if(!currentHtml){showToast('⚠️ Erst generieren',true);return;}
-  isPublished=!isPublished; updatePublishBadge();
-  await savePage(true);
-  showToast(isPublished?'🌐 Seite ist jetzt LIVE!':'📝 Zurück auf Draft');
-}
-function updatePublishBadge() {
-  const b=document.getElementById('publishBadge');
-  b.className='publish-badge '+(isPublished?'live':'draft');
-  b.textContent=isPublished?'● Live':'● Draft';
-  document.getElementById('publishBtn').textContent=isPublished?'📝 Draft':'🌐 Live';
-}
-
-// ── CHAT ──────────────────────────────────────────────────
-async function sendChat() {
-  const input=document.getElementById('chatInput');
-  const msg=input.value.trim();
-  if(!msg) return;
-  if(!currentHtml){showToast('⚠️ Erst generieren',true);return;}
-  input.value=''; addChatMsg('user',msg);
-  document.getElementById('chatSendBtn').disabled=true;
-  const loadingDiv=document.createElement('div');
-  loadingDiv.className='chat-msg ai'; loadingDiv.textContent='⏳ Passe Seite an...';
-  document.getElementById('chatMessages').appendChild(loadingDiv);
-  document.getElementById('chatMessages').scrollTop=99999;
-  setStatus('AI aktualisiert...','loading');
-  try {
-    const res=await fetch(API+'/api/pages/generate',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({merchant_id:merchantId,settings:getSettingsObj(),prompt:msg,extracted_text:currentHtml})});
-    const data=await res.json();
-    if(!data.success) throw new Error(data.error);
-
-    // Chat returns JS patch - inject into iframe without replacing full HTML
-    const jsCode = data.html;
-    const frame = document.getElementById('previewFrame');
-    try {
-      frame.contentWindow.eval(jsCode);
-      loadingDiv.textContent='✅ Änderung angewendet!';
-      setStatus('Aktualisiert ✅','green');
-      addChatMsg('system','💡 Tipp: Klicke "✨ Generieren" um die Änderungen dauerhaft zu speichern');
-    } catch(evalErr) {
-      // Fallback: if JS injection fails, try as full HTML
-      if (jsCode.includes('<!DOCTYPE') || jsCode.includes('<html')) {
-        currentHtml = jsCode; showPreview(currentHtml); await autoSave();
-      }
-      loadingDiv.textContent='✅ Angewendet!';
-      setStatus('Aktualisiert ✅','green');
+    let totalSent = 0;
+    for (const batch of batches) {
+      const emails = batch.map(sub => ({ from, to: [sub.email], subject, html: htmlContent }));
+      const res = await fetch('https://api.resend.com/emails/batch', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(emails)
+      });
+      const data = await res.json();
+      console.log('Resend batch response:', JSON.stringify(data));
+      if (data.data) totalSent += data.data.length;
     }
-  } catch(e) {
-    loadingDiv.textContent='❌ Fehler: '+e.message;
-    setStatus('Fehler','error');
-  } finally {
-    document.getElementById('chatSendBtn').disabled=false;
-    document.getElementById('chatMessages').scrollTop=99999;
-  }
+    return totalSent;
+  } catch(e) { console.error('Resend broadcast error:', e.message); return null; }
 }
-// Enter key for chat
-document.addEventListener('DOMContentLoaded', function() {
-  const ci = document.getElementById('chatInput');
-  if (ci) ci.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
-  });
+
+// ═══════════════════════════════════════════════════════════
+// OTHER HELPERS
+// ═══════════════════════════════════════════════════════════
+
+function generateToken() {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+async function sendWhatsApp(merchantId, to, message) {
+  try {
+    const { data: merchant } = await supabase
+      .from('merchants').select('meta_phone_number_id, meta_access_token')
+      .eq('id', merchantId).single();
+
+    const phoneId = merchant?.meta_phone_number_id || process.env.META_PHONE_NUMBER_ID;
+    const token   = merchant?.meta_access_token    || process.env.META_ACCESS_TOKEN;
+    console.log('sendWhatsApp:', { to, phoneId: phoneId?.substring(0,8), hasToken: !!token });
+
+    let cleanTo = to.replace('whatsapp:', '').replace(/\s/g, '');
+    if (cleanTo.startsWith('+')) cleanTo = cleanTo.substring(1);
+
+    const fetch = require('node-fetch');
+    const response = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp', to: cleanTo,
+        type: 'text', text: { body: message }
+      })
+    });
+    const data = await response.json();
+    console.log('WhatsApp API response:', JSON.stringify(data));
+    return data.messages?.[0]?.id;
+  } catch (e) { console.error('WhatsApp send error:', e); return null; }
+}
+
+// ═══════════════════════════════════════════════════════════
+// HEALTH & AUTH
+// ═══════════════════════════════════════════════════════════
+
+app.get('/',           (req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.1' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.1' }));
+
+app.post('/api/auth/login', async (req, res) => {
+  const { slug, password, role } = req.body;
+  try {
+    if (role === 'superadmin') {
+      if (password !== process.env.SUPERADMIN_PASSWORD)
+        return res.status(401).json({ error: 'Falsches Passwort' });
+      return res.json({ success: true, role: 'superadmin' });
+    }
+    const { data: merchant, error } = await supabase
+      .from('merchants').select('id, name, slug, admin_password, wa_enabled, meta_phone_number_id')
+      .eq('slug', slug).single();
+    if (error || !merchant) return res.status(404).json({ error: 'Händler nicht gefunden' });
+    if (merchant.admin_password !== password) return res.status(401).json({ error: 'Falsches Passwort' });
+    res.json({ success: true, role: 'merchant', merchant });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-function addChatMsg(type,text) {
-  const msgs=document.getElementById('chatMessages');
-  const div=document.createElement('div'); div.className='chat-msg '+type; div.textContent=text;
-  msgs.appendChild(div); msgs.scrollTop=msgs.scrollHeight;
-}
+// ═══════════════════════════════════════════════════════════
+// MERCHANTS
+// ═══════════════════════════════════════════════════════════
 
-// ── STATUS & TOAST ────────────────────────────────────────
-function setStatus(text,state) {
-  document.getElementById('statusText').textContent=text;
-  const d=document.getElementById('statusDot');
-  d.className='status-dot'+(state==='green'?' green':state==='loading'?' loading':state==='error'?' error':'');
-}
-function showToast(msg,isError) {
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.className=isError?'error':''; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),3000);
-}
-</script>
-</body>
-</html>
+app.get('/api/merchants', async (req, res) => {
+  const { data, error } = await supabase
+    .from('merchants').select('id, name, slug, status, currency, created_at')
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.get('/api/merchants/:slug', async (req, res) => {
+  const { data, error } = await supabase
+    .from('merchants').select('*').eq('slug', req.params.slug).single();
+  if (error) return res.status(404).json({ error: 'Nicht gefunden' });
+  res.json(data);
+});
+
+// ═══════════════════════════════════════════════════════════
+// PRODUKTE
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/products/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('merchant_products').select('*')
+      .eq('merchant_id', req.params.merchantId)
+      .order('sort_order', { ascending: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/products', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('merchant_products').insert(req.body).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, product: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/products/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('merchant_products').update(req.body).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, product: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('merchant_products').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// SESSION CONFIG
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/session-config/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('merchant_session_config').select('*').eq('merchant_id', req.params.merchantId).single();
+    if (error) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/session-config', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('merchant_session_config')
+      .upsert(req.body, { onConflict: 'merchant_id' }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, config: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// HÄNDLER-SESSION (Tagesverfügbarkeit)
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/availability/today/:merchantId', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    let { data: avail } = await supabase
+      .from('daily_availability').select('*, daily_products(*)')
+      .eq('merchant_id', req.params.merchantId).eq('date', today).single();
+
+    if (!avail) {
+      const { data: products } = await supabase
+        .from('merchant_products').select('*')
+        .eq('merchant_id', req.params.merchantId).eq('available', true)
+        .order('sort_order', { ascending: true });
+      return res.json({
+        id: null, date: today, published: false,
+        delivery_active: false, pickup_active: true, note: '',
+        available_until: '17:00',
+        daily_products: (products || []).map(p => ({
+          product_id: p.id, name: p.name, price_today: p.price || 0,
+          unit: p.unit || 'piece', unit_label: p.unit_label || 'Stück',
+          quantity_start: 0, quantity_left: 0, active: false,
+          step_quantity: p.step_quantity || 0.5
+        }))
+      });
+    }
+
+    if (!avail.daily_products || avail.daily_products.length === 0) {
+      const { data: products } = await supabase
+        .from('merchant_products').select('*')
+        .eq('merchant_id', req.params.merchantId).eq('available', true)
+        .order('sort_order', { ascending: true });
+      avail.daily_products = (products || []).map(p => ({
+        product_id: p.id, name: p.name, price_today: p.price || 0,
+        unit: p.unit || 'piece', unit_label: p.unit_label || 'Stück',
+        quantity_start: 0, quantity_left: 0, active: false,
+        step_quantity: p.step_quantity || 0.5
+      }));
+    }
+    res.json(avail);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/availability/yesterday/:merchantId', async (req, res) => {
+  try {
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const { data } = await supabase
+      .from('daily_availability').select('*, daily_products(*)')
+      .eq('merchant_id', req.params.merchantId).eq('date', yesterday).single();
+    res.json(data || null);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/availability', async (req, res) => {
+  try {
+    const { merchant_id, date, products, delivery_active,
+            pickup_active, available_until, delivery_area, note } = req.body;
+    const today = date || new Date().toISOString().split('T')[0];
+
+    const { data: avail, error: availError } = await supabase
+      .from('daily_availability')
+      .upsert({ merchant_id, date: today, delivery_active, pickup_active,
+                available_until, delivery_area, note, published: false,
+                updated_at: new Date().toISOString() },
+               { onConflict: 'merchant_id,date' }).select().single();
+    if (availError) return res.status(400).json({ error: availError.message });
+
+    await supabase.from('daily_products').delete().eq('availability_id', avail.id);
+
+    if (products?.length > 0) {
+      const active = products.filter(p => p.active && p.quantity_start > 0);
+      if (active.length > 0) {
+        await supabase.from('daily_products').insert(
+          active.map((p, i) => ({
+            availability_id: avail.id, merchant_id,
+            product_id: p.product_id || null, name: p.name,
+            price_today: p.price_today, unit: p.unit, unit_label: p.unit_label,
+            quantity_start: p.quantity_start, quantity_left: p.quantity_start,
+            active: true, sort_order: i
+          }))
+        );
+      }
+    }
+    res.json({ success: true, availability: avail });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/availability/:id/publish', async (req, res) => {
+  try {
+    const { data: avail, error } = await supabase
+      .from('daily_availability')
+      .update({ published: true, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).select('*, daily_products(*)').single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, availability: avail });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// KUNDEN-SESSION
+// ═══════════════════════════════════════════════════════════
+
+app.post('/api/sessions', async (req, res) => {
+  try {
+    const { merchant_id, service_type, customer_wa, customer_name,
+            customer_language, availability_id } = req.body;
+    const token     = generateToken();
+    const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+
+    const { data: session, error } = await supabase
+      .from('customer_sessions')
+      .insert({ token, merchant_id, service_type: service_type || 'order',
+                customer_wa, customer_name, customer_language: customer_language || 'de',
+                availability_id: availability_id || null,
+                status: 'open', expires_at: expiresAt })
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, session, url: `${BASE_URL}/session.html?s=${token}` });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/sessions/:token', async (req, res) => {
+  try {
+    const { data: session, error } = await supabase
+      .from('customer_sessions').select('*').eq('token', req.params.token).single();
+    if (error || !session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    if (new Date(session.expires_at) < new Date() && session.status === 'open') {
+      await supabase.from('customer_sessions').update({ status: 'expired' }).eq('id', session.id);
+      return res.status(410).json({ error: 'Session abgelaufen' });
+    }
+
+    const { data: merchant } = await supabase
+      .from('merchants').select('id, name, slug, currency').eq('id', session.merchant_id).single();
+    const { data: config } = await supabase
+      .from('merchant_session_config').select('*').eq('merchant_id', session.merchant_id).single();
+
+    const today = new Date().toISOString().split('T')[0];
+    const { data: avail } = await supabase
+      .from('daily_availability').select('*, daily_products(*)')
+      .eq('merchant_id', session.merchant_id)
+      .eq(session.availability_id ? 'id' : 'date', session.availability_id || today)
+      .eq('published', true).single();
+
+    let products = [];
+    if (avail?.daily_products?.length > 0) {
+      products = avail.daily_products.filter(p => p.active && p.quantity_left > 0);
+    } else {
+      const { data: allProducts } = await supabase
+        .from('merchant_products').select('*')
+        .eq('merchant_id', session.merchant_id).eq('available', true)
+        .order('sort_order');
+      products = (allProducts || []).map(p => ({
+        product_id: p.id, name: p.name, price_today: p.price,
+        unit: p.unit, unit_label: p.unit_label, quantity_left: null, active: true
+      }));
+    }
+    res.json({ session, merchant, config, availability: avail || null, products });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/sessions/:token', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('customer_sessions')
+      .update({ ...req.body, updated_at: new Date().toISOString() })
+      .eq('token', req.params.token).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, session: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/sessions/:token/order', async (req, res) => {
+  try {
+    const { data: session } = await supabase
+      .from('customer_sessions').select('*').eq('token', req.params.token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    const { data: order, error } = await supabase.from('orders').insert({
+      session_id: session.id, merchant_id: session.merchant_id,
+      customer_wa: session.customer_wa, customer_name: session.customer_name,
+      items: session.items, subtotal: session.subtotal,
+      delivery_fee: session.delivery_fee, total: session.total,
+      delivery_type: session.delivery_type, delivery_address: session.delivery_address,
+      note: session.note, status: 'new'
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    await supabase.from('customer_sessions').update({ status: 'confirmed' }).eq('id', session.id);
+
+    const itemsList = (session.items || [])
+      .map(i => `  • ${i.name}: ${i.quantity} ${i.unit_label || ''} = ${i.total}€`).join('\n');
+    if (session.customer_wa) {
+      await sendWhatsApp(session.merchant_id, session.customer_wa,
+        `✅ *Bestellung bestätigt!*\n\nBestellnr: ${order.order_number}\n\n${itemsList}\n\n💰 Gesamt: ${session.total}€\n\nWir melden uns gleich! 👋`);
+    }
+    res.json({ success: true, order });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// BESTELLUNGEN
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/orders/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('orders').select('*').eq('merchant_id', req.params.merchantId)
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/orders/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const updates = { status, updated_at: new Date().toISOString() };
+    if (status === 'delivered') updates.delivered_at = new Date().toISOString();
+    if (status === 'confirmed') updates.confirmed_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('orders').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    const msgs = { confirmed: '✅ Bestätigt!', preparing: '👨‍🍳 Wird vorbereitet...',
+                   ready: '✅ Bereit!', delivered: '🎉 Geliefert!' };
+    if (data.customer_wa && msgs[status]) {
+      await sendWhatsApp(data.merchant_id, data.customer_wa,
+        `${msgs[status]}\nBestellnr: ${data.order_number}`);
+    }
+    res.json({ success: true, order: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// BROADCAST
+// ═══════════════════════════════════════════════════════════
+
+app.post('/api/broadcast', async (req, res) => {
+  try {
+    const { merchant_id, message, availability_id, recipients } = req.body;
+    let query = supabase.from('subscribers').select('whatsapp, email')
+      .eq('merchant_id', merchant_id).eq('active', true);
+    if (recipients !== 'all') query = query.neq('status', 'pending');
+    const { data: subscribers } = await query;
+    if (!subscribers?.length) return res.json({ success: true, sent: 0 });
+    let sent = 0;
+    for (const sub of subscribers) {
+      if (sub.whatsapp) {
+        const result = await sendWhatsApp(merchant_id, sub.whatsapp, message);
+        if (result) sent++;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+    if (availability_id) {
+      await supabase.from('daily_availability').update({ broadcast_sent: true }).eq('id', availability_id);
+    }
+    res.json({ success: true, sent, total: subscribers.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// WHATSAPP
+// ═══════════════════════════════════════════════════════════
+
+app.post('/api/whatsapp/send', async (req, res) => {
+  const { to, message, merchant_id } = req.body;
+  try {
+    const msgId = await sendWhatsApp(merchant_id, to, message);
+    if (!msgId) return res.status(400).json({ error: 'Senden fehlgeschlagen' });
+    res.json({ success: true, message_id: msgId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/whatsapp/webhook', (req, res) => {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  if (mode === 'subscribe' && token === process.env.META_WEBHOOK_TOKEN) {
+    console.log('✅ Webhook verified');
+    res.status(200).send(challenge);
+  } else {
+    res.status(403).send('Forbidden');
+  }
+});
+
+app.post('/api/whatsapp/webhook', async (req, res) => {
+  res.status(200).send('OK');
+  try {
+    const body = req.body;
+    console.log('Webhook received:', JSON.stringify(body).substring(0, 300));
+    if (body.object !== 'whatsapp_business_account') return;
+
+    for (const entry of body.entry || []) {
+      for (const change of entry.changes || []) {
+        const value = change.value;
+        console.log('Change field:', change.field, 'has messages:', !!value?.messages, 'msgs count:', value?.messages?.length);
+        if (!value?.messages) continue;
+
+        for (const msg of value.messages) {
+          const from    = msg.from;
+          const text    = (msg.text?.body || '').toLowerCase().trim();
+          const phoneId = value.metadata?.phone_number_id;
+
+          // Merchant per phone_number_id finden
+          const { data: merchant, error: mErr } = await supabase
+            .from('merchants').select('id, name, slug').eq('meta_phone_number_id', phoneId).single();
+          console.log('Merchant lookup phoneId:', phoneId, 'found:', merchant?.id, 'error:', mErr?.message);
+          if (!merchant) continue;
+
+          // Nachricht in comm_messages speichern (Fehler ignorieren)
+          try {
+            await supabase.from('comm_messages').insert({
+              merchant_id:  merchant.id,
+              direction:    'inbound',
+              content_type: 'text',
+              original_text: msg.text?.body || '',
+              source:       'whatsapp'
+            });
+          } catch(e) { console.log('comm_messages insert skipped:', e.message); }
+
+          const stopWords  = ['stop', 'abmelden', 'cancelar'];
+          const subWords   = ['subscribe', 'anmelden', 'suscribir', 'info', 'notify'];
+          const orderWords = ['bestellen', 'order', 'comprar', 'kaufen', 'pedido'];
+
+          if (stopWords.some(k => text.includes(k))) {
+            // ── ABMELDEN ──────────────────────────────────
+            await supabase.from('subscribers')
+              .update({ active: false, status: 'inactive', opted_out_at: new Date().toISOString() })
+              .eq('whatsapp', '+' + from).eq('merchant_id', merchant.id);
+            await sendWhatsApp(merchant.id, '+' + from,
+              '✅ Du wurdest abgemeldet. Schreibe "INFO" um dich wieder anzumelden.');
+
+          } else if (['ja','yes','si','sí'].includes(text)) {
+            // ── OPT-IN BESTÄTIGEN ─────────────────────────
+            let pending = null;
+            try {
+              const { data } = await supabase.from('subscribers')
+                .select('id').eq('whatsapp', '+' + from)
+                .eq('merchant_id', merchant.id).eq('status', 'pending').single();
+              pending = data;
+            } catch(e) { /* kein pending subscriber */ }
+
+            if (pending) {
+              await supabase.from('subscribers')
+                .update({
+                  active: true, status: 'active',
+                  opted_in_at: new Date().toISOString(),
+                  consent_text: 'Kunde hat JA geantwortet. Zeitstempel: ' + new Date().toISOString()
+                }).eq('id', pending.id);
+              await sendWhatsApp(merchant.id, '+' + from,
+                '✅ Perfekt! Du bist jetzt angemeldet und bekommst unser Tagesangebot direkt per WhatsApp.\n\nSchreibe jederzeit STOP zum Abmelden. 🙏');
+            }
+
+          } else if (subWords.some(k => text.includes(k))) {
+            // ── OPT-IN ANFRAGE ────────────────────────────
+            const mName = merchant.name || 'uns';
+            try {
+              await supabase.from('subscribers').upsert({
+                whatsapp: '+' + from, merchant_id: merchant.id,
+                source: 'whatsapp_keyword', active: false, status: 'pending'
+              }, { onConflict: 'whatsapp,merchant_id' });
+            } catch(e) { console.log('subscribers upsert error:', e.message); }
+
+            await sendWhatsApp(merchant.id, '+' + from,
+              '👋 Hallo! Möchtest du das Tagesangebot von ' + mName + ' per WhatsApp erhalten?\n\n' +
+              'Du bekommst täglich:\n🛒 Aktuelle Produkte & Preise\n🔗 Direkt-Bestelllink\n\n' +
+              'Antworte JA zum Bestätigen\nSchreibe STOP zum Ablehnen');
+
+          } else if (orderWords.some(k => text.includes(k))) {
+            // ── BESTELLUNG ────────────────────────────────
+            const today = new Date().toISOString().split('T')[0];
+            let availId = null;
+            try {
+              const { data: avail } = await supabase
+                .from('daily_availability').select('id')
+                .eq('merchant_id', merchant.id).eq('date', today).eq('published', true).single();
+              availId = avail?.id || null;
+            } catch(e) { /* keine availability */ }
+
+            const token = generateToken();
+            try {
+              await supabase.from('customer_sessions').insert({
+                token, merchant_id: merchant.id, service_type: 'order',
+                customer_wa: '+' + from, availability_id: availId,
+                status: 'open', expires_at: new Date(Date.now() + 4*60*60*1000).toISOString()
+              });
+            } catch(e) { console.log('session insert error:', e.message); }
+
+            await sendWhatsApp(merchant.id, '+' + from,
+              `👋 Hier kannst du bestellen:\n\n${BASE_URL}/session.html?s=${token}\n\n⏰ Gültig für 4 Stunden.`);
+          }
+        }
+      }
+    }
+  } catch (e) { console.error('Webhook error:', e); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// EMAIL ENDPOINTS (Resend)
+// ═══════════════════════════════════════════════════════════
+
+app.post('/api/email/subscribe', async (req, res) => {
+  try {
+    const { email, name, merchant_id, merchant_slug } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email fehlt' });
+    let mId = merchant_id;
+    if (!mId && merchant_slug) {
+      const { data: m } = await supabase.from('merchants').select('id').eq('slug', merchant_slug).single();
+      mId = m?.id;
+    }
+    if (!mId) return res.status(400).json({ error: 'Merchant nicht gefunden' });
+    const { data, error } = await supabase.from('subscribers').upsert({
+      email, name: name || '', merchant_id: mId,
+      channel: 'email', status: 'active', active: true,
+      opted_in_at: new Date().toISOString()
+    }, { onConflict: 'email,merchant_id' }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, subscriber: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/mailerlite/daily-offer', async (req, res) => {
+  try {
+    const { merchant_id, products, note, merchant_name, wa_number } = req.body;
+    const waLink = wa_number
+      ? 'https://wa.me/' + wa_number.replace('+', '') + '?text=Bestellen'
+      : null;
+
+    const productRows = (products || []).map(p =>
+      '<tr>' +
+      '<td style="padding:8px 0;border-bottom:1px solid #f0f0f0">' + p.name + '</td>' +
+      '<td style="padding:8px 0;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#2d7a4f">' +
+      (p.price_today || 0).toFixed(2) + '€ ' + (p.unit_label || '') + '</td>' +
+      '</tr>'
+    ).join('');
+
+    const waButton = waLink
+      ? '<a href="' + waLink + '" style="display:inline-block;background:#25d366;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;margin-top:20px">💬 Jetzt per WhatsApp bestellen</a>'
+      : '';
+
+    const today = new Date().toLocaleDateString('de-AT', { weekday: 'long', day: 'numeric', month: 'long' });
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+    <div style="background:#1b4332;color:#fff;padding:28px 32px">
+      <div style="font-size:22px;font-weight:800">🐟 ${merchant_name}</div>
+      <div style="font-size:14px;opacity:.7;margin-top:4px">${today}</div>
+    </div>
+    <div style="padding:28px 32px">
+      <div style="font-size:18px;font-weight:700;color:#1b4332;margin-bottom:16px">Unser heutiges Angebot 🎣</div>
+      ${note ? '<div style="background:#f0fdf4;border-left:3px solid #2d7a4f;padding:10px 14px;border-radius:4px;font-size:14px;color:#1b4332;margin-bottom:16px">' + note + '</div>' : ''}
+      <table style="width:100%;border-collapse:collapse">${productRows}</table>
+      <div style="text-align:center">${waButton}</div>
+    </div>
+    <div style="background:#f9f9f9;padding:16px 32px;font-size:12px;color:#999;text-align:center">
+      Du erhältst diese E-Mail weil du dich für unser Tagesangebot angemeldet hast.
+    </div>
+  </div>
+</body></html>`;
+
+    const subject = '🐟 ' + merchant_name + ' – Angebot ' + today;
+    const sent    = await sendResendBroadcast(merchant_id, subject, html, merchant_name);
+    res.json({ success: true, sent });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// STRIPE
+// ═══════════════════════════════════════════════════════════
+
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (e) { return res.status(400).send(`Webhook Error: ${e.message}`); }
+
+  if (event.type === 'checkout.session.completed') {
+    const stripeSession = event.data.object;
+    const sessionToken  = stripeSession.metadata?.session_token;
+    const merchantSlug  = stripeSession.metadata?.merchant_slug;
+    try {
+      if (sessionToken) {
+        const { data: cs } = await supabase
+          .from('customer_sessions').select('*').eq('token', sessionToken).single();
+        if (cs) {
+          await supabase.from('customer_sessions')
+            .update({ status: 'paid', paid_at: new Date().toISOString(),
+                      stripe_session_id: stripeSession.id }).eq('id', cs.id);
+          const { data: order } = await supabase.from('orders').insert({
+            session_id: cs.id, merchant_id: cs.merchant_id, customer_wa: cs.customer_wa,
+            items: cs.items, subtotal: cs.subtotal, delivery_fee: cs.delivery_fee,
+            total: cs.total, delivery_type: cs.delivery_type, note: cs.note,
+            status: 'new', paid_at: new Date().toISOString()
+          }).select().single();
+          if (cs.customer_wa && order) {
+            await sendWhatsApp(cs.merchant_id, cs.customer_wa,
+              `✅ Zahlung erhalten! Bestellnr: ${order.order_number}\nGesamt: ${cs.total}€\n\nDanke! 🙏`);
+          }
+        }
+      } else if (merchantSlug) {
+        const { data: merchant } = await supabase
+          .from('merchants').select('id').eq('slug', merchantSlug).single();
+        if (merchant) {
+          await supabase.from('sales').insert({
+            merchant_id: merchant.id, amount_rds: stripeSession.amount_total / 100,
+            status: 'completed', stripe_session_id: stripeSession.id,
+            customer_email: stripeSession.customer_email
+          });
+        }
+      }
+    } catch (e) { console.error('Stripe webhook error:', e); }
+  }
+  res.json({ received: true });
+});
+
+// ═══════════════════════════════════════════════════════════
+// SUBSCRIBERS
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/subscribers/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('subscribers').select('*')
+      .eq('merchant_id', req.params.merchantId)
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/subscribers/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('subscribers').update(req.body).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, subscriber: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/subscribers', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('subscribers').insert(req.body).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, subscriber: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// LANDINGPAGE
+// ═══════════════════════════════════════════════════════════
+
+// Seite laden
+app.get('/api/pages/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('merchant_pages').select('*')
+      .eq('merchant_id', req.params.merchantId).single();
+    if (error) return res.status(404).json({ error: 'Keine Seite gefunden' });
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Seite speichern
+app.post('/api/pages', async (req, res) => {
+  try {
+    const { merchant_id, slug, html_content, settings_json, published } = req.body;
+    if (!merchant_id || !html_content) return res.status(400).json({ error: 'merchant_id und html_content erforderlich' });
+
+    // Check if page exists → INSERT or UPDATE
+    const { data: existing } = await supabase
+      .from('merchant_pages').select('id').eq('merchant_id', merchant_id).maybeSingle();
+
+    let data, error;
+    if (existing?.id) {
+      ({ data, error } = await supabase
+        .from('merchant_pages')
+        .update({ slug, html_content,
+          settings_json: settings_json || {},
+          published: published || false,
+          updated_at: new Date().toISOString() })
+        .eq('merchant_id', merchant_id).select().single());
+    } else {
+      ({ data, error } = await supabase
+        .from('merchant_pages')
+        .insert({ merchant_id, slug, html_content,
+          settings_json: settings_json || {},
+          published: published || false })
+        .select().single());
+    }
+
+    if (error) { console.error("Pages save error:", error.message); return res.status(400).json({ error: error.message }); }
+    console.log('Page saved OK for:', merchant_id);
+    res.json({ success: true, page: data });
+  } catch(e) { console.error("Pages save exception:", e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Dokument analysieren (Base64 → Claude → extrahierter Text)
+app.post('/api/pages/extract-doc', async (req, res) => {
+  try {
+    const { base64, media_type, filename } = req.body;
+    if (!base64) return res.status(400).json({ error: 'base64 fehlt' });
+
+    const fetch = require('node-fetch');
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: media_type || 'application/pdf', data: base64 }
+            },
+            {
+              type: 'text',
+              text: 'Extrahiere alle relevanten Informationen aus diesem Dokument für eine Firmen-Landingpage. Strukturiere die Ausgabe: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt, Zahlen/Statistiken, Referenzen. Nur die extrahierten Infos, kein Kommentar.'
+            }
+          ]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const extracted = data.content?.[0]?.text || '';
+    console.log('Doc extracted:', filename, extracted.substring(0, 100));
+    res.json({ success: true, extracted });
+  } catch(e) {
+    console.error('extract-doc error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Website URL analysieren → Claude extrahiert Content
+app.post('/api/pages/extract-url', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL fehlt' });
+
+    console.log('Fetching URL:', url);
+    const fetch = require('node-fetch');
+
+    // Website laden
+    const webRes = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ConverdinoBot/1.0)' },
+      timeout: 10000
+    });
+
+    if (!webRes.ok) throw new Error('Website nicht erreichbar: ' + webRes.status);
+
+    let html = await webRes.text();
+
+    // HTML bereinigen – nur Text behalten
+    let text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .substring(0, 8000);
+
+    if (!text || text.length < 50) throw new Error('Kein lesbarer Inhalt gefunden');
+
+    // Claude extrahiert relevante Infos
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: `Analysiere diesen Website-Inhalt und extrahiere alle relevanten Informationen für eine Landingpage. 
+
+WEBSITE INHALT:
+${text}
+
+Strukturiere die Ausgabe klar:
+- Firmenname:
+- Beschreibung (was das Unternehmen macht):
+- Leistungen/Produkte:
+- Zielgruppe:
+- USP / Alleinstellungsmerkmale:
+- Kontaktdaten (Tel, Email, Adresse):
+- Zahlen & Statistiken (falls vorhanden):
+- Referenzen/Kunden (falls vorhanden):
+- Besondere Phrasen oder Slogans:
+
+Nur die extrahierten Informationen, kein Kommentar.`
+        }]
+      })
+    });
+
+    const aiData = await aiRes.json();
+    if (aiData.error) throw new Error(aiData.error.message);
+
+    const extracted = aiData.content?.[0]?.text || '';
+    console.log('URL extracted:', url, 'chars:', extracted.length);
+    res.json({ success: true, extracted, url });
+
+  } catch(e) {
+    console.error('extract-url error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Landingpage generieren via Claude AI
+app.post('/api/pages/generate', async (req, res) => {
+  try {
+    const { merchant_id, settings, extracted_text, prompt, images } = req.body;
+    const s = settings || {};
+    const fetch = require('node-fetch');
+
+    // ── SYSTEM PROMPT ──────────────────────────────────
+    const systemPrompt = `Du bist ein Experte für hochwertige Landingpage Erstellung.
+Du gibst NUR valides, vollständiges HTML zurück – keine Erklärungen, kein Markdown, keine Backticks.
+Das HTML muss eigenständig funktionieren (inline CSS, Google Fonts erlaubt).
+Erstelle professionelle, conversion-optimierte Landingpages ohne leere weiße Bereiche.`;
+
+    // ── FARBEN & SPRACHE ────────────────────────────────
+    const color1 = s.color1 || s.primary_color || '#1b4332';
+    const color2 = s.color2 || '#25D366';
+    const color3 = s.color3 || '#f4a100';
+    const color4 = s.color4 || '#ffffff';
+    const langs      = Array.isArray(s.languages) ? s.languages : [s.language || 'de'];
+    const isMultilang = langs.length > 1;
+    const langNames  = { de: 'Deutsch', en: 'English', es: 'Español' };
+    const langLabel  = langs.map(l => langNames[l] || l).join(' + ');
+    const sections   = s.sections || 'Hero, Leistungen, Über uns, Kontakt';
+      // Texte kürzen um Timeout zu vermeiden
+      if (s.description && s.description.length > 500) s.description = s.description.substring(0, 500);
+      if (s.services && s.services.length > 300) s.services = s.services.substring(0, 300);
+
+    // ── BILDER CONTENT BLOCKS ───────────────────────────
+    const imgBlocks = [];
+    const imgInstructions = [];
+    if (images && images.length > 0) {
+      images.forEach((img, i) => {
+        if (img.base64 && img.base64.length > 100) {
+          imgBlocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: img.media_type || 'image/jpeg', data: img.base64 }
+          });
+          const placement = img.role === 'logo'
+            ? 'LOGO: Verwende dieses Bild als Firmen-Logo in der Navigation und im Footer. Exakter HTML: <img src="data:' + (img.media_type||'image/jpeg') + ';base64,' + img.base64 + '" style="height:40px;object-fit:contain" alt="Logo">'
+            : img.role === 'hero'
+            ? 'HERO BILD: Verwende dieses Bild als Hero-Hintergrund oder Hero-Hauptbild. Als Background: background-image:url(data:' + (img.media_type||'image/jpeg') + ';base64,' + img.base64 + ');background-size:cover'
+            : `BILD ${i+1} (${img.label||'Zusatzbild'}): Verwende dieses Bild im passenden Abschnitt (Bild-Tag mit base64 src).`;
+          imgInstructions.push(placement);
+        }
+      });
+    }
+    const imgNote = imgInstructions.length > 0
+      ? '\n\nBILDER (PFLICHT - alle verwenden):\n' + imgInstructions.join('\n')
+      : '';
+
+    // ── PROMPT AUFBAUEN ─────────────────────────────────
+    let userPrompt = '';
+
+    if (prompt && extracted_text && extracted_text.length > 500) {
+      // CHAT-MODUS: nur JS-Patch zurückgeben, kein neues HTML
+      userPrompt = `Du bist ein Frontend-Entwickler. Du bekommst eine Aufgabe zur Anpassung einer Webseite.
+
+AUFGABE: ${prompt}
+
+Gib NUR reines JavaScript zurück das die Änderung per DOM-Manipulation umsetzt.
+REGELN:
+- Kein HTML, kein CSS-Block, keine Erklärungen, keine Backticks, kein Markdown
+- Nur ausführbarer JS-Code der sofort läuft
+- Nutze document.querySelector/querySelectorAll um Elemente zu finden
+- Für Stil-Änderungen: element.style.xxx = '...'
+- Für neue Elemente: createElement + appendChild
+- Für Text-Änderungen: element.textContent = '...' oder innerHTML
+
+BEISPIEL für "Füge Text unter WhatsApp Button":
+const wa = document.querySelector('a[href*="wa.me"]');
+if(wa){const t=document.createElement('div');t.style.cssText='position:fixed;bottom:90px;right:16px;font-size:11px;color:#25D366;font-weight:800;z-index:9999;text-align:center;';t.textContent='Schreib mit uns';document.body.appendChild(t);}
+
+Gib NUR den JavaScript-Code zurück, nichts anderes.`;
+    } else {
+      // NEU GENERIEREN
+      const waNum = s.whatsapp ? s.whatsapp.replace(/[^0-9]/g,'') : '';
+      const waBtn = waNum ? `<a href="https://wa.me/${waNum}?text=Hallo%2C%20ich%20interessiere%20mich" style="position:fixed;bottom:24px;right:24px;z-index:9999;width:60px;height:60px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(37,211,102,0.5);text-decoration:none"><svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>` : '';
+
+      userPrompt = `Erstelle eine vollständige, professionelle HTML Landingpage:
+
+FIRMA: ${s.company_name || 'Unbekannt'}
+BRANCHE: ${s.industry || 'Allgemein'}
+BESCHREIBUNG: ${s.description || ''}
+ZIELGRUPPE: ${s.target_audience || ''}
+USP: ${s.usp || ''}
+LEISTUNGEN: ${s.services || ''}
+CTA: ${s.cta || 'Jetzt anfragen'}
+WHATSAPP: ${s.whatsapp || ''}
+EMAIL: ${s.email || ''}
+BUCHUNGSLINK: ${s.booking_link || ''}
+STIL: ${s.style || 'modern, professionell'}
+SPRACHE(N): ${langLabel}
+SECTIONS: ${sections}
+${extracted_text ? '\nZUSATZ-INFO:\n' + extracted_text.substring(0, 1000) : ''}
+${imgNote}
+
+FARBEN (STRIKT EINHALTEN – keine anderen):
+- Primär ${color1}: NavBar Hintergrund, Hero Hintergrund, Footer, dunkle Sections
+- Sekundär ${color2}: CTA-Buttons, Hover, Links, Highlights
+- Akzent1 ${color3}: Badges, Tags, Icons, kleine Akzente
+- Akzent2 ${color4}: Text auf dunklen Flächen, Kontrastelement
+
+LAYOUT (PFLICHT):
+- Hero: volle Breite, zentrierter Inhalt, Primärfarbe als Hintergrund, kein leerer weißer Bereich
+- KEIN 2-Spalten Layout ohne echtes Bild auf der rechten Seite
+- Sections: padding 80px 0, abwechselnd weiß / #f8f9fa
+- Einheitliche Ausrichtung: alles zentriert
+
+MOBILE (PFLICHT):
+- Hamburger Nav auf Mobile (max-width:768px)
+- Alle Grids → 1 Spalte auf Mobile
+- Hero Text: 100% Breite, zentriert
+- Schriftgrößen 15% kleiner auf Mobile
+
+TYPOGRAFIE: Google Fonts Nunito (700,800) + Inter (400,500)
+
+${isMultilang ? `MEHRSPRACHIG: Sprachwechsler oben rechts (${langs.map(l=>langNames[l]).join(' | ')}). JS wechselt per data-lang Attribut. Standard: ${langNames[langs[0]]}.` : `SPRACHE: Alles auf ${langNames[langs[0]]||'Deutsch'}.`}
+
+${waNum ? `PFLICHT WhatsApp Float Button (exakt so einfügen vor </body>):\n${waBtn}` : ''}
+
+Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
+    }
+
+    // ── API CALL ─────────────────────────────────────────
+    const msgContent = [];
+    if (imgBlocks.length > 0) msgContent.push(...imgBlocks);
+    msgContent.push({ type: 'text', text: userPrompt });
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: msgContent }]
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+
+    let html = data.content?.[0]?.text || '';
+
+    // Chat-Modus gibt JS zurück – keine HTML-Prüfung
+    if (!prompt) {
+      // Generierungs-Modus: HTML validieren und bereinigen
+      const doctypeIdx = html.indexOf('<!DOCTYPE');
+      if (doctypeIdx > 0) html = html.substring(doctypeIdx);
+      else if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html'))
+        throw new Error('Ungültige AI Antwort – kein HTML');
+    }
+
+    console.log('Response for merchant:', merchant_id, 'chars:', html.length, 'chat:', !!prompt);
+    res.json({ success: true, html });
+
+  } catch(e) {
+    console.error('generate error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════════════════════
+
+app.listen(PORT, () => {
+  console.log(`✅ Converto API v2.0.1 läuft auf Port ${PORT}`);
+});
