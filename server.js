@@ -981,8 +981,25 @@ Erstelle professionelle, conversion-optimierte Landingpages ohne leere weiße Be
     let userPrompt = '';
 
     if (prompt && extracted_text && extracted_text.length > 500) {
-      // CHAT-MODUS: bestehende Seite anpassen
-      userPrompt = `Hier ist die aktuelle HTML Landingpage:\n\n${extracted_text.substring(0, 10000)}\n\nAufgabe: ${prompt}${imgNote}\n\nGib die komplette überarbeitete HTML Seite zurück.`;
+      // CHAT-MODUS: nur JS-Patch zurückgeben, kein neues HTML
+      userPrompt = `Du bist ein Frontend-Entwickler. Du bekommst eine Aufgabe zur Anpassung einer Webseite.
+
+AUFGABE: ${prompt}
+
+Gib NUR reines JavaScript zurück das die Änderung per DOM-Manipulation umsetzt.
+REGELN:
+- Kein HTML, kein CSS-Block, keine Erklärungen, keine Backticks, kein Markdown
+- Nur ausführbarer JS-Code der sofort läuft
+- Nutze document.querySelector/querySelectorAll um Elemente zu finden
+- Für Stil-Änderungen: element.style.xxx = '...'
+- Für neue Elemente: createElement + appendChild
+- Für Text-Änderungen: element.textContent = '...' oder innerHTML
+
+BEISPIEL für "Füge Text unter WhatsApp Button":
+const wa = document.querySelector('a[href*="wa.me"]');
+if(wa){const t=document.createElement('div');t.style.cssText='position:fixed;bottom:90px;right:16px;font-size:11px;color:#25D366;font-weight:800;z-index:9999;text-align:center;';t.textContent='Schreib mit uns';document.body.appendChild(t);}
+
+Gib NUR den JavaScript-Code zurück, nichts anderes.`;
     } else {
       // NEU GENERIEREN
       const waNum = s.whatsapp ? s.whatsapp.replace(/[^0-9]/g,'') : '';
