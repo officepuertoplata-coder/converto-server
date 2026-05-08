@@ -786,7 +786,7 @@ app.post('/api/pages', async (req, res) => {
       }, { onConflict: 'merchant_id' })
       .select().single();
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) { console.error("Pages save error:", error.message); return res.status(400).json({ error: error.message }); }
     res.json({ success: true, page: data });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -806,7 +806,7 @@ app.post('/api/pages/extract-doc', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         messages: [{
           role: 'user',
@@ -876,7 +876,7 @@ app.post('/api/pages/extract-url', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         messages: [{
           role: 'user',
@@ -992,8 +992,8 @@ Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 8000,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 16000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
       })
