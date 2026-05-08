@@ -927,6 +927,72 @@ Nur die extrahierten Informationen, kein Kommentar.`
   }
 });
 
+// ── CHAT PATCH: Seite direkt anpassen + speichern ──────────
+app.post('/api/pages/chat-patch', async (req, res) => {
+  try {
+    const { merchant_id, prompt, html } = req.body;
+    if (!prompt || !html) return res.status(400).json({ error: 'prompt und html erforderlich' });
+
+    const fetch = require('node-fetch');
+
+    // Nur die relevante Section finden und patchen
+    // Claude bekommt das volle HTML und gibt das volle geänderte HTML zurück
+    // Mit streaming-freundlichem Ansatz: erst komprimieren
+    const compressedHtml = html
+      .replace(/\s{3,}/g, ' ')
+      .replace(/<!--[\s\S]*?-->/g, '');
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 8000,
+        system: 'Du bist ein Frontend-Entwickler. Du bekommst eine HTML-Seite und eine Aufgabe. Gib NUR das vollständige geänderte HTML zurück, beginnend mit <!DOCTYPE html>. Keine Erklärungen, kein Markdown.',
+        messages: [{
+          role: 'user',
+          content: `AUFGABE: ${prompt}
+
+HTML:
+${compressedHtml.substring(0, 12000)}`
+        }]
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+
+    let newHtml = data.content?.[0]?.text || '';
+    const doctypeIdx = newHtml.indexOf('<!DOCTYPE');
+    if (doctypeIdx > 0) newHtml = newHtml.substring(doctypeIdx);
+    if (!newHtml.startsWith('<!DOCTYPE') && !newHtml.startsWith('<html'))
+      throw new Error('Ungültige Antwort');
+
+    console.log('Chat patch for merchant:', merchant_id, 'chars:', newHtml.length);
+
+    // Sofort in Supabase speichern wenn merchant_id vorhanden
+    if (merchant_id) {
+      const { data: existing } = await supabase
+        .from('merchant_pages').select('id').eq('merchant_id', merchant_id).maybeSingle();
+      if (existing?.id) {
+        await supabase.from('merchant_pages')
+          .update({ html_content: newHtml, updated_at: new Date().toISOString() })
+          .eq('merchant_id', merchant_id);
+      }
+      console.log('Chat patch saved to Supabase');
+    }
+
+    res.json({ success: true, html: newHtml });
+  } catch(e) {
+    console.error('chat-patch error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Landingpage generieren via Claude AI
 app.post('/api/pages/generate', async (req, res) => {
   try {
