@@ -917,37 +917,62 @@ Nur die extrahierten Informationen, kein Kommentar.`
 // Landingpage generieren via Claude AI
 app.post('/api/pages/generate', async (req, res) => {
   try {
-    const { merchant_id, settings, extracted_text, prompt } = req.body;
+    const { merchant_id, settings, extracted_text, prompt, images } = req.body;
     const s = settings || {};
-
     const fetch = require('node-fetch');
 
-    // System Prompt
-    const systemPrompt = `Du bist ein Experte für hochwertige Landingpage Erstellung. 
+    // ── SYSTEM PROMPT ──────────────────────────────────
+    const systemPrompt = `Du bist ein Experte für hochwertige Landingpage Erstellung.
 Du gibst NUR valides, vollständiges HTML zurück – keine Erklärungen, kein Markdown, keine Backticks.
-Das HTML muss eigenständig funktionieren (inline CSS, keine externen Abhängigkeiten außer Google Fonts).
-Erstelle professionelle, conversion-optimierte Landingpages.`;
+Das HTML muss eigenständig funktionieren (inline CSS, Google Fonts erlaubt).
+Erstelle professionelle, conversion-optimierte Landingpages ohne leere weiße Bereiche.`;
 
-    // User Prompt
+    // ── FARBEN & SPRACHE ────────────────────────────────
+    const color1 = s.color1 || s.primary_color || '#1b4332';
+    const color2 = s.color2 || '#25D366';
+    const color3 = s.color3 || '#f4a100';
+    const color4 = s.color4 || '#ffffff';
+    const langs      = Array.isArray(s.languages) ? s.languages : [s.language || 'de'];
+    const isMultilang = langs.length > 1;
+    const langNames  = { de: 'Deutsch', en: 'English', es: 'Español' };
+    const langLabel  = langs.map(l => langNames[l] || l).join(' + ');
+    const sections   = s.sections || 'Hero, Leistungen, Über uns, Kontakt';
+
+    // ── BILDER CONTENT BLOCKS ───────────────────────────
+    const imgBlocks = [];
+    const imgInstructions = [];
+    if (images && images.length > 0) {
+      images.forEach((img, i) => {
+        if (img.base64 && img.base64.length > 100) {
+          imgBlocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: img.media_type || 'image/jpeg', data: img.base64 }
+          });
+          const placement = img.role === 'logo'
+            ? 'LOGO: Verwende dieses Bild als Firmen-Logo in der Navigation und im Footer. Exakter HTML: <img src="data:' + (img.media_type||'image/jpeg') + ';base64,' + img.base64 + '" style="height:40px;object-fit:contain" alt="Logo">'
+            : img.role === 'hero'
+            ? 'HERO BILD: Verwende dieses Bild als Hero-Hintergrund oder Hero-Hauptbild. Als Background: background-image:url(data:' + (img.media_type||'image/jpeg') + ';base64,' + img.base64 + ');background-size:cover'
+            : `BILD ${i+1} (${img.label||'Zusatzbild'}): Verwende dieses Bild im passenden Abschnitt (Bild-Tag mit base64 src).`;
+          imgInstructions.push(placement);
+        }
+      });
+    }
+    const imgNote = imgInstructions.length > 0
+      ? '\n\nBILDER (PFLICHT - alle verwenden):\n' + imgInstructions.join('\n')
+      : '';
+
+    // ── PROMPT AUFBAUEN ─────────────────────────────────
     let userPrompt = '';
 
     if (prompt && extracted_text && extracted_text.length > 500) {
-      // Chat-Modus: bestehende Seite anpassen
-      userPrompt = `Hier ist die aktuelle HTML Landingpage:
-
-${extracted_text.substring(0, 8000)}
-
-Aufgabe: ${prompt}
-
-Gib die komplette überarbeitete HTML Seite zurück.`;
-
+      // CHAT-MODUS: bestehende Seite anpassen
+      userPrompt = `Hier ist die aktuelle HTML Landingpage:\n\n${extracted_text.substring(0, 10000)}\n\nAufgabe: ${prompt}${imgNote}\n\nGib die komplette überarbeitete HTML Seite zurück.`;
     } else {
-      // Neu generieren
-      const sections = s.sections || 'Hero, Leistungen, Über uns, Kontakt';
-      const lang = s.language === 'en' ? 'English' : s.language === 'es' ? 'Español' : 'Deutsch';
-      const color = s.primary_color || '#25D366';
+      // NEU GENERIEREN
+      const waNum = s.whatsapp ? s.whatsapp.replace(/[^0-9]/g,'') : '';
+      const waBtn = waNum ? `<a href="https://wa.me/${waNum}?text=Hallo%2C%20ich%20interessiere%20mich" style="position:fixed;bottom:24px;right:24px;z-index:9999;width:60px;height:60px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(37,211,102,0.5);text-decoration:none"><svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>` : '';
 
-      userPrompt = `Erstelle eine vollständige, professionelle HTML Landingpage mit folgenden Angaben:
+      userPrompt = `Erstelle eine vollständige, professionelle HTML Landingpage:
 
 FIRMA: ${s.company_name || 'Unbekannt'}
 BRANCHE: ${s.industry || 'Allgemein'}
@@ -959,30 +984,43 @@ CTA: ${s.cta || 'Jetzt anfragen'}
 WHATSAPP: ${s.whatsapp || ''}
 EMAIL: ${s.email || ''}
 BUCHUNGSLINK: ${s.booking_link || ''}
-PRIMÄRFARBE: ${color}
 STIL: ${s.style || 'modern, professionell'}
-SPRACHE: ${lang}
+SPRACHE(N): ${langLabel}
 SECTIONS: ${sections}
+${extracted_text ? '\nZUSATZ-INFO:\n' + extracted_text.substring(0, 2000) : ''}
+${imgNote}
 
-${extracted_text ? 'ZUSÄTZLICHE INFORMATIONEN AUS DOKUMENTEN:\n' + extracted_text.substring(0, 3000) : ''}
+FARBEN (STRIKT EINHALTEN – keine anderen):
+- Primär ${color1}: NavBar Hintergrund, Hero Hintergrund, Footer, dunkle Sections
+- Sekundär ${color2}: CTA-Buttons, Hover, Links, Highlights
+- Akzent1 ${color3}: Badges, Tags, Icons, kleine Akzente
+- Akzent2 ${color4}: Text auf dunklen Flächen, Kontrastelement
 
-Anforderungen:
-- Vollständiges, eigenständiges HTML mit inline CSS
-- Responsive Design (Mobile-first)
-- Sticky Navigation mit Anker-Links
-- Hero Section mit starkem Headline und CTA Button
-- WhatsApp Floating Button (wenn Nummer vorhanden)
-- Smooth Scroll
-- Professionelle Typografie (Google Fonts: Inter oder Nunito)
-- Primärfarbe: ${color}
-- Stil: ${s.style || 'modern, professionell'}
-- Sprache: ${lang}
-- Alle gewünschten Sections: ${sections}
-- Kontakt Section mit WhatsApp Link, E-Mail, Buchungslink
-${s.whatsapp ? `- PFLICHT: Floating WhatsApp Button unten rechts (position:fixed;bottom:24px;right:24px;z-index:9999;width:60px;height:60px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(37,211,102,0.4);text-decoration:none). Link: https://wa.me/${s.whatsapp.replace(/[^0-9]/g,'')}?text=Hallo%2C%20ich%20interessiere%20mich%20f%C3%BCr%20Ihre%20Leistungen – Icon: weißes WhatsApp SVG` : ''}
+LAYOUT (PFLICHT):
+- Hero: volle Breite, zentrierter Inhalt, Primärfarbe als Hintergrund, kein leerer weißer Bereich
+- KEIN 2-Spalten Layout ohne echtes Bild auf der rechten Seite
+- Sections: padding 80px 0, abwechselnd weiß / #f8f9fa
+- Einheitliche Ausrichtung: alles zentriert
+
+MOBILE (PFLICHT):
+- Hamburger Nav auf Mobile (max-width:768px)
+- Alle Grids → 1 Spalte auf Mobile
+- Hero Text: 100% Breite, zentriert
+- Schriftgrößen 15% kleiner auf Mobile
+
+TYPOGRAFIE: Google Fonts Nunito (700,800) + Inter (400,500)
+
+${isMultilang ? `MEHRSPRACHIG: Sprachwechsler oben rechts (${langs.map(l=>langNames[l]).join(' | ')}). JS wechselt per data-lang Attribut. Standard: ${langNames[langs[0]]}.` : `SPRACHE: Alles auf ${langNames[langs[0]]||'Deutsch'}.`}
+
+${waNum ? `PFLICHT WhatsApp Float Button (exakt so einfügen vor </body>):\n${waBtn}` : ''}
 
 Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
     }
+
+    // ── API CALL ─────────────────────────────────────────
+    const msgContent = [];
+    if (imgBlocks.length > 0) msgContent.push(...imgBlocks);
+    msgContent.push({ type: 'text', text: userPrompt });
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -995,7 +1033,7 @@ Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
         model: 'claude-opus-4-5',
         max_tokens: 16000,
         system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }]
+        messages: [{ role: 'user', content: msgContent }]
       })
     });
 
@@ -1003,13 +1041,10 @@ Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
     if (data.error) throw new Error(data.error.message);
 
     let html = data.content?.[0]?.text || '';
-
-    // Sicherstellen dass es mit <!DOCTYPE beginnt
     const doctypeIdx = html.indexOf('<!DOCTYPE');
     if (doctypeIdx > 0) html = html.substring(doctypeIdx);
-    else if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
+    else if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html'))
       throw new Error('Ungültige AI Antwort – kein HTML');
-    }
 
     console.log('Page generated for merchant:', merchant_id, 'chars:', html.length);
     res.json({ success: true, html });
