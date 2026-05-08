@@ -806,7 +806,7 @@ app.post('/api/pages/extract-doc', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
         messages: [{
           role: 'user',
@@ -876,7 +876,7 @@ app.post('/api/pages/extract-url', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
         messages: [{
           role: 'user',
@@ -992,7 +992,7 @@ Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 16000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
