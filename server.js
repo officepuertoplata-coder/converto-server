@@ -834,6 +834,86 @@ app.post('/api/pages/extract-doc', async (req, res) => {
   }
 });
 
+// Website URL analysieren → Claude extrahiert Content
+app.post('/api/pages/extract-url', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL fehlt' });
+
+    console.log('Fetching URL:', url);
+    const fetch = require('node-fetch');
+
+    // Website laden
+    const webRes = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ConverdinoBot/1.0)' },
+      timeout: 10000
+    });
+
+    if (!webRes.ok) throw new Error('Website nicht erreichbar: ' + webRes.status);
+
+    let html = await webRes.text();
+
+    // HTML bereinigen – nur Text behalten
+    let text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .substring(0, 8000);
+
+    if (!text || text.length < 50) throw new Error('Kein lesbarer Inhalt gefunden');
+
+    // Claude extrahiert relevante Infos
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: `Analysiere diesen Website-Inhalt und extrahiere alle relevanten Informationen für eine Landingpage. 
+
+WEBSITE INHALT:
+${text}
+
+Strukturiere die Ausgabe klar:
+- Firmenname:
+- Beschreibung (was das Unternehmen macht):
+- Leistungen/Produkte:
+- Zielgruppe:
+- USP / Alleinstellungsmerkmale:
+- Kontaktdaten (Tel, Email, Adresse):
+- Zahlen & Statistiken (falls vorhanden):
+- Referenzen/Kunden (falls vorhanden):
+- Besondere Phrasen oder Slogans:
+
+Nur die extrahierten Informationen, kein Kommentar.`
+        }]
+      })
+    });
+
+    const aiData = await aiRes.json();
+    if (aiData.error) throw new Error(aiData.error.message);
+
+    const extracted = aiData.content?.[0]?.text || '';
+    console.log('URL extracted:', url, 'chars:', extracted.length);
+    res.json({ success: true, extracted, url });
+
+  } catch(e) {
+    console.error('extract-url error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Landingpage generieren via Claude AI
 app.post('/api/pages/generate', async (req, res) => {
   try {
