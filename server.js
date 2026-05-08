@@ -756,6 +756,190 @@ app.post('/api/subscribers', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// LANDINGPAGE
+// ═══════════════════════════════════════════════════════════
+
+// Seite laden
+app.get('/api/pages/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('merchant_pages').select('*')
+      .eq('merchant_id', req.params.merchantId).single();
+    if (error) return res.status(404).json({ error: 'Keine Seite gefunden' });
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Seite speichern
+app.post('/api/pages', async (req, res) => {
+  try {
+    const { merchant_id, slug, html_content, settings_json, published } = req.body;
+    if (!merchant_id || !html_content) return res.status(400).json({ error: 'merchant_id und html_content erforderlich' });
+
+    const { data, error } = await supabase
+      .from('merchant_pages')
+      .upsert({
+        merchant_id, slug, html_content,
+        settings_json: settings_json || {},
+        published: published || false,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'merchant_id' })
+      .select().single();
+
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, page: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Dokument analysieren (Base64 → Claude → extrahierter Text)
+app.post('/api/pages/extract-doc', async (req, res) => {
+  try {
+    const { base64, media_type, filename } = req.body;
+    if (!base64) return res.status(400).json({ error: 'base64 fehlt' });
+
+    const fetch = require('node-fetch');
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: media_type || 'application/pdf', data: base64 }
+            },
+            {
+              type: 'text',
+              text: 'Extrahiere alle relevanten Informationen aus diesem Dokument für eine Firmen-Landingpage. Strukturiere die Ausgabe: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt, Zahlen/Statistiken, Referenzen. Nur die extrahierten Infos, kein Kommentar.'
+            }
+          ]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const extracted = data.content?.[0]?.text || '';
+    console.log('Doc extracted:', filename, extracted.substring(0, 100));
+    res.json({ success: true, extracted });
+  } catch(e) {
+    console.error('extract-doc error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Landingpage generieren via Claude AI
+app.post('/api/pages/generate', async (req, res) => {
+  try {
+    const { merchant_id, settings, extracted_text, prompt } = req.body;
+    const s = settings || {};
+
+    const fetch = require('node-fetch');
+
+    // System Prompt
+    const systemPrompt = `Du bist ein Experte für hochwertige Landingpage Erstellung. 
+Du gibst NUR valides, vollständiges HTML zurück – keine Erklärungen, kein Markdown, keine Backticks.
+Das HTML muss eigenständig funktionieren (inline CSS, keine externen Abhängigkeiten außer Google Fonts).
+Erstelle professionelle, conversion-optimierte Landingpages.`;
+
+    // User Prompt
+    let userPrompt = '';
+
+    if (prompt && extracted_text && extracted_text.length > 500) {
+      // Chat-Modus: bestehende Seite anpassen
+      userPrompt = `Hier ist die aktuelle HTML Landingpage:
+
+${extracted_text.substring(0, 8000)}
+
+Aufgabe: ${prompt}
+
+Gib die komplette überarbeitete HTML Seite zurück.`;
+
+    } else {
+      // Neu generieren
+      const sections = s.sections || 'Hero, Leistungen, Über uns, Kontakt';
+      const lang = s.language === 'en' ? 'English' : s.language === 'es' ? 'Español' : 'Deutsch';
+      const color = s.primary_color || '#25D366';
+
+      userPrompt = `Erstelle eine vollständige, professionelle HTML Landingpage mit folgenden Angaben:
+
+FIRMA: ${s.company_name || 'Unbekannt'}
+BRANCHE: ${s.industry || 'Allgemein'}
+BESCHREIBUNG: ${s.description || ''}
+ZIELGRUPPE: ${s.target_audience || ''}
+USP: ${s.usp || ''}
+LEISTUNGEN: ${s.services || ''}
+CTA: ${s.cta || 'Jetzt anfragen'}
+WHATSAPP: ${s.whatsapp || ''}
+EMAIL: ${s.email || ''}
+BUCHUNGSLINK: ${s.booking_link || ''}
+PRIMÄRFARBE: ${color}
+STIL: ${s.style || 'modern, professionell'}
+SPRACHE: ${lang}
+SECTIONS: ${sections}
+
+${extracted_text ? 'ZUSÄTZLICHE INFORMATIONEN AUS DOKUMENTEN:\n' + extracted_text.substring(0, 3000) : ''}
+
+Anforderungen:
+- Vollständiges, eigenständiges HTML mit inline CSS
+- Responsive Design (Mobile-first)
+- Sticky Navigation mit Anker-Links
+- Hero Section mit starkem Headline und CTA Button
+- WhatsApp Floating Button (wenn Nummer vorhanden)
+- Smooth Scroll
+- Professionelle Typografie (Google Fonts: Inter oder Nunito)
+- Primärfarbe: ${color}
+- Stil: ${s.style || 'modern, professionell'}
+- Sprache: ${lang}
+- Alle gewünschten Sections: ${sections}
+- Kontakt Section mit WhatsApp Link, E-Mail, Buchungslink
+
+Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+
+    let html = data.content?.[0]?.text || '';
+
+    // Sicherstellen dass es mit <!DOCTYPE beginnt
+    const doctypeIdx = html.indexOf('<!DOCTYPE');
+    if (doctypeIdx > 0) html = html.substring(doctypeIdx);
+    else if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
+      throw new Error('Ungültige AI Antwort – kein HTML');
+    }
+
+    console.log('Page generated for merchant:', merchant_id, 'chars:', html.length);
+    res.json({ success: true, html });
+
+  } catch(e) {
+    console.error('generate error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════════════════════
 
