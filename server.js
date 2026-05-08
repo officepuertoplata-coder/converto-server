@@ -937,6 +937,9 @@ Erstelle professionelle, conversion-optimierte Landingpages ohne leere weiße Be
     const langNames  = { de: 'Deutsch', en: 'English', es: 'Español' };
     const langLabel  = langs.map(l => langNames[l] || l).join(' + ');
     const sections   = s.sections || 'Hero, Leistungen, Über uns, Kontakt';
+      // Texte kürzen um Timeout zu vermeiden
+      if (s.description && s.description.length > 500) s.description = s.description.substring(0, 500);
+      if (s.services && s.services.length > 300) s.services = s.services.substring(0, 300);
 
     // ── BILDER CONTENT BLOCKS ───────────────────────────
     const imgBlocks = [];
@@ -987,7 +990,7 @@ BUCHUNGSLINK: ${s.booking_link || ''}
 STIL: ${s.style || 'modern, professionell'}
 SPRACHE(N): ${langLabel}
 SECTIONS: ${sections}
-${extracted_text ? '\nZUSATZ-INFO:\n' + extracted_text.substring(0, 2000) : ''}
+${extracted_text ? '\nZUSATZ-INFO:\n' + extracted_text.substring(0, 1000) : ''}
 ${imgNote}
 
 FARBEN (STRIKT EINHALTEN – keine anderen):
@@ -1031,7 +1034,7 @@ Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
       },
       body: JSON.stringify({
         model: 'claude-opus-4-5',
-        max_tokens: 16000,
+        max_tokens: 8000,
         system: systemPrompt,
         messages: [{ role: 'user', content: msgContent }]
       })
