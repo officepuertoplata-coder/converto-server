@@ -104,21 +104,145 @@ async function sendWhatsApp(merchantId, to, message) {
 app.get('/',           (req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.1' }));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', platform: 'Converto API', version: '2.0.1' }));
 
+// ── AUTH LOGIN (users table + legacy merchant login) ──────
 app.post('/api/auth/login', async (req, res) => {
-  const { slug, password, role } = req.body;
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username und Passwort erforderlich' });
   try {
-    if (role === 'superadmin') {
-      if (password !== process.env.SUPERADMIN_PASSWORD)
-        return res.status(401).json({ error: 'Falsches Passwort' });
-      return res.json({ success: true, role: 'superadmin' });
+    // 1. Users Tabelle prüfen
+    const { data: user, error: uErr } = await supabase
+      .from('users').select('*').eq('username', username.toLowerCase().trim()).single();
+
+    if (user && !uErr) {
+      if (!user.active) return res.status(401).json({ error: 'Account deaktiviert' });
+      if (user.password !== password) return res.status(401).json({ error: 'Falsches Passwort' });
+
+      // Last login updaten
+      await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id);
+
+      if (user.role === 'superadmin') {
+        // Alle Händler laden
+        const { data: merchants } = await supabase
+          .from('merchants').select('id, name, slug, status').order('name');
+        return res.json({ success: true, role: 'superadmin', user: { id: user.id, name: user.name, username: user.username }, merchants: merchants || [] });
+      }
+
+      if (user.role === 'staff') {
+        // Zugewiesene Händler laden
+        const { data: access } = await supabase
+          .from('user_merchant_access')
+          .select('merchant_id, merchants(id, name, slug, status)')
+          .eq('user_id', user.id);
+        const merchants = (access || []).map(a => a.merchants).filter(Boolean);
+        return res.json({ success: true, role: 'staff', user: { id: user.id, name: user.name, username: user.username }, merchants });
+      }
+
+      if (user.role === 'merchant') {
+        // Eigenen Händler laden
+        const { data: merchant } = await supabase
+          .from('merchants').select('*').eq('id', user.merchant_id).single();
+        return res.json({ success: true, role: 'merchant', user: { id: user.id, name: user.name, username: user.username }, merchant });
+      }
     }
-    const { data: merchant, error } = await supabase
+
+    // 2. Legacy: Merchant slug/password Login (für bestehende admin.html compatibility)
+    const { data: merchant, error: mErr } = await supabase
       .from('merchants').select('id, name, slug, admin_password, wa_enabled, meta_phone_number_id')
-      .eq('slug', slug).single();
-    if (error || !merchant) return res.status(404).json({ error: 'Händler nicht gefunden' });
-    if (merchant.admin_password !== password) return res.status(401).json({ error: 'Falsches Passwort' });
-    res.json({ success: true, role: 'merchant', merchant });
+      .eq('slug', username).single();
+    if (!mErr && merchant && merchant.admin_password === password) {
+      return res.json({ success: true, role: 'merchant', merchant, legacy: true });
+    }
+
+    return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── USER MANAGEMENT (Superadmin) ───────────────────────────
+app.get('/api/users', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('users')
+      .select('id, username, role, name, email, active, merchant_id, last_login, created_at')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const { username, password, role, name, email, merchant_id, merchant_ids } = req.body;
+    if (!username || !password || !role) return res.status(400).json({ error: 'Username, Passwort und Rolle erforderlich' });
+
+    const { data: user, error } = await supabase.from('users')
+      .insert({ username: username.toLowerCase().trim(), password, role, name, email, merchant_id: merchant_id || null })
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    // Staff: Händler-Zugriff setzen
+    if (role === 'staff' && merchant_ids?.length > 0) {
+      await supabase.from('user_merchant_access').insert(
+        merchant_ids.map(mid => ({ user_id: user.id, merchant_id: mid }))
+      );
+    }
+    res.json({ success: true, user });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { password, name, email, active, merchant_id, merchant_ids } = req.body;
+    const updates = {};
+    if (password)  updates.password = password;
+    if (name !== undefined) updates.name = name;
+    if (email !== undefined) updates.email = email;
+    if (active !== undefined) updates.active = active;
+    if (merchant_id !== undefined) updates.merchant_id = merchant_id;
+
+    const { data, error } = await supabase.from('users').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+
+    // Staff Händler-Zugriff updaten
+    if (merchant_ids !== undefined) {
+      await supabase.from('user_merchant_access').delete().eq('user_id', req.params.id);
+      if (merchant_ids.length > 0) {
+        await supabase.from('user_merchant_access').insert(
+          merchant_ids.map(mid => ({ user_id: req.params.id, merchant_id: mid }))
+        );
+      }
+    }
+    res.json({ success: true, user: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('users').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Händler anlegen (Superadmin)
+app.post('/api/merchants', async (req, res) => {
+  try {
+    const { name, slug, admin_password, currency, wa_number, description } = req.body;
+    if (!name || !slug || !admin_password) return res.status(400).json({ error: 'Name, Slug und Passwort erforderlich' });
+    const { data, error } = await supabase.from('merchants')
+      .insert({ name, slug: slug.toLowerCase().trim(), admin_password, currency: currency || 'EUR', wa_number: wa_number || null, description: description || null, status: 'active' })
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, merchant: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/merchants/:id', async (req, res) => {
+  try {
+    const updates = req.body;
+    delete updates.id;
+    const { data, error } = await supabase.from('merchants').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, merchant: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ═══════════════════════════════════════════════════════════
