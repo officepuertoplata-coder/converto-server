@@ -899,6 +899,7 @@ Anforderungen:
 - Sprache: ${lang}
 - Alle gewünschten Sections: ${sections}
 - Kontakt Section mit WhatsApp Link, E-Mail, Buchungslink
+${s.whatsapp ? `- PFLICHT: Floating WhatsApp Button unten rechts (position:fixed;bottom:24px;right:24px;z-index:9999;width:60px;height:60px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(37,211,102,0.4);text-decoration:none). Link: https://wa.me/${s.whatsapp.replace(/[^0-9]/g,'')}?text=Hallo%2C%20ich%20interessiere%20mich%20f%C3%BCr%20Ihre%20Leistungen – Icon: weißes WhatsApp SVG` : ''}
 
 Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
     }
