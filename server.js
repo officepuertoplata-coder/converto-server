@@ -1530,3 +1530,532 @@ app.get('/api/availability/current/:merchantId', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.1.0 läuft auf Port ${PORT}`);
 });
+
+// ═══════════════════════════════════════════════════════════
+// VERKAUFSREPORT (VK) – Bildanalyse & Verkaufstexte
+// ═══════════════════════════════════════════════════════════
+
+// Preisberechnung
+function vkCalcPrice(articles) {
+  let total = 1.00; // Grundpreis pro Auftrag
+  for (const a of articles) {
+    total += 1.00; // pro Artikel
+    const extraPhotos = Math.max(0, (a.photo_count || 1) - 1);
+    total += extraPhotos * 0.25; // zusätzliche Fotos
+    if (a.extended) total += 1.00; // verlängerte Datenhaltung
+  }
+  return Math.round(total * 100) / 100;
+}
+
+// Token generieren
+function vkToken() {
+  return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+}
+
+// Bild von Meta herunterladen und in Supabase Storage speichern
+async function vkSaveWhatsAppImage(mediaId, sessionId, articleId, sortOrder) {
+  const fetch = require('node-fetch');
+  const token = process.env.META_ACCESS_TOKEN;
+
+  // 1. Media URL von Meta holen
+  const metaRes = await fetch(`https://graph.facebook.com/v18.0/${mediaId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const metaData = await metaRes.json();
+  if (!metaData.url) throw new Error('Meta URL nicht gefunden');
+
+  // 2. Bild herunterladen
+  const imgRes = await fetch(metaData.url, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const buffer = await imgRes.buffer();
+  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+  const ext = contentType.includes('png') ? 'png' : 'jpg';
+
+  // 3. In Supabase Storage speichern
+  const path = `${sessionId}/${articleId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from('vk-photos').upload(path, buffer, {
+    contentType, upsert: false
+  });
+  if (error) throw new Error('Storage upload: ' + error.message);
+
+  const { data: urlData } = supabase.storage.from('vk-photos').getPublicUrl(path);
+  return { path, url: urlData.publicUrl };
+}
+
+// Claude Bildanalyse für einen Artikel
+async function vkAnalyzeArticle(article, photos) {
+  const fetch = require('node-fetch');
+
+  const imageBlocks = photos.map(p => ({
+    type: 'image',
+    source: { type: 'url', url: p.public_url }
+  }));
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 2000,
+      system: `Du bist ein Experte für Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace).
+Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht.
+Antworte NUR mit validem JSON, kein Markdown, keine Erklärungen.`,
+      messages: [{
+        role: 'user',
+        content: [
+          ...imageBlocks,
+          {
+            type: 'text',
+            text: `Analysiere dieses Produkt und erstelle folgendes JSON:
+{
+  "title_short": "Kurztitel (max 60 Zeichen, SEO-optimiert)",
+  "title_long": "Ausführlicher Titel mit Keywords",
+  "title_quick": "Quick-Sale Titel (günstig/schnell)",
+  "short_desc": "2-3 Sätze Kurzbeschreibung",
+  "long_desc": "Ausführliche Beschreibung mit Zustand, Details, Besonderheiten",
+  "bullet_points": ["Highlight 1", "Highlight 2", "Highlight 3"],
+  "price_min": 0,
+  "price_max": 0,
+  "price_recommended": 0,
+  "price_reasoning": "Begründung für den Preis",
+  "condition": "Zustandsbeschreibung",
+  "keywords": ["keyword1", "keyword2"],
+  "tips": ["Verkaufstipp 1", "Verkaufstipp 2"],
+  "category": "Produktkategorie"
+}`
+          }
+        ]
+      }]
+    })
+  });
+
+  const data = await response.json();
+  const text = data.content?.[0]?.text || '{}';
+  try {
+    return JSON.parse(text.replace(/```json|```/g, '').trim());
+  } catch(e) {
+    return { title_short: 'Analyse fehlgeschlagen', error: e.message };
+  }
+}
+
+// ── VK SESSION ERSTELLEN (WhatsApp) ────────────────────────
+app.post('/api/vk/session', async (req, res) => {
+  try {
+    const { phone, media_id, customer_name } = req.body;
+    if (!phone) return res.status(400).json({ error: 'phone erforderlich' });
+
+    // Offene Session für diese Nummer prüfen
+    const { data: existing } = await supabase
+      .from('vk_sessions').select('*')
+      .eq('phone', phone).eq('status', 'open')
+      .order('created_at', { ascending: false }).limit(1).single();
+
+    let session = existing;
+
+    if (!session) {
+      const token = vkToken();
+      const { data: newSession, error } = await supabase.from('vk_sessions')
+        .insert({ phone, token, customer_name: customer_name || null, status: 'open' })
+        .select().single();
+      if (error) return res.status(400).json({ error: error.message });
+      session = newSession;
+    }
+
+    // Artikel anlegen
+    const { data: article, error: aErr } = await supabase.from('vk_articles')
+      .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000) })
+      .select().single();
+    if (aErr) return res.status(400).json({ error: aErr.message });
+
+    // Foto speichern wenn vorhanden
+    let photoUrl = null;
+    if (media_id) {
+      try {
+        const saved = await vkSaveWhatsAppImage(media_id, session.id, article.id, 1);
+        await supabase.from('vk_photos').insert({
+          article_id: article.id, session_id: session.id,
+          storage_path: saved.path, public_url: saved.url,
+          source: 'whatsapp', sort_order: 1
+        });
+        photoUrl = saved.url;
+      } catch(e) { console.error('Photo save error:', e.message); }
+    }
+
+    const link = `https://converdino.com/bericht.html?s=${session.token}`;
+    console.log('VK session created:', session.token, 'for', phone);
+    res.json({ success: true, session, article, link, photo_url: photoUrl });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── VK SESSION LADEN ───────────────────────────────────────
+app.get('/api/vk/session/:token', async (req, res) => {
+  try {
+    const { data: session, error } = await supabase
+      .from('vk_sessions').select('*').eq('token', req.params.token).single();
+    if (error || !session) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    // Artikel + Fotos laden
+    const { data: articles } = await supabase.from('vk_articles')
+      .select('*, vk_photos(*)')
+      .eq('session_id', session.id)
+      .order('sort_order', { ascending: true });
+
+    const enriched = (articles || []).map(a => ({
+      ...a,
+      photo_count: (a.vk_photos || []).length
+    }));
+
+    const price = vkCalcPrice(enriched);
+    res.json({ ...session, articles: enriched, price });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ARTIKEL HINZUFÜGEN ─────────────────────────────────────
+app.post('/api/vk/article', async (req, res) => {
+  try {
+    const { token, title } = req.body;
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('id').eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    const { data: count } = await supabase.from('vk_articles')
+      .select('id', { count: 'exact' }).eq('session_id', session.id);
+    if ((count?.length || 0) >= 20) return res.status(400).json({ error: 'Maximal 20 Artikel' });
+
+    const { data, error } = await supabase.from('vk_articles')
+      .insert({ session_id: session.id, title: title || 'Neuer Artikel', sort_order: (count?.length || 0) + 1 })
+      .select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, article: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ARTIKEL LÖSCHEN ────────────────────────────────────────
+app.delete('/api/vk/article/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('vk_articles').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── FOTO HOCHLADEN (Web Upload) ────────────────────────────
+app.post('/api/vk/photo', async (req, res) => {
+  try {
+    const { article_id, session_id, image_base64, content_type } = req.body;
+    if (!article_id || !image_base64) return res.status(400).json({ error: 'article_id und image_base64 erforderlich' });
+
+    // Prüfen ob max 4 Fotos
+    const { data: existing } = await supabase.from('vk_photos')
+      .select('id').eq('article_id', article_id);
+    if ((existing?.length || 0) >= 4) return res.status(400).json({ error: 'Maximal 4 Fotos pro Artikel' });
+
+    const ext = (content_type || 'image/jpeg').includes('png') ? 'png' : 'jpg';
+    const path = `${session_id}/${article_id}/${Date.now()}.${ext}`;
+    const buffer = Buffer.from(image_base64, 'base64');
+
+    const { error: upErr } = await supabase.storage.from('vk-photos')
+      .upload(path, buffer, { contentType: content_type || 'image/jpeg', upsert: false });
+    if (upErr) return res.status(400).json({ error: upErr.message });
+
+    const { data: urlData } = supabase.storage.from('vk-photos').getPublicUrl(path);
+    const { data, error } = await supabase.from('vk_photos').insert({
+      article_id, session_id, storage_path: path,
+      public_url: urlData.publicUrl, source: 'upload',
+      sort_order: (existing?.length || 0) + 1
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, photo: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── FOTO LÖSCHEN ───────────────────────────────────────────
+app.delete('/api/vk/photo/:id', async (req, res) => {
+  try {
+    const { data: photo } = await supabase.from('vk_photos')
+      .select('storage_path').eq('id', req.params.id).single();
+    if (photo?.storage_path) {
+      await supabase.storage.from('vk-photos').remove([photo.storage_path]);
+    }
+    await supabase.from('vk_photos').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── DATENHALTUNG TOGGLE ────────────────────────────────────
+app.put('/api/vk/article/:id/extended', async (req, res) => {
+  try {
+    const { extended } = req.body;
+    const { data, error } = await supabase.from('vk_articles')
+      .update({ extended: !!extended }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, article: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── STRIPE CHECKOUT ERSTELLEN ──────────────────────────────
+app.post('/api/vk/checkout', async (req, res) => {
+  try {
+    const { token } = req.body;
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('*').eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    const { data: articles } = await supabase.from('vk_articles')
+      .select('*, vk_photos(id)').eq('session_id', session.id);
+    const enriched = (articles || []).map(a => ({ ...a, photo_count: (a.vk_photos || []).length }));
+    if (!enriched.length) return res.status(400).json({ error: 'Keine Artikel vorhanden' });
+
+    const price = vkCalcPrice(enriched);
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+    const checkout = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'eur',
+          product_data: {
+            name: 'Verkaufsreport – ' + enriched.length + ' Artikel',
+            description: enriched.map(a => a.title).join(', ')
+          },
+          unit_amount: Math.round(price * 100)
+        },
+        quantity: 1
+      }],
+      metadata: { vk_token: token, vk_session_id: session.id },
+      success_url: `https://converdino.com/bericht.html?s=${token}&paid=1`,
+      cancel_url: `https://converdino.com/bericht.html?s=${token}`
+    });
+
+    await supabase.from('vk_sessions').update({ stripe_session_id: checkout.id })
+      .eq('id', session.id);
+
+    res.json({ success: true, url: checkout.url });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── STRIPE WEBHOOK → ANALYSE STARTEN ──────────────────────
+app.post('/api/vk/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const sig = req.headers['stripe-signature'];
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_VK_SECRET || process.env.STRIPE_WEBHOOK_SECRET);
+    } catch(e) { return res.status(400).send('Webhook Error: ' + e.message); }
+
+    if (event.type === 'checkout.session.completed') {
+      const stripeSession = event.data.object;
+      const vkToken = stripeSession.metadata?.vk_token;
+      if (!vkToken) return res.json({ received: true });
+
+      const { data: session } = await supabase.from('vk_sessions')
+        .select('*').eq('token', vkToken).single();
+      if (!session) return res.json({ received: true });
+
+      // Status auf paid setzen
+      const now = new Date();
+      await supabase.from('vk_sessions').update({
+        status: 'analyzing', paid_at: now.toISOString(),
+        stripe_session_id: stripeSession.id
+      }).eq('id', session.id);
+
+      // Analyse asynchron starten
+      (async () => {
+        try {
+          const { data: articles } = await supabase.from('vk_articles')
+            .select('*, vk_photos(*)').eq('session_id', session.id);
+
+          for (const article of (articles || [])) {
+            const photos = article.vk_photos || [];
+            if (!photos.length) continue;
+            const analysis = await vkAnalyzeArticle(article, photos);
+            await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+          }
+
+          // Ablaufdatum setzen
+          const anyExtended = (articles || []).some(a => a.extended);
+          const days = anyExtended ? 7 : 3;
+          const deleteAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+          await supabase.from('vk_sessions').update({
+            status: 'done', analyzed_at: new Date().toISOString(),
+            delete_at: deleteAt.toISOString()
+          }).eq('id', session.id);
+
+          // WhatsApp Nachricht senden
+          const link = `https://converdino.com/ergebnis.html?s=${vkToken}`;
+          const msg = `✅ Dein Verkaufsreport ist fertig!\n\n📋 Hier sind deine Ergebnisse:\n${link}\n\n🗑️ Die Daten werden automatisch in ${days} Tagen gelöscht.`;
+          await sendWhatsApp(null, '+' + session.phone.replace(/[^0-9]/g, ''), msg);
+          console.log('VK analysis done for session:', vkToken);
+        } catch(e) {
+          console.error('VK analysis error:', e.message);
+          await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', vkToken);
+        }
+      })();
+    }
+    res.json({ received: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ERGEBNISSE LADEN ───────────────────────────────────────
+app.get('/api/vk/results/:token', async (req, res) => {
+  try {
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('*').eq('token', req.params.token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    if (!['done', 'analyzing'].includes(session.status))
+      return res.status(400).json({ error: 'Analyse noch nicht abgeschlossen', status: session.status });
+
+    const { data: articles } = await supabase.from('vk_articles')
+      .select('*, vk_photos(*)').eq('session_id', session.id)
+      .order('sort_order', { ascending: true });
+
+    // Erstes Abrufen der Ergebnisse → viewed_at setzen
+    if (!session.result_viewed_at) {
+      await supabase.from('vk_sessions').update({ result_viewed_at: new Date().toISOString() }).eq('id', session.id);
+    }
+    res.json({ ...session, articles: articles || [] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ADMIN: ALLE SESSIONS ───────────────────────────────────
+app.get('/api/vk/admin/sessions', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_sessions')
+      .select('*, vk_articles(id, status, extended)')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ADMIN: STATISTIKEN ─────────────────────────────────────
+app.get('/api/vk/admin/stats', async (req, res) => {
+  try {
+    const { data: sessions } = await supabase.from('vk_sessions').select('*');
+    const all = sessions || [];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    res.json({
+      total: all.length,
+      today: all.filter(s => new Date(s.created_at) >= today).length,
+      this_month: all.filter(s => new Date(s.created_at) >= thisMonth).length,
+      revenue_total: all.filter(s => s.paid_at).reduce((t, s) => t + (parseFloat(s.total_price) || 0), 0),
+      revenue_month: all.filter(s => s.paid_at && new Date(s.paid_at) >= thisMonth).reduce((t, s) => t + (parseFloat(s.total_price) || 0), 0),
+      by_status: {
+        open: all.filter(s => s.status === 'open').length,
+        paid: all.filter(s => s.status === 'paid').length,
+        analyzing: all.filter(s => s.status === 'analyzing').length,
+        done: all.filter(s => s.status === 'done').length,
+        expired: all.filter(s => s.status === 'expired').length
+      }
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ADMIN: ANALYSE MANUELL STARTEN ────────────────────────
+app.post('/api/vk/admin/analyze/:sessionId', async (req, res) => {
+  try {
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('*').eq('id', req.params.sessionId).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    await supabase.from('vk_sessions').update({ status: 'analyzing' }).eq('id', session.id);
+    res.json({ success: true, message: 'Analyse gestartet' });
+
+    // Async analysieren
+    (async () => {
+      const { data: articles } = await supabase.from('vk_articles')
+        .select('*, vk_photos(*)').eq('session_id', session.id);
+      for (const article of (articles || [])) {
+        const photos = article.vk_photos || [];
+        if (!photos.length) continue;
+        const analysis = await vkAnalyzeArticle(article, photos);
+        await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+      }
+      const anyExtended = (articles || []).some(a => a.extended);
+      const days = anyExtended ? 7 : 3;
+      const deleteAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      await supabase.from('vk_sessions').update({
+        status: 'done', analyzed_at: new Date().toISOString(),
+        delete_at: deleteAt.toISOString()
+      }).eq('id', session.id);
+      const link = `https://converdino.com/ergebnis.html?s=${session.token}`;
+      await sendWhatsApp(null, '+' + session.phone.replace(/[^0-9]/g,''),
+        `✅ Dein Verkaufsreport ist fertig!\n${link}\n\nWird in ${days} Tagen gelöscht.`);
+    })();
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ADMIN: SESSION LÖSCHEN ─────────────────────────────────
+app.delete('/api/vk/admin/session/:id', async (req, res) => {
+  try {
+    // Fotos aus Storage löschen
+    const { data: photos } = await supabase.from('vk_photos')
+      .select('storage_path').eq('session_id', req.params.id);
+    if (photos?.length) {
+      await supabase.storage.from('vk-photos').remove(photos.map(p => p.storage_path));
+    }
+    await supabase.from('vk_sessions').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ADMIN: SESSION VERLÄNGERN ──────────────────────────────
+app.put('/api/vk/admin/session/:id/extend', async (req, res) => {
+  try {
+    const { days } = req.body;
+    const newDeleteAt = new Date(Date.now() + (days || 7) * 24 * 60 * 60 * 1000);
+    const { data, error } = await supabase.from('vk_sessions')
+      .update({ delete_at: newDeleteAt.toISOString() }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, session: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CRON: AUTOMATISCHE LÖSCHUNG (täglich) ─────────────────
+setInterval(async () => {
+  try {
+    const now = new Date().toISOString();
+    const { data: expired } = await supabase.from('vk_sessions')
+      .select('id').lte('delete_at', now).neq('status', 'deleted');
+    for (const s of (expired || [])) {
+      const { data: photos } = await supabase.from('vk_photos')
+        .select('storage_path').eq('session_id', s.id);
+      if (photos?.length) {
+        await supabase.storage.from('vk-photos').remove(photos.map(p => p.storage_path));
+      }
+      await supabase.from('vk_sessions').update({ status: 'deleted' }).eq('id', s.id);
+      console.log('VK session auto-deleted:', s.id);
+    }
+  } catch(e) { console.error('VK cleanup error:', e.message); }
+}, 60 * 60 * 1000); // stündlich prüfen
+
+// ── WHATSAPP HANDLER: Fotos erkennen ─────────────────────
+// (Ergänzung zum bestehenden Webhook - wird im Webhook aufgerufen)
+async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
+  try {
+    const result = await fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/vk/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, media_id: mediaId })
+    });
+    const data = await result.json();
+    if (!data.success) return;
+    const link = data.link;
+    await sendWhatsApp(merchantId, '+' + phone.replace(/[^0-9]/g,''),
+      `✅ Foto erhalten! Hier ist dein persönlicher Auftrag-Link:\n\n${link}\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen\n\n💡 Max. 4 Fotos pro Artikel möglich.`
+    );
+  } catch(e) { console.error('VK WhatsApp handler error:', e.message); }
+}
+
+// Exportieren damit der Webhook es nutzen kann
+module.exports = { vkHandleWhatsAppImage };
+
