@@ -1696,6 +1696,20 @@ app.post('/api/vk/session', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── ALLE SESSIONS PER TELEFON ─────────────────────────────
+app.get('/api/vk/sessions/phone/:phone', async (req, res) => {
+  try {
+    const phone = decodeURIComponent(req.params.phone);
+    const { data, error } = await supabase.from('vk_sessions')
+      .select('*, vk_articles(id, title, status, vk_photos(id))')
+      .eq('phone', phone)
+      .neq('status', 'deleted')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── VK SESSION LADEN ───────────────────────────────────────
 app.get('/api/vk/session/:token', async (req, res) => {
   try {
@@ -1895,7 +1909,8 @@ app.post('/api/vk/stripe-webhook', express.raw({ type: 'application/json' }), as
 
           // WhatsApp Nachricht senden
           const link = `https://converdino.com/ergebnis.html?s=${vkToken}`;
-          const msg = `✅ Dein Verkaufsreport ist fertig!\n\n📋 Hier sind deine Ergebnisse:\n${link}\n\n🗑️ Die Daten werden automatisch in ${days} Tagen gelöscht.`;
+          const allLink = `https://converdino.com/auftraege.html?p=${encodeURIComponent(session.phone)}`;
+          const msg = `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis ansehen:\n${link}\n\n📂 Alle deine Aufträge:\n${allLink}\n\n🗑️ Daten werden in ${days} Tagen gelöscht.`;
           await sendWhatsApp(null, '+' + session.phone.replace(/[^0-9]/g, ''), msg);
           console.log('VK analysis done for session:', vkToken);
         } catch(e) {
@@ -1992,8 +2007,9 @@ app.post('/api/vk/admin/analyze/:sessionId', async (req, res) => {
         delete_at: deleteAt.toISOString()
       }).eq('id', session.id);
       const link = `https://converdino.com/ergebnis.html?s=${session.token}`;
+      const allLink2 = `https://converdino.com/auftraege.html?p=${encodeURIComponent(session.phone)}`;
       await sendWhatsApp(null, '+' + session.phone.replace(/[^0-9]/g,''),
-        `✅ Dein Verkaufsreport ist fertig!\n${link}\n\nWird in ${days} Tagen gelöscht.`);
+        `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\n${link}\n\n📂 Alle Aufträge:\n${allLink2}\n\nWird in ${days} Tagen gelöscht.`);
     })();
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -2054,8 +2070,9 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
     const data = await result.json();
     if (!data.success) return;
     const link = data.link;
+    const allLink = 'https://converdino.com/auftraege.html?p=' + encodeURIComponent(phone);
     await sendWhatsApp(merchantId, '+' + phone.replace(/[^0-9]/g,''),
-      `✅ Foto erhalten! Hier ist dein persönlicher Auftrag-Link:\n\n${link}\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen\n\n💡 Max. 4 Fotos pro Artikel möglich.`
+      '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link + '\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen\n\n📂 Alle deine Aufträge:\n' + allLink + '\n\n💡 Max. 4 Fotos pro Artikel möglich.'
     );
   } catch(e) { console.error('VK WhatsApp handler error:', e.message); }
 }
