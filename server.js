@@ -2101,9 +2101,8 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
     if (!data.success) return;
     const link = data.link;
     const allLink = 'https://converdino.com/auftraege.html?p=' + encodeURIComponent(phone);
-    await vkSendWhatsApp(phone,
-      '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link + '\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen\n\n📂 Alle deine Aufträge:\n' + allLink + '\n\n💡 Max. 4 Fotos pro Artikel möglich.'
-    );
+    const msg = '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link + '\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen\n\n📂 Alle deine Aufträge:\n' + allLink + '\n\n💡 Max. 4 Fotos pro Artikel möglich.';
+    await sendWhatsApp(merchantId, '+' + phone.replace(/[^0-9]/g,''), msg);
   } catch(e) { console.error('VK WhatsApp handler error:', e.message); }
 }
 
