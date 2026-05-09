@@ -109,6 +109,14 @@ app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username und Passwort erforderlich' });
   try {
+    // 0. Superadmin ENV Fallback (funktioniert auch ohne users Tabelle)
+    if (username.toLowerCase() === 'admin' && process.env.SUPERADMIN_PASSWORD && password === process.env.SUPERADMIN_PASSWORD) {
+      const { data: merchants } = await supabase.from('merchants').select('id, name, slug, status').order('name');
+      return res.json({ success: true, role: 'superadmin',
+        user: { id: 'superadmin', name: 'Superadmin', username: 'admin' },
+        merchants: merchants || [] });
+    }
+
     // 1. Users Tabelle prüfen
     const { data: user, error: uErr } = await supabase
       .from('users').select('*').eq('username', username.toLowerCase().trim()).single();
