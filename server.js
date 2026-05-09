@@ -2071,8 +2071,9 @@ async function vkSendWhatsApp(phone, message) {
       .single();
 
     if (merchant) {
-      console.log('vkSendWhatsApp via merchant:', merchant.id);
-      await sendWhatsApp(merchant.id, phone, message);
+      const formattedPhone = phone.startsWith('+') ? phone : '+' + phone.replace(/[^0-9]/g,'');
+      console.log('vkSendWhatsApp via merchant:', merchant.id, 'to:', formattedPhone);
+      await sendWhatsApp(merchant.id, formattedPhone, message);
     } else {
       // Fallback auf ENV
       const fetch = require('node-fetch');
