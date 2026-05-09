@@ -639,6 +639,20 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           const from    = msg.from;
           const text    = (msg.text?.body || '').toLowerCase().trim();
           const phoneId = value.metadata?.phone_number_id;
+          const msgType = msg.type; // text | image | audio | video | document
+
+          // ── BILD EMPFANGEN → Verkaufsreport ────────────
+          if (msgType === 'image' && msg.image?.id) {
+            console.log('VK: Image received from', from, 'media_id:', msg.image.id);
+            try {
+              // Merchant finden (für WhatsApp-Antwort)
+              const { data: merchant } = await supabase
+                .from('merchants').select('id').eq('meta_phone_number_id', phoneId).single();
+              const merchantId = merchant?.id || null;
+              await vkHandleWhatsAppImage(from, msg.image.id, merchantId);
+            } catch(e) { console.error('VK image handler error:', e.message); }
+            continue; // Nicht weiter verarbeiten
+          }
 
           // Merchant per phone_number_id finden
           const { data: merchant, error: mErr } = await supabase
@@ -2058,4 +2072,3 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
 
 // Exportieren damit der Webhook es nutzen kann
 module.exports = { vkHandleWhatsAppImage };
-
