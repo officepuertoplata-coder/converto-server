@@ -1663,22 +1663,12 @@ app.post('/api/vk/session', async (req, res) => {
     const { phone, media_id, customer_name } = req.body;
     if (!phone) return res.status(400).json({ error: 'phone erforderlich' });
 
-    // Offene Session für diese Nummer prüfen
-    const { data: existing } = await supabase
-      .from('vk_sessions').select('*')
-      .eq('phone', phone).eq('status', 'open')
-      .order('created_at', { ascending: false }).limit(1).single();
-
-    let session = existing;
-
-    if (!session) {
-      const token = vkToken();
-      const { data: newSession, error } = await supabase.from('vk_sessions')
-        .insert({ phone, token, customer_name: customer_name || null, status: 'open' })
-        .select().single();
-      if (error) return res.status(400).json({ error: error.message });
-      session = newSession;
-    }
+    // Immer neue Session pro Foto erstellen
+    const token = vkToken();
+    const { data: session, error: sErr } = await supabase.from('vk_sessions')
+      .insert({ phone, token, customer_name: customer_name || null, status: 'open' })
+      .select().single();
+    if (sErr) return res.status(400).json({ error: sErr.message });
 
     // Artikel anlegen
     const { data: article, error: aErr } = await supabase.from('vk_articles')
