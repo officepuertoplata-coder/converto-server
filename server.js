@@ -2061,21 +2061,32 @@ setInterval(async () => {
 // ── WHATSAPP HANDLER: Fotos erkennen ─────────────────────
 // (Ergänzung zum bestehenden Webhook - wird im Webhook aufgerufen)
 async function vkSendWhatsApp(phone, message) {
-  // Direkt über ENV senden - kein merchantId lookup nötig
-  const fetch = require('node-fetch');
-  const phoneId = process.env.META_PHONE_NUMBER_ID;
-  const token   = process.env.META_ACCESS_TOKEN;
-  const to = '+' + phone.replace(/[^0-9]/g, '');
-  console.log('vkSendWhatsApp:', { to, phoneId: phoneId?.substring(0,8) });
+  // Merchant mit WhatsApp aus Supabase laden - nutzt deren Token
   try {
-    const r = await fetch('https://graph.facebook.com/v18.0/' + phoneId + '/messages', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: message } })
-    });
-    const d = await r.json();
-    console.log('vkSendWhatsApp response:', JSON.stringify(d));
-    return d;
+    const { data: merchant } = await supabase
+      .from('merchants')
+      .select('id, meta_phone_number_id, meta_access_token')
+      .not('meta_phone_number_id', 'is', null)
+      .limit(1)
+      .single();
+
+    if (merchant) {
+      console.log('vkSendWhatsApp via merchant:', merchant.id);
+      await sendWhatsApp(merchant.id, phone, message);
+    } else {
+      // Fallback auf ENV
+      const fetch = require('node-fetch');
+      const phoneId = process.env.META_PHONE_NUMBER_ID;
+      const token   = process.env.META_ACCESS_TOKEN;
+      const to = '+' + phone.replace(/[^0-9]/g, '');
+      const r = await fetch('https://graph.facebook.com/v18.0/' + phoneId + '/messages', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: message } })
+      });
+      const d = await r.json();
+      console.log('vkSendWhatsApp fallback response:', JSON.stringify(d));
+    }
   } catch(e) { console.error('vkSendWhatsApp error:', e.message); }
 }
 
