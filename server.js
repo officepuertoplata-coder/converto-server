@@ -2061,13 +2061,12 @@ setInterval(async () => {
 // ── WHATSAPP HANDLER: Fotos erkennen ─────────────────────
 // (Ergänzung zum bestehenden Webhook - wird im Webhook aufgerufen)
 async function vkSendWhatsApp(phone, message) {
-  // Merchant mit WhatsApp aus Supabase laden - nutzt deren Token
+  // Sosuapesce Merchant direkt laden (hat den WhatsApp Token)
   try {
     const { data: merchant } = await supabase
       .from('merchants')
       .select('id, meta_phone_number_id, meta_access_token')
-      .not('meta_phone_number_id', 'is', null)
-      .limit(1)
+      .eq('slug', 'sosuapesce')
       .single();
 
     if (merchant) {
