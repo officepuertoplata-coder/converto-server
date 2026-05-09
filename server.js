@@ -1307,6 +1307,218 @@ Gib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
 // START
 // ═══════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════
+// PARTNERS (ehem. Agenten)
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/partners/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('partners').select('*')
+      .eq('merchant_id', req.params.merchantId).order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/partners', async (req, res) => {
+  try {
+    const { merchant_id, name, email, phone, commission_type, commission_value } = req.body;
+    if (!merchant_id || !name) return res.status(400).json({ error: 'merchant_id und name erforderlich' });
+    const code = name.substring(0,3).toUpperCase() + Math.random().toString(36).substring(2,6).toUpperCase();
+    const { data, error } = await supabase.from('partners').insert({
+      merchant_id, name, email: email||null, phone: phone||null,
+      referral_code: code,
+      commission_type: commission_type || 'percentage',
+      commission_value: parseFloat(commission_value) || 10,
+      status: 'active'
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, partner: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/partners/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('partners').update(req.body)
+      .eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, partner: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/partners/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('partners').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// QR CODES
+// ═══════════════════════════════════════════════════════════
+
+function generateQRCode() {
+  return 'QR-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2,6).toUpperCase();
+}
+
+app.post('/api/qr/generate', async (req, res) => {
+  try {
+    const { merchant_id, order_id, product_name, customer_name, customer_email, quantity, valid_until, metadata } = req.body;
+    if (!merchant_id) return res.status(400).json({ error: 'merchant_id erforderlich' });
+    const code = generateQRCode();
+    const { data, error } = await supabase.from('qr_codes').insert({
+      merchant_id, order_id: order_id||null, code,
+      product_name: product_name||null, customer_name: customer_name||null,
+      customer_email: customer_email||null, quantity: quantity||1,
+      status: 'open', valid_until: valid_until||null, metadata: metadata||null
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    console.log('QR generated:', code, 'for merchant:', merchant_id);
+    res.json({ success: true, qr: data, code });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/qr/:code', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('qr_codes').select('*').eq('code', req.params.code).single();
+    if (error || !data) return res.status(404).json({ error: 'QR Code nicht gefunden' });
+    if (data.valid_until && new Date(data.valid_until) < new Date()) {
+      await supabase.from('qr_codes').update({ status: 'expired' }).eq('id', data.id);
+      data.status = 'expired';
+    }
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/qr/redeem', async (req, res) => {
+  try {
+    const { code, redeemed_by } = req.body;
+    if (!code) return res.status(400).json({ error: 'code erforderlich' });
+    const { data: qr } = await supabase.from('qr_codes').select('*').eq('code', code).single();
+    if (!qr) return res.status(404).json({ error: 'QR Code nicht gefunden' });
+    if (qr.status === 'redeemed') return res.status(409).json({ error: 'Bereits eingeloest', qr });
+    if (qr.status === 'expired') return res.status(410).json({ error: 'Abgelaufen', qr });
+    if (qr.valid_until && new Date(qr.valid_until) < new Date()) return res.status(410).json({ error: 'Abgelaufen', qr });
+    const { data, error } = await supabase.from('qr_codes')
+      .update({ status: 'redeemed', redeemed_at: new Date().toISOString(), redeemed_by: redeemed_by||'unbekannt' })
+      .eq('id', qr.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    console.log('QR redeemed:', code, 'by:', redeemed_by);
+    res.json({ success: true, qr: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/qr-list/:merchantId', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('qr_codes').select('*')
+      .eq('merchant_id', req.params.merchantId).order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// OFFER LINKS (Angebotslinks)
+// ═══════════════════════════════════════════════════════════
+
+app.post('/api/offer-links', async (req, res) => {
+  try {
+    const { merchant_id, customer_name, customer_wa, items, total, note, expires_hours } = req.body;
+    if (!merchant_id || !items) return res.status(400).json({ error: 'merchant_id und items erforderlich' });
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + (expires_hours||48) * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase.from('offer_links').insert({
+      merchant_id, token, customer_name: customer_name||null,
+      customer_wa: customer_wa||null, items, total: total||null,
+      note: note||null, status: 'open', expires_at: expiresAt
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    const url = BASE_URL + '/angebot.html?t=' + token;
+    const waNum = customer_wa ? customer_wa.replace(/[^0-9]/g,'') : null;
+    const waText = encodeURIComponent('Hallo ' + (customer_name||'') + '!\n\nHier ist dein persoenliches Angebot:\n' + url + '\n\nGueltig bis: ' + new Date(expiresAt).toLocaleDateString('de-AT'));
+    const waLink = waNum ? 'https://wa.me/' + waNum + '?text=' + waText : null;
+    res.json({ success: true, offer: data, url, waLink });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/offer-links/:token', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('offer_links').select('*').eq('token', req.params.token).single();
+    if (error || !data) return res.status(404).json({ error: 'Angebot nicht gefunden' });
+    if (new Date(data.expires_at) < new Date() && data.status === 'open') {
+      await supabase.from('offer_links').update({ status: 'expired' }).eq('id', data.id);
+      return res.status(410).json({ error: 'Angebot abgelaufen' });
+    }
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// NEWSLETTER SUBSCRIPTION
+// ═══════════════════════════════════════════════════════════
+
+app.post('/api/newsletter/subscribe', async (req, res) => {
+  try {
+    const { email, name, whatsapp, merchant_id, merchant_slug } = req.body;
+    if (!email) return res.status(400).json({ error: 'E-Mail erforderlich' });
+    let mId = merchant_id;
+    if (!mId && merchant_slug) {
+      const { data: m } = await supabase.from('merchants').select('id').eq('slug', merchant_slug).single();
+      mId = m?.id;
+    }
+    if (!mId) return res.status(400).json({ error: 'Merchant nicht gefunden' });
+    const { data, error } = await supabase.from('subscribers').upsert({
+      email, name: name||'', merchant_id: mId,
+      channel: 'email', status: 'active', active: true,
+      opted_in_at: new Date().toISOString()
+    }, { onConflict: 'email,merchant_id' }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    if (whatsapp) {
+      try {
+        await supabase.from('subscribers').update({ whatsapp, channel: 'both' }).eq('id', data.id);
+        await supabase.from('subscribers').upsert({ whatsapp, merchant_id: mId, source: 'newsletter_form', active: false, status: 'pending' }, { onConflict: 'whatsapp,merchant_id' });
+        const { data: merchant } = await supabase.from('merchants').select('name').eq('id', mId).single();
+        await sendWhatsApp(mId, '+' + whatsapp.replace(/[^0-9]/g,''),
+          'Hallo ' + (name||'') + '! Danke fuer deine Anmeldung bei ' + (merchant?.name||'uns') + '.\n\nAntworte JA fuer WhatsApp-Updates.\nSTOP zum Ablehnen.');
+      } catch(e) { console.log('WA opt-in error:', e.message); }
+    }
+    res.json({ success: true, subscriber: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// VERFUEGBARKEIT CURRENT (fuer Landingpage)
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/availability/current/:merchantId', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: avails } = await supabase.from('daily_availability').select('*, daily_products(*)')
+      .eq('merchant_id', req.params.merchantId).order('updated_at', { ascending: false });
+    if (!avails || avails.length === 0) return res.json(null);
+    const current = avails.find(a => {
+      if (a.period_type === 'permanent') return true;
+      if (a.period_type === 'today' && a.date === today) return true;
+      if (a.period_type === 'range' && a.period_from <= today && (!a.period_to || a.period_to >= today)) return true;
+      if (!a.period_type && a.date === today) return true;
+      return false;
+    });
+    if (!current) return res.json(null);
+    if (current.daily_products && current.daily_products.length > 0) {
+      const productIds = current.daily_products.map(dp => dp.product_id).filter(Boolean);
+      if (productIds.length > 0) {
+        const { data: products } = await supabase.from('merchant_products').select('id, purchasable, stripe_link').in('id', productIds);
+        current.daily_products = current.daily_products.map(dp => {
+          const prod = products?.find(p => p.id === dp.product_id);
+          return { ...dp, purchasable: prod?.purchasable !== false, stripe_link: prod?.stripe_link };
+        });
+      }
+    }
+    res.json(current);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.listen(PORT, () => {
-  console.log(`✅ Converto API v2.0.1 läuft auf Port ${PORT}`);
+  console.log(`✅ Converto API v2.1.0 läuft auf Port ${PORT}`);
 });
