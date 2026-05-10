@@ -2217,7 +2217,7 @@ app.post('/api/vk/coupon/redeem', async (req, res) => {
 
     const articles = (session.vk_articles||[]).map(a => ({...a, photo_count: (a.vk_photos||[]).length}));
     const price = vkCalcPrice(articles);
-    let finalPrice = price;
+   
     const { discount: disc, isFree: free } = vkCalcDiscount(coupon, price);
 const finalPrice = free ? 0 : Math.max(0, price - disc);
 
