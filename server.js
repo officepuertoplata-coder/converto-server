@@ -727,50 +727,66 @@ async function vkSendWhatsApp(phone, message) {
   } catch(e) { console.error('vkSendWhatsApp error:', e.message); }
 }
 
+// In-Memory Debounce Map: phone → { timer, sessionId, sessionToken, count, merchantId }
+const vkPendingWA = new Map();
+
 async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
   try {
-    // Offene Session fuer diese Nummer in den letzten 2 Stunden suchen
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    let { data: existingSession } = await supabase.from('vk_sessions')
-      .select('*, vk_articles(id)')
-      .eq('phone', phone)
-      .eq('status', 'open')
-      .gte('created_at', twoHoursAgo)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let session, article, pending;
 
-    let session, article, isNewSession;
+    if (vkPendingWA.has(phone)) {
+      // ── Foto kommt während laufendem Timer → Session aus Memory ──
+      pending = vkPendingWA.get(phone);
+      clearTimeout(pending.timer);
+      session = { id: pending.sessionId, token: pending.sessionToken };
 
-    if (existingSession) {
-      // Bestehende Session → neuen Artikel hinzufügen
-      session = existingSession;
-      isNewSession = false;
-      const articleCount = (existingSession.vk_articles || []).length;
+      // Neuen Artikel anlegen
       const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: articleCount + 1 })
+        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.count + 1 })
         .select().single();
       if (aErr) throw new Error(aErr.message);
       article = newArticle;
-      console.log('VK: reusing session', session.token, 'article count now', articleCount + 1);
+      pending.count++;
+      console.log('VK debounce: reuse session', session.token, 'count now', pending.count);
+
     } else {
-      // Neue Session erstellen
-      isNewSession = true;
-      const token = vkToken();
-      const { data: newSession, error: sErr } = await supabase.from('vk_sessions')
-        .insert({ phone, token, status: 'open' })
-        .select().single();
-      if (sErr) throw new Error(sErr.message);
-      session = newSession;
-      const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000) })
-        .select().single();
-      if (aErr) throw new Error(aErr.message);
-      article = newArticle;
-      console.log('VK: new session created', session.token);
+      // ── Erstes Foto (oder nach > 2h Pause) → DB prüfen ──
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const { data: existingSession } = await supabase.from('vk_sessions')
+        .select('*, vk_articles(id)')
+        .eq('phone', phone).eq('status', 'open')
+        .gte('created_at', twoHoursAgo)
+        .order('created_at', { ascending: false })
+        .limit(1).maybeSingle();
+
+      if (existingSession) {
+        session = existingSession;
+        const articleCount = (existingSession.vk_articles || []).length;
+        const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
+          .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: articleCount + 1 })
+          .select().single();
+        if (aErr) throw new Error(aErr.message);
+        article = newArticle;
+        pending = { sessionId: session.id, sessionToken: session.token, count: articleCount + 1, merchantId };
+        console.log('VK debounce: existing session from DB', session.token);
+      } else {
+        // Neue Session erstellen
+        const token = vkToken();
+        const { data: newSession, error: sErr } = await supabase.from('vk_sessions')
+          .insert({ phone, token, status: 'open' }).select().single();
+        if (sErr) throw new Error(sErr.message);
+        session = newSession;
+        const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
+          .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000) })
+          .select().single();
+        if (aErr) throw new Error(aErr.message);
+        article = newArticle;
+        pending = { sessionId: session.id, sessionToken: session.token, count: 1, merchantId };
+        console.log('VK debounce: new session created', session.token);
+      }
     }
 
-    // Foto speichern
+    // ── Foto speichern ──
     try {
       const saved = await vkSaveWhatsAppImage(mediaId, session.id, article.id, 1);
       await supabase.from('vk_photos').insert({
@@ -780,19 +796,33 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
       });
     } catch(e) { console.error('Photo save error:', e.message); }
 
-    const link = 'https://converdino.com/bericht.html?s=' + session.token;
+    // ── Debounce Timer: WA erst nach 5s Stille senden ──
+    const link = 'https://converdino.com/bericht.html?s=' + pending.sessionToken;
     const allLink = 'https://converdino.com/auftraege.html?p=' + encodeURIComponent(phone);
-    const articleCount = isNewSession ? 1 : (existingSession.vk_articles || []).length + 1;
 
-    // Nur bei neuer Session eine WA senden – bei weiteren Fotos stumm hinzufügen
-    if (isNewSession) {
-      const msg = '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link +
-            '\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen' +
-            '\n\n💡 Schick alle Fotos – jedes wird als eigener Artikel hinzugefügt.' +
-            '\n\n📂 Alle Aufträge:\n' + allLink;
-      await sendWhatsApp(merchantId, '+' + phone.replace(/[^0-9]/g,''), msg);
-    }
-    // Bei bestehender Session: kein WA – Kunde sieht Fotos im Link
+    const timer = setTimeout(async () => {
+      const finalPending = vkPendingWA.get(phone);
+      vkPendingWA.delete(phone);
+      const count = finalPending ? finalPending.count : pending.count;
+
+      let msg;
+      if (count === 1) {
+        msg = '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link +
+              '\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen' +
+              '\n\n📂 Alle Aufträge:\n' + allLink;
+      } else {
+        msg = '✅ ' + count + ' Fotos erhalten! Dein Auftrag hat ' + count + ' Artikel.\n\n' +
+              '🔗 Hier zum Auftrag:\n' + link +
+              '\n\nFotos prüfen, weitere hinzufügen oder Bericht bestellen.' +
+              '\n\n📂 Alle Aufträge:\n' + allLink;
+      }
+      await sendWhatsApp(pending.merchantId, '+' + phone.replace(/[^0-9]/g,''), msg);
+      console.log('VK debounce: WA sent for', phone, 'total photos:', count);
+    }, 5000);
+
+    pending.timer = timer;
+    vkPendingWA.set(phone, pending);
+
   } catch(e) { console.error('VK WhatsApp handler error:', e.message); }
 }
 
