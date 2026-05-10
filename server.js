@@ -1868,8 +1868,8 @@ app.post('/api/vk/checkout', async (req, res) => {
       const { data: coupon } = await supabase.from('vk_coupons')
         .select('*').eq('code', couponCode.toUpperCase()).single();
       if (coupon && coupon.active) {
-        if (coupon.type === 'percent') finalPrice = Math.max(0.5, price - Math.round(price * coupon.value / 100 * 100) / 100);
-        else if (coupon.type === 'fixed') finalPrice = Math.max(0.5, price - coupon.value);
+        const { discount: couponDisc } = vkCalcDiscount(coupon, price);
+finalPrice = Math.max(0.50, price - couponDisc);
         await supabase.from('vk_coupons').update({ used_count: (coupon.used_count||0) + 1 }).eq('id', coupon.id);
       }
     }
