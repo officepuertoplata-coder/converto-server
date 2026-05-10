@@ -1753,6 +1753,17 @@ app.post('/api/vk/article', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── ARTIKEL NOTIZEN ───────────────────────────────────────
+app.put('/api/vk/article/:id/notes', async (req, res) => {
+  try {
+    const { notes } = req.body;
+    const { data, error } = await supabase.from('vk_articles')
+      .update({ notes: notes || null }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, article: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── ARTIKEL LÖSCHEN ────────────────────────────────────────
 app.delete('/api/vk/article/:id', async (req, res) => {
   try {
@@ -1832,6 +1843,19 @@ app.post('/api/vk/checkout', async (req, res) => {
     const price = vkCalcPrice(enriched);
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+    // Gutschein anwenden wenn vorhanden
+    const couponCode = req.body.coupon_code;
+    let finalPrice = price;
+    if (couponCode) {
+      const { data: coupon } = await supabase.from('vk_coupons')
+        .select('*').eq('code', couponCode.toUpperCase()).single();
+      if (coupon && coupon.active) {
+        if (coupon.type === 'percent') finalPrice = Math.max(0.5, price - Math.round(price * coupon.value / 100 * 100) / 100);
+        else if (coupon.type === 'fixed') finalPrice = Math.max(0.5, price - coupon.value);
+        await supabase.from('vk_coupons').update({ used_count: (coupon.used_count||0) + 1 }).eq('id', coupon.id);
+      }
+    }
+
     const checkout = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -1842,7 +1866,7 @@ app.post('/api/vk/checkout', async (req, res) => {
             name: 'Verkaufsreport – ' + enriched.length + ' Artikel',
             description: enriched.map(a => a.title).join(', ')
           },
-          unit_amount: Math.round(price * 100)
+          unit_amount: Math.round(finalPrice * 100)
         },
         quantity: 1
       }],
@@ -1851,8 +1875,11 @@ app.post('/api/vk/checkout', async (req, res) => {
       cancel_url: `https://converdino.com/bericht.html?s=${token}`
     });
 
-    await supabase.from('vk_sessions').update({ stripe_session_id: checkout.id })
-      .eq('id', session.id);
+    await supabase.from('vk_sessions').update({
+      stripe_session_id: checkout.id,
+      total_price: finalPrice,
+      coupon_code: couponCode || null
+    }).eq('id', session.id);
 
     res.json({ success: true, url: checkout.url });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1877,11 +1904,12 @@ app.post('/api/vk/stripe-webhook', express.raw({ type: 'application/json' }), as
         .select('*').eq('token', vkToken).single();
       if (!session) return res.json({ received: true });
 
-      // Status auf paid setzen
+      // Status auf paid setzen + Preis speichern
       const now = new Date();
       await supabase.from('vk_sessions').update({
         status: 'analyzing', paid_at: now.toISOString(),
-        stripe_session_id: stripeSession.id
+        stripe_session_id: stripeSession.id,
+        total_price: stripeSession.amount_total / 100
       }).eq('id', session.id);
 
       // Analyse asynchron starten
@@ -2108,3 +2136,153 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
 
 // Exportieren damit der Webhook es nutzen kann
 module.exports = { vkHandleWhatsAppImage };
+
+
+// ═══════════════════════════════════════════════════════════
+// GUTSCHEIN SYSTEM
+// ═══════════════════════════════════════════════════════════
+
+// Gutschein validieren
+app.post('/api/vk/coupon/validate', async (req, res) => {
+  try {
+    const { code, token } = req.body;
+    if (!code) return res.status(400).json({ error: 'Code fehlt' });
+
+    const { data: coupon, error } = await supabase
+      .from('vk_coupons')
+      .select('*')
+      .eq('code', code.toUpperCase().trim())
+      .single();
+
+    if (error || !coupon) return res.status(404).json({ error: 'Ungültiger Code' });
+    if (!coupon.active) return res.status(400).json({ error: 'Code ist nicht mehr aktiv' });
+    if (coupon.expires_at && new Date(coupon.expires_at) < new Date())
+      return res.status(400).json({ error: 'Code ist abgelaufen' });
+    if (coupon.max_uses && coupon.used_count >= coupon.max_uses)
+      return res.status(400).json({ error: 'Code wurde bereits zu oft verwendet' });
+
+    // Preis berechnen
+    let discount = 0;
+    let isFree = false;
+    if (token) {
+      const { data: session } = await supabase.from('vk_sessions')
+        .select('*, vk_articles(id, extended, vk_photos(id))')
+        .eq('token', token).single();
+      if (session) {
+        const articles = (session.vk_articles||[]).map(a => ({...a, photo_count: (a.vk_photos||[]).length}));
+        const price = vkCalcPrice(articles);
+        if (coupon.type === 'percent') discount = Math.round(price * coupon.value / 100 * 100) / 100;
+        else if (coupon.type === 'fixed') discount = Math.min(coupon.value, price);
+        else if (coupon.type === 'free') { discount = price; isFree = true; }
+      }
+    }
+
+    res.json({ success: true, coupon: {
+      code: coupon.code, type: coupon.type, value: coupon.value,
+      discount, is_free: isFree,
+      description: coupon.description
+    }});
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Gutschein einlösen (bei 100% gratis – Stripe überspringen)
+app.post('/api/vk/coupon/redeem', async (req, res) => {
+  try {
+    const { code, token } = req.body;
+
+    const { data: coupon } = await supabase.from('vk_coupons')
+      .select('*').eq('code', code.toUpperCase().trim()).single();
+    if (!coupon) return res.status(404).json({ error: 'Ungültiger Code' });
+
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('*, vk_articles(id, extended, vk_photos(id))')
+      .eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    const articles = (session.vk_articles||[]).map(a => ({...a, photo_count: (a.vk_photos||[]).length}));
+    const price = vkCalcPrice(articles);
+    let finalPrice = price;
+    if (coupon.type === 'percent') finalPrice = Math.max(0, price - Math.round(price * coupon.value / 100 * 100) / 100);
+    else if (coupon.type === 'fixed') finalPrice = Math.max(0, price - coupon.value);
+    else if (coupon.type === 'free') finalPrice = 0;
+
+    // Coupon Nutzung erhöhen
+    await supabase.from('vk_coupons').update({ used_count: (coupon.used_count||0) + 1 }).eq('id', coupon.id);
+    await supabase.from('vk_coupon_uses').insert({ coupon_id: coupon.id, session_id: session.id, discount: price - finalPrice });
+
+    if (finalPrice === 0) {
+      // Gratis → direkt analysieren
+      await supabase.from('vk_sessions').update({
+        status: 'analyzing', paid_at: new Date().toISOString(),
+        total_price: 0, coupon_code: code.toUpperCase()
+      }).eq('id', session.id);
+
+      // Analyse starten
+      (async () => {
+        try {
+          const { data: arts } = await supabase.from('vk_articles')
+            .select('*, vk_photos(*)').eq('session_id', session.id);
+          for (const article of (arts||[])) {
+            if (!(article.vk_photos||[]).length) continue;
+            const analysis = await vkAnalyzeArticle(article, article.vk_photos);
+            await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+          }
+          const anyExtended = (arts||[]).some(a => a.extended);
+          const days = anyExtended ? 7 : 3;
+          const deleteAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+          await supabase.from('vk_sessions').update({
+            status: 'done', analyzed_at: new Date().toISOString(),
+            delete_at: deleteAt.toISOString()
+          }).eq('id', session.id);
+          const link = `https://converdino.com/ergebnis.html?s=${token}`;
+          await vkSendWhatsApp(session.phone, `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\n${link}\n\nWird in ${days} Tagen gelöscht.`);
+        } catch(e) { console.error('Coupon analysis error:', e.message); }
+      })();
+
+      return res.json({ success: true, is_free: true, redirect: `/bericht.html?s=${token}&paid=1` });
+    }
+
+    // Teilrabatt → Stripe mit reduziertem Preis
+    res.json({ success: true, is_free: false, final_price: finalPrice, discount: price - finalPrice });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: Gutscheine verwalten
+app.get('/api/vk/admin/coupons', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_coupons')
+      .select('*').order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/vk/admin/coupons', async (req, res) => {
+  try {
+    const { code, type, value, max_uses, expires_at, description } = req.body;
+    const finalCode = (code || Math.random().toString(36).substring(2,8)).toUpperCase();
+    const { data, error } = await supabase.from('vk_coupons').insert({
+      code: finalCode, type: type || 'free', value: value || 100,
+      max_uses: max_uses || null, expires_at: expires_at || null,
+      description: description || null, active: true, used_count: 0
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, coupon: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/vk/admin/coupons/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_coupons')
+      .update(req.body).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, coupon: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/vk/admin/coupons/:id', async (req, res) => {
+  try {
+    await supabase.from('vk_coupons').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
