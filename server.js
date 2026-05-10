@@ -1604,6 +1604,70 @@ app.post('/api/vk/check-payment', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ── ZAHLUNG MANUELL PRÜFEN (Webhook-Fallback für Test/Live) ─
+app.post('/api/vk/check-payment', async (req, res) => {
+  try {
+    const { token } = req.body;
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('*').eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    if (!session.stripe_session_id) return res.json({ paid: false, status: session.status });
+
+    // Bereits in Analyse/fertig → direkt zurückgeben
+    if (['analyzing', 'done', 'paid'].includes(session.status)) {
+      return res.json({ paid: true, status: session.status });
+    }
+
+    // Stripe direkt befragen
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const checkout = await stripe.checkout.sessions.retrieve(session.stripe_session_id);
+    console.log('check-payment:', checkout.payment_status, '/', session.status);
+
+    if (checkout.payment_status === 'paid') {
+      const now = new Date();
+      await supabase.from('vk_sessions').update({
+        status: 'analyzing',
+        paid_at: now.toISOString(),
+        total_price: checkout.amount_total / 100
+      }).eq('id', session.id);
+
+      // Analyse async starten
+      (async () => {
+        try {
+          const { data: articles } = await supabase.from('vk_articles')
+            .select('*, vk_photos(*)').eq('session_id', session.id);
+          for (const article of (articles || [])) {
+            if (!(article.vk_photos || []).length) continue;
+            const analysis = await vkAnalyzeArticle(article, article.vk_photos);
+            await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+          }
+          const anyExtended = (articles || []).some(a => a.extended);
+          const days = anyExtended ? 7 : 3;
+          await supabase.from('vk_sessions').update({
+            status: 'done',
+            analyzed_at: new Date().toISOString(),
+            delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
+          }).eq('id', session.id);
+          const link = `https://converdino.com/ergebnis.html?s=${token}`;
+          const allLink = `https://converdino.com/auftraege.html?p=${encodeURIComponent(session.phone)}`;
+          await vkSendWhatsApp(session.phone,
+            `Dein Verkaufsreport ist fertig!\n\nErgebnis:\n${link}\n\nAlle Auftraege:\n${allLink}\n\nWird in ${days} Tagen geloescht.`);
+          console.log('check-payment: analysis done for', token);
+        } catch(e) {
+          console.error('check-payment analysis error:', e.message);
+          await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
+        }
+      })();
+
+      return res.json({ paid: true, status: 'analyzing' });
+    }
+
+    res.json({ paid: false, status: session.status });
+  } catch(e) {
+    console.error('check-payment error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.1.0 läuft auf Port ${PORT}`);
 });
