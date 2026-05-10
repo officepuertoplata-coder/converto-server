@@ -2189,9 +2189,7 @@ app.post('/api/vk/coupon/validate', async (req, res) => {
       if (session) {
         const articles = (session.vk_articles||[]).map(a => ({...a, photo_count: (a.vk_photos||[]).length}));
         const price = vkCalcPrice(articles);
-        if (coupon.type === 'percent') discount = Math.round(price * coupon.value / 100 * 100) / 100;
-        else if (coupon.type === 'fixed') discount = Math.min(coupon.value, price);
-        else if (coupon.type === 'free') { discount = price; isFree = true; }
+        ({ discount, isFree } = vkCalcDiscount(coupon, price));
       }
     }
 
