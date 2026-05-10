@@ -727,7 +727,7 @@ async function vkSendWhatsApp(phone, message) {
   } catch(e) { console.error('vkSendWhatsApp error:', e.message); }
 }
 
-// In-Memory Debounce Map: phone → { timer, sessionId, sessionToken, count, merchantId }
+// In-Memory Debounce Map: phone → { timer, sessionId, sessionToken, count, merchantId, ready }
 const vkPendingWA = new Map();
 
 async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
@@ -735,22 +735,35 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
     let session, article, pending;
 
     if (vkPendingWA.has(phone)) {
-      // ── Foto kommt während laufendem Timer → Session aus Memory ──
+      // ── Phone bereits im Map → Session wiederverwenden ──
       pending = vkPendingWA.get(phone);
+
+      // Falls Session noch nicht fertig angelegt (parallel Request) → kurz warten
+      let waited = 0;
+      while (!pending.sessionId && waited < 3000) {
+        await new Promise(r => setTimeout(r, 100));
+        pending = vkPendingWA.get(phone) || pending;
+        waited += 100;
+      }
+
       clearTimeout(pending.timer);
+      pending.count++;
       session = { id: pending.sessionId, token: pending.sessionToken };
 
-      // Neuen Artikel anlegen
       const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.count + 1 })
+        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.count })
         .select().single();
       if (aErr) throw new Error(aErr.message);
       article = newArticle;
-      pending.count++;
       console.log('VK debounce: reuse session', session.token, 'count now', pending.count);
 
     } else {
-      // ── Erstes Foto (oder nach > 2h Pause) → DB prüfen ──
+      // ── Erstes Foto für diese Nummer ──
+      // SOFORT als Platzhalter eintragen bevor async Operationen starten
+      pending = { sessionId: null, sessionToken: null, count: 1, merchantId, timer: null };
+      vkPendingWA.set(phone, pending);
+
+      // DB prüfen: offene Session < 2h
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const { data: existingSession } = await supabase.from('vk_sessions')
         .select('*, vk_articles(id)')
@@ -767,10 +780,9 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
           .select().single();
         if (aErr) throw new Error(aErr.message);
         article = newArticle;
-        pending = { sessionId: session.id, sessionToken: session.token, count: articleCount + 1, merchantId };
+        pending.count = articleCount + 1;
         console.log('VK debounce: existing session from DB', session.token);
       } else {
-        // Neue Session erstellen
         const token = vkToken();
         const { data: newSession, error: sErr } = await supabase.from('vk_sessions')
           .insert({ phone, token, status: 'open' }).select().single();
@@ -781,9 +793,13 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
           .select().single();
         if (aErr) throw new Error(aErr.message);
         article = newArticle;
-        pending = { sessionId: session.id, sessionToken: session.token, count: 1, merchantId };
         console.log('VK debounce: new session created', session.token);
       }
+
+      // Session-Daten in Map eintragen – jetzt können wartende Requests weitermachen
+      pending.sessionId = session.id;
+      pending.sessionToken = session.token;
+      vkPendingWA.set(phone, pending);
     }
 
     // ── Foto speichern ──
@@ -792,7 +808,7 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
       await supabase.from('vk_photos').insert({
         article_id: article.id, session_id: session.id,
         storage_path: saved.path, public_url: saved.url,
-        source: 'whatsapp', sort_order: 1
+        source: 'whatsapp', sort_order: pending.count
       });
     } catch(e) { console.error('Photo save error:', e.message); }
 
@@ -801,10 +817,9 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
     const allLink = 'https://converdino.com/auftraege.html?p=' + encodeURIComponent(phone);
 
     const timer = setTimeout(async () => {
-      const finalPending = vkPendingWA.get(phone);
+      const final = vkPendingWA.get(phone);
       vkPendingWA.delete(phone);
-      const count = finalPending ? finalPending.count : pending.count;
-
+      const count = final ? final.count : pending.count;
       let msg;
       if (count === 1) {
         msg = '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link +
@@ -817,11 +832,10 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
               '\n\n📂 Alle Aufträge:\n' + allLink;
       }
       await sendWhatsApp(pending.merchantId, '+' + phone.replace(/[^0-9]/g,''), msg);
-      console.log('VK debounce: WA sent for', phone, 'total photos:', count);
+      console.log('VK debounce: WA sent for', phone, 'total:', count);
     }, 5000);
 
     pending.timer = timer;
-    vkPendingWA.set(phone, pending);
 
   } catch(e) { console.error('VK WhatsApp handler error:', e.message); }
 }
