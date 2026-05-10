@@ -727,7 +727,7 @@ async function vkSendWhatsApp(phone, message) {
   } catch(e) { console.error('vkSendWhatsApp error:', e.message); }
 }
 
-// In-Memory Debounce Map: phone → { timer, sessionId, sessionToken, count, merchantId, ready }
+// In-Memory Debounce Map: phone → { timer, sessionId, sessionToken, batchCount, merchantId }
 const vkPendingWA = new Map();
 
 async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
@@ -735,10 +735,10 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
     let session, article, pending;
 
     if (vkPendingWA.has(phone)) {
-      // ── Phone bereits im Map → Session wiederverwenden ──
+      // ── Phone bereits im Map → Session aus Memory ──
       pending = vkPendingWA.get(phone);
 
-      // Falls Session noch nicht fertig angelegt (parallel Request) → kurz warten
+      // Falls Session noch nicht fertig (parallel Request) → kurz warten
       let waited = 0;
       while (!pending.sessionId && waited < 3000) {
         await new Promise(r => setTimeout(r, 100));
@@ -746,21 +746,20 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
         waited += 100;
       }
 
-      clearTimeout(pending.timer);
-      pending.count++;
+      // batchCount = nur neue Fotos in DIESEM Batch (nicht alte Artikel)
+      pending.batchCount++;
       session = { id: pending.sessionId, token: pending.sessionToken };
 
       const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.count })
+        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.sessionArticleBase + pending.batchCount })
         .select().single();
       if (aErr) throw new Error(aErr.message);
       article = newArticle;
-      console.log('VK debounce: reuse session', session.token, 'count now', pending.count);
+      console.log('VK debounce: reuse session', session.token, 'batch count now', pending.batchCount);
 
     } else {
-      // ── Erstes Foto für diese Nummer ──
-      // SOFORT als Platzhalter eintragen bevor async Operationen starten
-      pending = { sessionId: null, sessionToken: null, count: 1, merchantId, timer: null };
+      // ── Erstes Foto – SOFORT Platzhalter setzen ──
+      pending = { sessionId: null, sessionToken: null, batchCount: 1, sessionArticleBase: 0, merchantId, timer: null };
       vkPendingWA.set(phone, pending);
 
       // DB prüfen: offene Session < 2h
@@ -774,14 +773,14 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
 
       if (existingSession) {
         session = existingSession;
-        const articleCount = (existingSession.vk_articles || []).length;
+        const existingCount = (existingSession.vk_articles || []).length;
+        pending.sessionArticleBase = existingCount; // vorhandene Artikel merken
         const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-          .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: articleCount + 1 })
+          .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: existingCount + 1 })
           .select().single();
         if (aErr) throw new Error(aErr.message);
         article = newArticle;
-        pending.count = articleCount + 1;
-        console.log('VK debounce: existing session from DB', session.token);
+        console.log('VK debounce: existing session from DB', session.token, 'base articles:', existingCount);
       } else {
         const token = vkToken();
         const { data: newSession, error: sErr } = await supabase.from('vk_sessions')
@@ -796,7 +795,7 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
         console.log('VK debounce: new session created', session.token);
       }
 
-      // Session-Daten in Map eintragen – jetzt können wartende Requests weitermachen
+      // Session-Daten setzen – wartende Requests können jetzt weitermachen
       pending.sessionId = session.id;
       pending.sessionToken = session.token;
       vkPendingWA.set(phone, pending);
@@ -808,31 +807,32 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
       await supabase.from('vk_photos').insert({
         article_id: article.id, session_id: session.id,
         storage_path: saved.path, public_url: saved.url,
-        source: 'whatsapp', sort_order: pending.count
+        source: 'whatsapp', sort_order: pending.batchCount
       });
     } catch(e) { console.error('Photo save error:', e.message); }
 
-    // ── Debounce Timer: WA erst nach 5s Stille senden ──
+    // ── Debounce Timer: clearTimeout HIER (direkt vor neuem Timer) ──
     const link = 'https://converdino.com/bericht.html?s=' + pending.sessionToken;
     const allLink = 'https://converdino.com/auftraege.html?p=' + encodeURIComponent(phone);
 
+    clearTimeout(pending.timer); // immer alten Timer löschen bevor neuer gesetzt wird
     const timer = setTimeout(async () => {
       const final = vkPendingWA.get(phone);
       vkPendingWA.delete(phone);
-      const count = final ? final.count : pending.count;
+      const batchCount = final ? final.batchCount : pending.batchCount;
       let msg;
-      if (count === 1) {
+      if (batchCount === 1) {
         msg = '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link +
               '\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen' +
               '\n\n📂 Alle Aufträge:\n' + allLink;
       } else {
-        msg = '✅ ' + count + ' Fotos erhalten! Dein Auftrag hat ' + count + ' Artikel.\n\n' +
+        msg = '✅ ' + batchCount + ' Fotos erhalten! Dein Auftrag hat ' + batchCount + ' neue Artikel.\n\n' +
               '🔗 Hier zum Auftrag:\n' + link +
               '\n\nFotos prüfen, weitere hinzufügen oder Bericht bestellen.' +
               '\n\n📂 Alle Aufträge:\n' + allLink;
       }
       await sendWhatsApp(pending.merchantId, '+' + phone.replace(/[^0-9]/g,''), msg);
-      console.log('VK debounce: WA sent for', phone, 'total:', count);
+      console.log('VK debounce: WA sent for', phone, 'batch:', batchCount);
     }, 5000);
 
     pending.timer = timer;
