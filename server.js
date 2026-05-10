@@ -1863,7 +1863,7 @@ app.post('/api/vk/checkout', async (req, res) => {
 
     // Gutschein anwenden wenn vorhanden
     const couponCode = req.body.coupon_code;
-    let finalPrice = price;
+    
     if (couponCode) {
       const { data: coupon } = await supabase.from('vk_coupons')
         .select('*').eq('code', couponCode.toUpperCase()).single();
