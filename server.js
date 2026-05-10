@@ -2218,9 +2218,8 @@ app.post('/api/vk/coupon/redeem', async (req, res) => {
     const articles = (session.vk_articles||[]).map(a => ({...a, photo_count: (a.vk_photos||[]).length}));
     const price = vkCalcPrice(articles);
     let finalPrice = price;
-    if (coupon.type === 'percent') finalPrice = Math.max(0, price - Math.round(price * coupon.value / 100 * 100) / 100);
-    else if (coupon.type === 'fixed') finalPrice = Math.max(0, price - coupon.value);
-    else if (coupon.type === 'free') finalPrice = 0;
+    const { discount: disc, isFree: free } = vkCalcDiscount(coupon, price);
+const finalPrice = free ? 0 : Math.max(0, price - disc);
 
     // Coupon Nutzung erhöhen
     await supabase.from('vk_coupons').update({ used_count: (coupon.used_count||0) + 1 }).eq('id', coupon.id);
