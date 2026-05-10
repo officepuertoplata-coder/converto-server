@@ -1560,7 +1560,25 @@ function vkCalcPrice(articles) {
   }
   return Math.round(total * 100) / 100;
 }
+// ── COUPON RABATT BERECHNEN (BUGFIX) ──────────────────────
+function vkCalcDiscount(coupon, price) {
+  let discount = 0;
+  let isFree   = false;
+  const val    = parseFloat(coupon.value) || 0;
 
+  if (coupon.type === 'percent') {
+    discount = Math.round((price * val / 100) * 100) / 100;
+    discount = Math.min(discount, price);
+  } else if (coupon.type === 'fixed') {
+    discount = Math.min(val, price);
+  } else if (coupon.type === 'free') {
+    discount = price;
+    isFree   = true;
+  }
+
+  if (!isFree && discount >= price) isFree = true;
+  return { discount, isFree };
+}
 // Token generieren
 function vkToken() {
   return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
