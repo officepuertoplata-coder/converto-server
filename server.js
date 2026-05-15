@@ -497,12 +497,24 @@ app.get('/api/vk/pdf/:token', async (req, res) => {
     let body = '';
     (articles || []).forEach(function(a, i) {
       const an = a.analysis || {};
+      const photos = a.vk_photos || [];
       if (!an.title_short) return;
+
       body += `<div class="article">
         <h2>${i+1}. ${esc(a.title || 'Artikel')}</h2>`;
+
+      // Fotos einbinden
+      if (photos.length > 0) {
+        body += `<div class="photos">`;
+        photos.forEach(function(p) {
+          body += `<img src="${p.public_url}" alt="Produktfoto">`;
+        });
+        body += `</div>`;
+      }
+
       if (an.title_short) body += `<p><strong>Kurztitel:</strong> ${esc(an.title_short)}</p>`;
       if (an.title_long)  body += `<p><strong>Ausführlicher Titel:</strong> ${esc(an.title_long)}</p>`;
-      if (an.price_recommended) body += `<p><strong>Empfohlener Preis:</strong> €${an.price_recommended} (Min: €${an.price_min||0} / Max: €${an.price_max||0})</p>`;
+      if (an.price_recommended) body += `<p><strong>Empfohlener Preis:</strong> €${an.price_recommended} &nbsp;|&nbsp; Min: €${an.price_min||0} &nbsp;|&nbsp; Max: €${an.price_max||0}</p>`;
       if (an.short_desc) body += `<p><strong>Kurzbeschreibung:</strong><br>${esc(an.short_desc)}</p>`;
       if (an.long_desc)  body += `<p><strong>Beschreibung:</strong><br>${esc(an.long_desc)}</p>`;
       if (an.bullet_points && an.bullet_points.length) {
@@ -513,6 +525,11 @@ app.get('/api/vk/pdf/:token', async (req, res) => {
       if (an.keywords && an.keywords.length) body += `<p><strong>Keywords:</strong> ${esc(an.keywords.join(', '))}</p>`;
       if (an.condition) body += `<p><strong>Zustand:</strong> ${esc(an.condition)}</p>`;
       if (an.price_reasoning) body += `<p><strong>Preisbegründung:</strong> ${esc(an.price_reasoning)}</p>`;
+      if (an.tips && an.tips.length) {
+        body += `<p><strong>Verkaufstipps:</strong></p><ul>`;
+        an.tips.forEach(t => { body += `<li>${esc(t)}</li>`; });
+        body += `</ul>`;
+      }
       body += `</div>`;
     });
 
@@ -527,7 +544,9 @@ app.get('/api/vk/pdf/:token', async (req, res) => {
   .article{border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;page-break-inside:avoid;}
   .meta{color:#6b7280;font-size:11px;margin-bottom:16px;}
   .print-btn{background:#2d7a4f;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;margin-bottom:20px;}
-  @media print{.print-btn{display:none;}}
+  .photos{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px;}
+  .photos img{width:160px;height:160px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;}
+  @media print{.print-btn{display:none;} .photos img{width:140px;height:140px;} .article{page-break-inside:avoid;}}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨️ Als PDF drucken / speichern</button>
 <h1>📊 Verkaufsreport</h1>
