@@ -564,6 +564,70 @@ ${body}
 });
 
 
+
+// ═══════════════════════════════════════════════════════════
+// BUSINESS DISCOUNTS (Firmen-Rabatte)
+// ═══════════════════════════════════════════════════════════
+
+app.get('/api/vk/admin/business-discounts', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_business_discounts')
+      .select('*').order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/vk/admin/business-discounts', async (req, res) => {
+  try {
+    const { company_name, phone, discount_percent, valid_until, max_uses, notes } = req.body;
+    if (!company_name || !phone || !discount_percent)
+      return res.status(400).json({ error: 'company_name, phone und discount_percent erforderlich' });
+    const cleanPhone = phone.replace(/[^0-9+]/g, '');
+    const { data, error } = await supabase.from('vk_business_discounts').insert({
+      company_name, phone: cleanPhone,
+      discount_percent: parseInt(discount_percent),
+      valid_until: valid_until || null,
+      max_uses: max_uses || null,
+      notes: notes || null,
+      active: true, used_count: 0
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, discount: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/vk/admin/business-discounts/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_business_discounts')
+      .update(req.body).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, discount: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/vk/admin/business-discounts/:id', async (req, res) => {
+  try {
+    await supabase.from('vk_business_discounts').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Session: Business-Rabatt Info abrufen
+app.get('/api/vk/session/:token/discount', async (req, res) => {
+  try {
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('business_discount_pct, business_discount_id').eq('token', req.params.token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    if (session.business_discount_pct) {
+      const { data: bd } = await supabase.from('vk_business_discounts')
+        .select('company_name, discount_percent').eq('id', session.business_discount_id).single();
+      return res.json({ has_discount: true, percent: session.business_discount_pct, company: bd?.company_name });
+    }
+    res.json({ has_discount: false });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════
 // CRON CLEANUP ENDPOINT – wird von Railway Cron aufgerufen
 // ═══════════════════════════════════════════════════════════
@@ -777,11 +841,30 @@ app.post('/api/vk/checkout', async (req, res) => {
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     const couponCode = req.body.coupon_code;
     let finalPrice = price;
-    if (couponCode) {
+    let discountLabel = null;
+
+    // Business-Rabatt prüfen (hat Vorrang vor Gutschein)
+    if (session.business_discount_pct && session.business_discount_pct > 0) {
+      const pct = session.business_discount_pct;
+      const disc = Math.round(price * pct / 100 * 100) / 100;
+      finalPrice = Math.max(0.50, price - disc);
+      discountLabel = pct + '% Firmenrabatt';
+      // Nutzungszähler erhöhen
+      if (session.business_discount_id) {
+        await supabase.from('vk_business_discounts')
+          .update({ used_count: supabase.rpc ? undefined : undefined })
+          .eq('id', session.business_discount_id);
+        // Einfacher Counter-Update
+        const { data: bd } = await supabase.from('vk_business_discounts').select('used_count').eq('id', session.business_discount_id).single();
+        if (bd) await supabase.from('vk_business_discounts').update({ used_count: (bd.used_count||0) + 1 }).eq('id', session.business_discount_id);
+      }
+      console.log('Business discount applied at checkout:', pct + '%', 'price:', price, '->', finalPrice);
+    } else if (couponCode) {
       const { data: coupon } = await supabase.from('vk_coupons').select('*').eq('code', couponCode.toUpperCase()).single();
       if (coupon && coupon.active) {
         const { discount: couponDisc } = vkCalcDiscount(coupon, price);
         finalPrice = Math.max(0.50, price - couponDisc);
+        discountLabel = 'Gutschein ' + couponCode;
         await supabase.from('vk_coupons').update({ used_count: (coupon.used_count||0) + 1 }).eq('id', coupon.id);
       }
     }
@@ -913,6 +996,23 @@ async function vkSendWhatsApp(phone, message) {
   } catch(e) { console.error('vkSendWhatsApp error:', e.message); }
 }
 
+
+// ── BUSINESS RABATT: Telefonnummer prüfen ─────────────────
+async function vkGetBusinessDiscount(phone) {
+  try {
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const { data } = await supabase.from('vk_business_discounts')
+      .select('*')
+      .eq('active', true)
+      .or('phone.eq.'+cleanPhone+',phone.eq.+'+cleanPhone)
+      .single();
+    if (!data) return null;
+    if (data.valid_until && new Date(data.valid_until) < new Date()) return null;
+    if (data.max_uses && data.used_count >= data.max_uses) return null;
+    return data;
+  } catch(e) { return null; }
+}
+
 // In-Memory Debounce Map: phone → { timer, sessionId, sessionToken, batchCount, merchantId }
 const vkPendingWA = new Map();
 
@@ -969,8 +1069,16 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
         console.log('VK debounce: existing session from DB', session.token, 'base articles:', existingCount);
       } else {
         const token = vkToken();
+        // Business-Rabatt prüfen
+        const bizDiscount = await vkGetBusinessDiscount(phone);
+        const sessionInsert = { phone, token, status: 'open' };
+        if (bizDiscount) {
+          sessionInsert.business_discount_id = bizDiscount.id;
+          sessionInsert.business_discount_pct = bizDiscount.discount_percent;
+          console.log('Business discount applied:', bizDiscount.discount_percent + '%', 'for', phone);
+        }
         const { data: newSession, error: sErr } = await supabase.from('vk_sessions')
-          .insert({ phone, token, status: 'open' }).select().single();
+          .insert(sessionInsert).select().single();
         if (sErr) throw new Error(sErr.message);
         session = newSession;
         const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
