@@ -482,6 +482,68 @@ app.post('/api/vk/check-payment', async (req, res) => {
 // START
 // ═══════════════════════════════════════════════════════════
 
+
+// ── PDF EXPORT: print-optimiertes HTML ────────────────────────
+app.get('/api/vk/pdf/:token', async (req, res) => {
+  try {
+    const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', req.params.token).single();
+    if (!session) return res.status(404).send('Session nicht gefunden');
+
+    const { data: articles } = await supabase.from('vk_articles')
+      .select('*, vk_photos(*)').eq('session_id', session.id).order('sort_order', { ascending: true });
+
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    let body = '';
+    (articles || []).forEach(function(a, i) {
+      const an = a.analysis || {};
+      if (!an.title_short) return;
+      body += `<div class="article">
+        <h2>${i+1}. ${esc(a.title || 'Artikel')}</h2>`;
+      if (an.title_short) body += `<p><strong>Kurztitel:</strong> ${esc(an.title_short)}</p>`;
+      if (an.title_long)  body += `<p><strong>Ausführlicher Titel:</strong> ${esc(an.title_long)}</p>`;
+      if (an.price_recommended) body += `<p><strong>Empfohlener Preis:</strong> €${an.price_recommended} (Min: €${an.price_min||0} / Max: €${an.price_max||0})</p>`;
+      if (an.short_desc) body += `<p><strong>Kurzbeschreibung:</strong><br>${esc(an.short_desc)}</p>`;
+      if (an.long_desc)  body += `<p><strong>Beschreibung:</strong><br>${esc(an.long_desc)}</p>`;
+      if (an.bullet_points && an.bullet_points.length) {
+        body += `<p><strong>Highlights:</strong></p><ul>`;
+        an.bullet_points.forEach(b => { body += `<li>${esc(b)}</li>`; });
+        body += `</ul>`;
+      }
+      if (an.keywords && an.keywords.length) body += `<p><strong>Keywords:</strong> ${esc(an.keywords.join(', '))}</p>`;
+      if (an.condition) body += `<p><strong>Zustand:</strong> ${esc(an.condition)}</p>`;
+      if (an.price_reasoning) body += `<p><strong>Preisbegründung:</strong> ${esc(an.price_reasoning)}</p>`;
+      body += `</div>`;
+    });
+
+    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<title>Verkaufsreport ${esc(session.phone)}</title>
+<style>
+  body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;font-size:13px;line-height:1.5;}
+  h1{color:#2d7a4f;border-bottom:2px solid #2d7a4f;padding-bottom:8px;margin-bottom:20px;}
+  h2{color:#1b4332;margin:20px 0 8px;font-size:15px;border-left:4px solid #25D366;padding-left:10px;}
+  p{margin:4px 0;}
+  ul{margin:4px 0 8px 20px;}
+  .article{border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;page-break-inside:avoid;}
+  .meta{color:#6b7280;font-size:11px;margin-bottom:16px;}
+  .print-btn{background:#2d7a4f;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;margin-bottom:20px;}
+  @media print{.print-btn{display:none;}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Als PDF drucken / speichern</button>
+<h1>📊 Verkaufsreport</h1>
+<div class="meta">Telefon: ${esc(session.phone)} · Erstellt: ${new Date(session.created_at).toLocaleDateString('de-AT')} · ${(articles||[]).length} Artikel</div>
+${body}
+<script>
+  // Automatisch Druckdialog öffnen
+  // window.onload = function() { window.print(); }
+</script>
+</body></html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch(e) { res.status(500).send('Fehler: ' + e.message); }
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
 });
@@ -491,12 +553,14 @@ app.listen(PORT, () => {
 // ═══════════════════════════════════════════════════════════
 
 function vkCalcPrice(articles) {
-  let total = 1.00;
+  let total = 1.00; // Grundpreis pro Auftrag
   for (const a of articles) {
-    total += 1.00;
-    const extraPhotos = Math.max(0, (a.photo_count || 1) - 1);
-    total += extraPhotos * 0.25;
-    if (a.extended) total += 1.00;
+    const photoCount = a.photo_count || (a.vk_photos || []).length || 0;
+    if (photoCount > 0) {
+      total += 1.00;                              // 1. Foto = 1€
+      total += Math.max(0, photoCount - 1) * 0.25; // weitere Fotos 0.25€
+    }
+    if (a.extended) total += 1.00; // 7-Tage Speicherung
   }
   return Math.round(total * 100) / 100;
 }
@@ -685,9 +749,29 @@ app.get('/api/vk/admin/stats', async (req, res) => {
   try {
     const { data: sessions } = await supabase.from('vk_sessions').select('*');
     const all = sessions || [];
-    const today = new Date(); today.setHours(0,0,0,0);
-    const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    res.json({ total: all.length, today: all.filter(s => new Date(s.created_at) >= today).length, this_month: all.filter(s => new Date(s.created_at) >= thisMonth).length, revenue_total: all.filter(s => s.paid_at).reduce((t, s) => t + (parseFloat(s.total_price) || 0), 0), revenue_month: all.filter(s => s.paid_at && new Date(s.paid_at) >= thisMonth).reduce((t, s) => t + (parseFloat(s.total_price) || 0), 0), by_status: { open: all.filter(s => s.status === 'open').length, paid: all.filter(s => s.status === 'paid').length, analyzing: all.filter(s => s.status === 'analyzing').length, done: all.filter(s => s.status === 'done').length, expired: all.filter(s => s.status === 'expired').length } });
+    const now = new Date();
+    const h24  = new Date(now.getTime() - 24  * 60 * 60 * 1000);
+    const d30  = new Date(now.getTime() - 30  * 24 * 60 * 60 * 1000);
+    const d365 = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+    // Derzeit gültige Aufträge: delete_at in der Zukunft ODER kein delete_at, und nicht gelöscht
+    const valid = all.filter(s => s.status !== 'deleted' && s.status !== 'expired' &&
+      (!s.delete_at || new Date(s.delete_at) > now)).length;
+
+    res.json({
+      total:           all.length,
+      valid:           valid,
+      last_24h:        all.filter(s => new Date(s.created_at) >= h24).length,
+      revenue_24h:     all.filter(s => s.paid_at && new Date(s.paid_at) >= h24 ).reduce((t,s) => t+(parseFloat(s.total_price)||0),0),
+      revenue_30d:     all.filter(s => s.paid_at && new Date(s.paid_at) >= d30 ).reduce((t,s) => t+(parseFloat(s.total_price)||0),0),
+      revenue_365d:    all.filter(s => s.paid_at && new Date(s.paid_at) >= d365).reduce((t,s) => t+(parseFloat(s.total_price)||0),0),
+      by_status: {
+        open:      all.filter(s => s.status === 'open').length,
+        analyzing: all.filter(s => s.status === 'analyzing').length,
+        done:      all.filter(s => s.status === 'done').length,
+        expired:   all.filter(s => s.status === 'expired').length,
+      }
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
