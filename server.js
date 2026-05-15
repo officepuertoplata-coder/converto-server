@@ -556,7 +556,7 @@ app.post('/api/vk/session', async (req, res) => {
     const token = vkToken();
     const { data: session, error: sErr } = await supabase.from('vk_sessions').insert({ phone, token, customer_name: customer_name || null, status: 'open' }).select().single();
     if (sErr) return res.status(400).json({ error: sErr.message });
-    const { data: article, error: aErr } = await supabase.from('vk_articles').insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000) }).select().single();
+    const { data: article, error: aErr } = await supabase.from('vk_articles').insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), extended: false }).select().single();
     if (aErr) return res.status(400).json({ error: aErr.message });
     let photoUrl = null;
     if (media_id) { try { const saved = await vkSaveWhatsAppImage(media_id, session.id, article.id, 1); await supabase.from('vk_photos').insert({ article_id: article.id, session_id: session.id, storage_path: saved.path, public_url: saved.url, source: 'whatsapp', sort_order: 1 }); photoUrl = saved.url; } catch(e) { console.error('Photo save error:', e.message); } }
@@ -578,7 +578,7 @@ app.get('/api/vk/session/:token', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/vk/article', async (req, res) => { try { const { token, title } = req.body; const { data: session } = await supabase.from('vk_sessions').select('id').eq('token', token).single(); if (!session) return res.status(404).json({ error: 'Session nicht gefunden' }); const { data: count } = await supabase.from('vk_articles').select('id', { count: 'exact' }).eq('session_id', session.id); if ((count?.length || 0) >= 20) return res.status(400).json({ error: 'Maximal 20 Artikel' }); const { data, error } = await supabase.from('vk_articles').insert({ session_id: session.id, title: title || 'Neuer Artikel', sort_order: (count?.length || 0) + 1 }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, article: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
+app.post('/api/vk/article', async (req, res) => { try { const { token, title } = req.body; const { data: session } = await supabase.from('vk_sessions').select('id').eq('token', token).single(); if (!session) return res.status(404).json({ error: 'Session nicht gefunden' }); const { data: count } = await supabase.from('vk_articles').select('id', { count: 'exact' }).eq('session_id', session.id); if ((count?.length || 0) >= 20) return res.status(400).json({ error: 'Maximal 20 Artikel' }); const { data, error } = await supabase.from('vk_articles').insert({ session_id: session.id, title: title || 'Neuer Artikel', sort_order: (count?.length || 0) + 1, extended: false }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, article: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.put('/api/vk/article/:id/notes', async (req, res) => { try { const { notes } = req.body; const { data, error } = await supabase.from('vk_articles').update({ notes: notes || null }).eq('id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, article: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.delete('/api/vk/article/:id', async (req, res) => { try { const { error } = await supabase.from('vk_articles').delete().eq('id', req.params.id); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true }); } catch(e) { res.status(500).json({ error: e.message }); } });
 
@@ -706,8 +706,12 @@ setInterval(async () => {
     const now = new Date().toISOString();
     const { data: expired } = await supabase.from('vk_sessions').select('id').lte('delete_at', now).neq('status', 'deleted');
     for (const s of (expired || [])) {
+      // Fotos aus Storage löschen
       const { data: photos } = await supabase.from('vk_photos').select('storage_path').eq('session_id', s.id);
       if (photos?.length) await supabase.storage.from('vk-photos').remove(photos.map(p => p.storage_path));
+      // DB-Einträge löschen
+      await supabase.from('vk_photos').delete().eq('session_id', s.id);
+      await supabase.from('vk_articles').delete().eq('session_id', s.id);
       await supabase.from('vk_sessions').update({ status: 'deleted' }).eq('id', s.id);
       console.log('VK session auto-deleted:', s.id);
     }
@@ -751,7 +755,7 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
       session = { id: pending.sessionId, token: pending.sessionToken };
 
       const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.sessionArticleBase + pending.batchCount })
+        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.sessionArticleBase + pending.batchCount, extended: false })
         .select().single();
       if (aErr) throw new Error(aErr.message);
       article = newArticle;
@@ -776,7 +780,7 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
         const existingCount = (existingSession.vk_articles || []).length;
         pending.sessionArticleBase = existingCount; // vorhandene Artikel merken
         const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-          .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: existingCount + 1 })
+          .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: existingCount + 1, extended: false })
           .select().single();
         if (aErr) throw new Error(aErr.message);
         article = newArticle;
