@@ -544,6 +544,75 @@ ${body}
   } catch(e) { res.status(500).send('Fehler: ' + e.message); }
 });
 
+
+// ═══════════════════════════════════════════════════════════
+// CRON CLEANUP ENDPOINT – wird von Railway Cron aufgerufen
+// ═══════════════════════════════════════════════════════════
+app.post('/api/vk/cron/cleanup', async (req, res) => {
+  // Secret-Key Schutz
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const now = new Date();
+    const nowIso = now.toISOString();
+    let deleted = 0, fixed = 0;
+
+    // ── SCHRITT 1: Sessions mit delete_at = NULL reparieren ──
+    // Fertige Sessions ohne delete_at → delete_at setzen
+    const { data: nullSessions } = await supabase.from('vk_sessions')
+      .select('id, status, created_at, analyzed_at, extended')
+      .is('delete_at', null)
+      .neq('status', 'deleted');
+
+    for (const s of (nullSessions || [])) {
+      let baseDate = s.analyzed_at ? new Date(s.analyzed_at) : new Date(s.created_at);
+      let days = s.extended ? 7 : 3;
+
+      // Offene Sessions die älter als 48h sind → 48h Frist ab Erstellung
+      if (s.status === 'open') {
+        baseDate = new Date(s.created_at);
+        days = 2; // 48 Stunden
+      }
+
+      const deleteAt = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+      await supabase.from('vk_sessions')
+        .update({ delete_at: deleteAt.toISOString() })
+        .eq('id', s.id);
+      fixed++;
+    }
+
+    // ── SCHRITT 2: Abgelaufene Sessions löschen ──────────────
+    const { data: expired } = await supabase.from('vk_sessions')
+      .select('id')
+      .lte('delete_at', nowIso)
+      .neq('status', 'deleted');
+
+    for (const s of (expired || [])) {
+      // Fotos aus Storage löschen
+      const { data: photos } = await supabase.from('vk_photos')
+        .select('storage_path').eq('session_id', s.id);
+      if (photos?.length) {
+        await supabase.storage.from('vk-photos').remove(photos.map(p => p.storage_path));
+      }
+      // DB bereinigen
+      await supabase.from('vk_photos').delete().eq('session_id', s.id);
+      await supabase.from('vk_articles').delete().eq('session_id', s.id);
+      await supabase.from('vk_sessions').update({ status: 'deleted' }).eq('id', s.id);
+      deleted++;
+    }
+
+    console.log(`Cron cleanup: ${fixed} fixed, ${deleted} deleted`);
+    res.json({ success: true, fixed, deleted, timestamp: nowIso });
+
+  } catch(e) {
+    console.error('Cron cleanup error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
 });
