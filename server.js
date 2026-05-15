@@ -579,7 +579,17 @@ app.get('/api/vk/session/:token', async (req, res) => {
 });
 
 app.post('/api/vk/article', async (req, res) => { try { const { token, title } = req.body; const { data: session } = await supabase.from('vk_sessions').select('id').eq('token', token).single(); if (!session) return res.status(404).json({ error: 'Session nicht gefunden' }); const { data: count } = await supabase.from('vk_articles').select('id', { count: 'exact' }).eq('session_id', session.id); if ((count?.length || 0) >= 20) return res.status(400).json({ error: 'Maximal 20 Artikel' }); const { data, error } = await supabase.from('vk_articles').insert({ session_id: session.id, title: title || 'Neuer Artikel', sort_order: (count?.length || 0) + 1, extended: false }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, article: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
-app.put('/api/vk/article/:id/notes', async (req, res) => { try { const { notes } = req.body; const { data, error } = await supabase.from('vk_articles').update({ notes: notes || null }).eq('id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, article: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
+app.put('/api/vk/article/:id/notes', async (req, res) => {
+  try {
+    const { notes, title } = req.body;
+    const updates = {};
+    if (notes !== undefined) updates.notes = notes || null;
+    if (title !== undefined && title.trim()) updates.title = title.trim();
+    const { data, error } = await supabase.from('vk_articles').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, article: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 app.delete('/api/vk/article/:id', async (req, res) => { try { const { error } = await supabase.from('vk_articles').delete().eq('id', req.params.id); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true }); } catch(e) { res.status(500).json({ error: e.message }); } });
 
 app.post('/api/vk/photo', async (req, res) => {
