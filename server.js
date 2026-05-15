@@ -613,17 +613,38 @@ app.delete('/api/vk/admin/business-discounts/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Session: Business-Rabatt Info abrufen
+// Session: Business-Rabatt Info abrufen – immer frisch aus vk_business_discounts
 app.get('/api/vk/session/:token/discount', async (req, res) => {
   try {
     const { data: session } = await supabase.from('vk_sessions')
-      .select('business_discount_pct, business_discount_id').eq('token', req.params.token).single();
+      .select('phone, business_discount_id').eq('token', req.params.token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
-    if (session.business_discount_pct) {
+
+    // Direkt via business_discount_id laden (aktueller Wert)
+    if (session.business_discount_id) {
       const { data: bd } = await supabase.from('vk_business_discounts')
-        .select('company_name, discount_percent').eq('id', session.business_discount_id).single();
-      return res.json({ has_discount: true, percent: session.business_discount_pct, company: bd?.company_name });
+        .select('company_name, discount_percent, active, valid_until, max_uses, used_count')
+        .eq('id', session.business_discount_id).single();
+      if (bd && bd.active) {
+        const isExpired = bd.valid_until && new Date(bd.valid_until) < new Date();
+        const isFull = bd.max_uses && bd.used_count >= bd.max_uses;
+        if (!isExpired && !isFull) {
+          // Session-Wert auch aktualisieren
+          await supabase.from('vk_sessions').update({ business_discount_pct: bd.discount_percent }).eq('token', req.params.token);
+          return res.json({ has_discount: true, percent: bd.discount_percent, company: bd.company_name });
+        }
+      }
     }
+
+    // Fallback: Telefonnummer prüfen (falls business_discount_id nicht gesetzt)
+    if (session.phone) {
+      const bd = await vkGetBusinessDiscount(session.phone);
+      if (bd) {
+        await supabase.from('vk_sessions').update({ business_discount_id: bd.id, business_discount_pct: bd.discount_percent }).eq('token', req.params.token);
+        return res.json({ has_discount: true, percent: bd.discount_percent, company: bd.company_name });
+      }
+    }
+
     res.json({ has_discount: false });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
