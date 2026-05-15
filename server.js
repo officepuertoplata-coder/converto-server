@@ -628,6 +628,61 @@ app.get('/api/vk/session/:token/discount', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── BUSINESS FREE: 100% Firmenrabatt → direkt analysieren ──
+app.post('/api/vk/business-free', async (req, res) => {
+  try {
+    const { token } = req.body;
+    const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    // Prüfen ob wirklich 100% Business Rabatt
+    if (!session.business_discount_pct || session.business_discount_pct < 100) {
+      return res.status(400).json({ error: 'Kein 100% Firmenrabatt auf dieser Session' });
+    }
+
+    const now = new Date();
+    await supabase.from('vk_sessions').update({
+      status: 'analyzing',
+      paid_at: now.toISOString(),
+      total_price: 0
+    }).eq('id', session.id);
+
+    // Nutzungszähler des Business-Rabatts erhöhen
+    if (session.business_discount_id) {
+      const { data: bd } = await supabase.from('vk_business_discounts').select('used_count').eq('id', session.business_discount_id).single();
+      if (bd) await supabase.from('vk_business_discounts').update({ used_count: (bd.used_count||0) + 1 }).eq('id', session.business_discount_id);
+    }
+
+    res.json({ success: true, status: 'analyzing' });
+
+    // Analyse im Hintergrund
+    (async () => {
+      try {
+        const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+        for (const article of (articles || [])) {
+          if (!(article.vk_photos || []).length) continue;
+          const analysis = await vkAnalyzeArticle(article, article.vk_photos);
+          await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+        }
+        const anyExtended = (articles || []).some(a => a.extended);
+        const days = anyExtended ? 7 : 3;
+        await supabase.from('vk_sessions').update({
+          status: 'done',
+          analyzed_at: new Date().toISOString(),
+          delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
+        }).eq('id', session.id);
+        const link = `https://converdino.com/ergebnis.html?s=${token}`;
+        await vkSendWhatsApp(session.phone, `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\n${link}\n\n🗑️ Wird in ${days} Tagen gelöscht.`);
+      } catch(e) {
+        console.error('Business-free analysis error:', e.message);
+        await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
+      }
+    })();
+
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════
 // CRON CLEANUP ENDPOINT – wird von Railway Cron aufgerufen
 // ═══════════════════════════════════════════════════════════
