@@ -829,54 +829,25 @@ async function vkMarketSearch(productTitle, phone) {
     const fetch = require('node-fetch');
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const isDE = cleanPhone.startsWith('49');
-    const country = isDE ? 'DE' : 'AT';
-    const platforms = isDE
-      ? 'eBay Kleinanzeigen (kleinanzeigen.de), Shpock Deutschland'
-      : 'Willhaben (willhaben.at), eBay.at, Shpock Österreich';
-    const region = isDE ? 'Deutschland' : 'Österreich';
-
+    const region = isDE ? 'Deutschland' : 'Oesterreich';
+    const platforms = isDE ? 'eBay Kleinanzeigen (kleinanzeigen.de), Shpock Deutschland' : 'Willhaben (willhaben.at), eBay.at, Shpock Oesterreich';
+    const prompt = 'Suche nach aktuellen Vergleichsangeboten fuer "' + productTitle + '" auf ' + platforms + ' (nur ' + region + '). Erstelle JSON: {"found":true/false,"platform":"z.B. Willhaben","listings_count":0,"price_range_min":0,"price_range_max":0,"price_avg":0,"assessment":"Kurze Einschaetzung","note":""}. Wenn nichts gefunden: found:false, note: Derzeit keine vergleichbaren Angebote in ' + region + ' gefunden.';
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json'
-      },
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-opus-4-5',
         max_tokens: 1000,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: 'Du bist ein Marktanalyse-Experte fuer Online-Kleinanzeigen in ' + region + '. Antworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',
-        messages: [{
-          role: 'user',
-          content: 'Suche nach aktuellen Vergleichsangeboten fuer "' + productTitle + '" auf ' + platforms + ' (nur ' + region + ', keine internationalen Ergebnisse).
-
-Erstelle folgendes JSON:
-{
-  "found": true/false,
-  "platform": "Plattform wo gefunden z.B. Willhaben",
-  "listings_count": 0,
-  "price_range_min": 0,
-  "price_range_max": 0,
-  "price_avg": 0,
-  "assessment": "Kurze Einschaetzung (1 Satz)",
-  "note": ""
-}
-
-Wenn nichts gefunden: found:false, note:"Derzeit keine vergleichbaren Angebote in ' + region + ' gefunden."'
-        }]
+        system: 'Du bist Marktanalyse-Experte fuer Online-Kleinanzeigen in ' + region + '. Antworte NUR mit validem JSON, kein Markdown.',
+        messages: [{ role: 'user', content: prompt }]
       })
     });
-
     const data = await response.json();
     const textBlock = (data.content || []).find(function(b) { return b.type === 'text'; });
     if (!textBlock || !textBlock.text) return { found: false, note: 'Derzeit keine vergleichbaren Angebote in ' + region + ' gefunden.' };
-
-    try {
-      return JSON.parse(textBlock.text.replace(/```json|```/g, '').trim());
-    } catch(e) {
-      return { found: false, note: 'Derzeit keine vergleichbaren Angebote in ' + region + ' gefunden.' };
-    }
+    try { return JSON.parse(textBlock.text.replace(/```json|```/g, '').trim()); }
+    catch(e) { return { found: false, note: 'Derzeit keine vergleichbaren Angebote in ' + region + ' gefunden.' }; }
   } catch(e) {
     console.error('vkMarketSearch error:', e.message);
     return { found: false, note: 'Marktvergleich temporaer nicht verfuegbar.' };
