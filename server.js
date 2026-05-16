@@ -454,6 +454,7 @@ app.post('/api/vk/check-payment', async (req, res) => {
             if (!(article.vk_photos || []).length) continue;
             const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
             await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+            if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
           }
           const anyExtended = (articles || []).some(a => a.extended);
           const days = anyExtended ? 7 : 3;
@@ -685,6 +686,7 @@ app.post('/api/vk/business-free', async (req, res) => {
           if (!(article.vk_photos || []).length) continue;
           const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
           await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+          if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
         }
         const anyExtended = (articles || []).some(a => a.extended);
         const days = anyExtended ? 7 : 3;
@@ -864,14 +866,14 @@ async function vkMarketSearch(productTitle, phone) {
 async function vkAnalyzeArticle(article, photos, phone) {
   const fetch = require('node-fetch');
   const imageBlocks = photos.map(p => ({ type: 'image', source: { type: 'url', url: p.public_url } }));
-  const notesText = article.notes ? '\n\nZusatzinfos vom Verkäufer: ' + article.notes : '';
+  const notesText = article.notes ? '\n\nZusatzinfos vom Verkaeufer: ' + article.notes : '';
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-opus-4-5', max_tokens: 2000,
-      system: `Du bist ein Experte für Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht. Antworte NUR mit validem JSON, kein Markdown, keine Erklärungen.`,
-      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: `Analysiere dieses Produkt und erstelle folgendes JSON:\n{\n  "title_short": "Kurztitel (max 60 Zeichen, SEO-optimiert)",\n  "title_long": "Ausführlicher Titel mit Keywords",\n  "title_quick": "Quick-Sale Titel",\n  "short_desc": "2-3 Sätze Kurzbeschreibung",\n  "long_desc": "Ausführliche Beschreibung",\n  "bullet_points": ["Highlight 1", "Highlight 2", "Highlight 3"],\n  "price_min": 0, "price_max": 0, "price_recommended": 0,\n  "price_reasoning": "Begründung",\n  "condition": "Zustandsbeschreibung",\n  "keywords": ["keyword1", "keyword2"],\n  "tips": ["Verkaufstipp 1", "Verkaufstipp 2"],\n  "category": "Produktkategorie"\n}` + notesText }] }]
+      system: 'Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht. Antworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',
+      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: 'Analysiere dieses Produkt und erstelle folgendes JSON:\n{\n  "title_short": "Kurztitel (max 60 Zeichen, SEO-optimiert)",\n  "title_long": "Ausfuehrlicher Titel mit Keywords",\n  "title_quick": "Quick-Sale Titel",\n  "short_desc": "2-3 Saetze Kurzbeschreibung",\n  "long_desc": "Ausfuehrliche Beschreibung",\n  "bullet_points": ["Highlight 1", "Highlight 2", "Highlight 3"],\n  "price_min": 0, "price_max": 0, "price_recommended": 0,\n  "price_reasoning": "Begruendung",\n  "condition": "Zustandsbeschreibung",\n  "keywords": ["keyword1", "keyword2"],\n  "tips": ["Verkaufstipp 1", "Verkaufstipp 2"],\n  "category": "Produktkategorie"\n}' + notesText }] }]
     })
   });
   const data = await response.json();
@@ -879,20 +881,22 @@ async function vkAnalyzeArticle(article, photos, phone) {
   let analysis;
   try { analysis = JSON.parse(text.replace(/```json|```/g, '').trim()); }
   catch(e) { analysis = { title_short: 'Analyse fehlgeschlagen', error: e.message }; }
-
-  // Marktvergleich nur wenn Titel vorhanden
-  if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') {
-    try {
-      const market = await vkMarketSearch(analysis.title_short, phone || '');
-      analysis.market_comparison = market;
-      console.log('Market search done for:', analysis.title_short, '- found:', market.found);
-    } catch(e) {
-      console.error('Market search error:', e.message);
-      analysis.market_comparison = { found: false, note: 'Marktvergleich temporaer nicht verfuegbar.' };
-    }
-  }
-
   return analysis;
+}
+
+// Marktvergleich separat – wird NACH dem Speichern der Analyse aufgerufen
+async function vkRunMarketSearch(articleId, title, phone) {
+  try {
+    const market = await vkMarketSearch(title, phone || '');
+    const { data: current } = await supabase.from('vk_articles').select('analysis').eq('id', articleId).single();
+    if (current && current.analysis) {
+      const updated = Object.assign({}, current.analysis, { market_comparison: market });
+      await supabase.from('vk_articles').update({ analysis: updated }).eq('id', articleId);
+      console.log('Market search saved for article', articleId, '- found:', market.found);
+    }
+  } catch(e) {
+    console.error('vkRunMarketSearch error:', e.message);
+  }
 }
 
 // ── VK ENDPOINTS ───────────────────────────────────────────
@@ -1022,7 +1026,7 @@ app.post('/api/vk/stripe-webhook', express.raw({ type: 'application/json' }), as
       (async () => {
         try {
           const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
-          for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); }
+          for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : (phone || '')).catch(function(e){console.error('Market bg:',e.message);}); } }
           const anyExtended = (articles || []).some(a => a.extended), days = anyExtended ? 7 : 3;
           await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
           const link = `https://converdino.com/ergebnis.html?s=${vkToken}`;
@@ -1086,7 +1090,7 @@ app.post('/api/vk/admin/analyze/:sessionId', async (req, res) => {
     res.json({ success: true, message: 'Analyse gestartet' });
     (async () => {
       const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
-      for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); }
+      for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : (phone || '')).catch(function(e){console.error('Market bg:',e.message);}); } }
       const anyExtended = (articles || []).some(a => a.extended), days = anyExtended ? 7 : 3;
       await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
       const link = `https://converdino.com/ergebnis.html?s=${session.token}`;
@@ -1308,7 +1312,7 @@ app.post('/api/vk/coupon/redeem', async (req, res) => {
       (async () => {
         try {
           const { data: arts } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
-          for (const article of (arts||[])) { if (!(article.vk_photos||[]).length) continue; const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : ''); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); }
+          for (const article of (arts||[])) { if (!(article.vk_photos||[]).length) continue; const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : ''); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); } }
           const anyExtended = (arts||[]).some(a => a.extended), days = anyExtended ? 7 : 3;
           await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
           await vkSendWhatsApp(session.phone, `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\nhttps://converdino.com/ergebnis.html?s=${token}\n\nWird in ${days} Tagen gelöscht.`);
