@@ -728,121 +728,267 @@ function vkGenerateSlug(title) {
 }
 
 // Produktseite HTML generieren
-function vkBuildLandingpageHTML(article, session, landingpage) {
+function vkBuildLandingpageHTML(article, session, lp) {
   const an = article.analysis || {};
   const photos = article.vk_photos || [];
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  const photoHTML = photos.map(p =>
-    '<img src="' + p.public_url + '" alt="' + esc(article.title) + '" style="width:100%;max-height:400px;object-fit:cover;border-radius:12px;margin-bottom:10px;">'
+  const price = parseFloat(lp.sale_price || an.price_recommended || 0);
+  const priceStr = price > 0 ? '€\u00a0' + price.toLocaleString('de-AT', {minimumFractionDigits:2,maximumFractionDigits:2}) : 'Preis auf Anfrage';
+
+  // Foto Gallery
+  const photoSlides = photos.map((p,i) =>
+    '<div class="slide' + (i===0?' active':'') + '" style="display:'+(i===0?'block':'none')+';">' +
+    '<img src="' + p.public_url + '" alt="' + esc(article.title||'Produkt') + ' Foto ' + (i+1) + '">' +
+    '</div>'
   ).join('');
 
-  const price = landingpage.sale_price || an.price_recommended || 0;
-  const priceMin = an.price_min || 0;
-  const priceMax = an.price_max || 0;
+  const photoDots = photos.length > 1 ? photos.map((_,i) =>
+    '<span class="dot' + (i===0?' active':'') + '" onclick="goSlide(' + i + ')"></span>'
+  ).join('') : '';
 
-  const deliveryHTML = [
-    landingpage.delivery_pickup ? '<div style="display:flex;align-items:center;gap:8px;padding:10px;background:#f0fdf4;border-radius:8px;margin-bottom:8px;"><span>🤝</span><div><strong>Selbstabholung</strong>' + (landingpage.pickup_location ? '<br><small style="color:#6b7280;">' + esc(landingpage.pickup_location) + '</small>' : '') + '</div></div>' : '',
-    landingpage.delivery_shipping ? '<div style="display:flex;align-items:center;gap:8px;padding:10px;background:#f0fdf4;border-radius:8px;margin-bottom:8px;"><span>📦</span><div><strong>Versand möglich</strong><br><small style="color:#6b7280;">Versandkosten: €' + (landingpage.shipping_cost||0).toFixed(2) + '</small></div></div>' : ''
-  ].filter(Boolean).join('');
+  const photoNav = photos.length > 1 ? '<button class="nav-btn nav-prev" onclick="changeSlide(-1)">&#8249;</button><button class="nav-btn nav-next" onclick="changeSlide(1)">&#8250;</button>' : '';
 
-  const bulletHTML = (an.bullet_points||[]).map(b =>
-    '<li style="padding:6px 0;border-bottom:1px solid #f3f4f6;">' + esc(b) + '</li>'
+  // Delivery
+  const deliveryItems = [];
+  if (lp.delivery_pickup) {
+    deliveryItems.push('<div class="delivery-item"><div class="delivery-icon">🤝</div><div><div class="delivery-title">Selbstabholung</div>' + (lp.pickup_location ? '<div class="delivery-sub">' + esc(lp.pickup_location) + '</div>' : '') + '</div></div>');
+  }
+  if (lp.delivery_shipping) {
+    deliveryItems.push('<div class="delivery-item"><div class="delivery-icon">📦</div><div><div class="delivery-title">Versand möglich</div><div class="delivery-sub">Versandkosten: €' + parseFloat(lp.shipping_cost||0).toFixed(2) + '</div></div></div>');
+  }
+
+  // Highlights
+  const bulletHTML = (an.bullet_points||[]).slice(0,6).map(b =>
+    '<li class="highlight-item"><span class="highlight-dot">✓</span><span>' + esc(b) + '</span></li>'
   ).join('');
 
-  const disclaimer = '<div style="background:#f9fafb;border-radius:8px;padding:12px;font-size:.75rem;color:#9ca3af;line-height:1.6;margin-top:20px;">Converdino ist ausschließlich Vermittler zwischen Käufer und Verkäufer. Vertragspartner des Kaufvertrags ist ausschließlich der Anbieter dieses Artikels. Converdino übernimmt keine Haftung für Produktbeschaffenheit, Lieferung oder Gewährleistungsansprüche.</div>';
+  // Keywords
+  const keywordHTML = (an.keywords||[]).slice(0,8).map(k =>
+    '<span class="tag">' + esc(k) + '</span>'
+  ).join('');
 
-  const botWidget = landingpage.has_bot ? `
-    <div id="chat-widget" style="position:fixed;bottom:24px;right:24px;z-index:1000;">
-      <button onclick="document.getElementById('chat-box').style.display=document.getElementById('chat-box').style.display==='none'?'flex':'none'" style="width:56px;height:56px;border-radius:50%;background:#25D366;border:none;cursor:pointer;font-size:24px;box-shadow:0 4px 12px rgba(37,211,102,.4);">💬</button>
-      <div id="chat-box" style="display:none;position:absolute;bottom:70px;right:0;width:320px;height:420px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.15);flex-direction:column;overflow:hidden;">
-        <div style="background:#25D366;color:#fff;padding:14px 16px;font-weight:800;">💬 Frage zum Artikel</div>
-        <div id="chat-msgs" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;"></div>
-        <div style="padding:10px;border-top:1px solid #f3f4f6;display:flex;gap:8px;">
-          <input id="chat-inp" placeholder="Deine Frage..." style="flex:1;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;outline:none;" onkeydown="if(event.key==='Enter')sendChat()">
-          <button onclick="sendChat()" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;">➤</button>
-        </div>
-      </div>
-    </div>
-    <script>
-    var chatHistory = [];
-    var articleContext = ${JSON.stringify({title: article.title, price, condition: an.condition, description: an.short_desc, pickup: landingpage.pickup_location, shipping: landingpage.delivery_shipping, shipping_cost: landingpage.shipping_cost})};
-    async function sendChat() {
-      var inp = document.getElementById('chat-inp');
-      var msg = inp.value.trim(); if (!msg) return;
-      inp.value = '';
-      addMsg('user', msg);
-      chatHistory.push({role:'user', content: msg});
-      var loadDiv = addMsg('ai', '...');
-      try {
-        var res = await fetch('https://converto-server-production.up.railway.app/api/vk/lp/chat', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ lp_id: '${landingpage.id}', message: msg, history: chatHistory.slice(-10) })
-        });
-        var data = await res.json();
-        loadDiv.textContent = data.reply || 'Fehler';
-        chatHistory.push({role:'assistant', content: data.reply});
-      } catch(e) { loadDiv.textContent = 'Verbindungsfehler'; }
-    }
-    function addMsg(role, text) {
-      var d = document.createElement('div');
-      d.textContent = text;
-      d.style.cssText = 'max-width:85%;padding:8px 12px;border-radius:12px;font-size:.83rem;' + (role==='user' ? 'align-self:flex-end;background:#25D366;color:#fff;' : 'align-self:flex-start;background:#f3f4f6;');
-      document.getElementById('chat-msgs').appendChild(d);
-      document.getElementById('chat-msgs').scrollTop = 9999;
-      return d;
-    }
-    </script>` : '';
+  // Condition badge
+  const conditionColor = { 'Neu': '#059669', 'Neuwertig': '#059669', 'Sehr gut': '#2d7a4f', 'Gut': '#d97706', 'Gebraucht': '#9ca3af' };
+  const condClass = an.condition ? (Object.keys(conditionColor).find(k => (an.condition||'').includes(k)) || '') : '';
+  const condColor = conditionColor[condClass] || '#6b7280';
+
+  // Active until
+  let expiryNote = '';
+  if (lp.active_until) {
+    const days = Math.ceil((new Date(lp.active_until) - new Date()) / (1000*60*60*24));
+    if (days > 0) expiryNote = '<div class="expiry-note">⏳ Angebot noch ' + days + ' Tag' + (days===1?'':'e') + ' verfügbar</div>';
+  }
 
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(article.title || an.title_short || 'Produkt')} – Converdino</title>
+<title>${esc(an.title_short || article.title || 'Produkt')} – Converdino</title>
 <meta name="description" content="${esc(an.short_desc || '')}">
+<meta property="og:title" content="${esc(an.title_short || article.title || 'Produkt')}">
+<meta property="og:description" content="${esc(an.short_desc || '')}">
+${photos[0] ? '<meta property="og:image" content="' + photos[0].public_url + '">' : ''}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#1a1a1a;}
-.container{max-width:640px;margin:0 auto;padding:16px;}
-.header{background:#25D366;color:#fff;padding:14px 20px;text-align:center;font-weight:800;font-size:1rem;}
-.card{background:#fff;border-radius:12px;padding:20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);}
-.price-box{background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:16px;text-align:center;margin-bottom:12px;}
-.price-main{font-size:2rem;font-weight:900;color:#15803d;}
-.price-range{font-size:.82rem;color:#6b7280;margin-top:4px;}
-.btn-buy{display:block;width:100%;padding:16px;background:#25D366;color:#fff;border:none;border-radius:10px;font-size:1.05rem;font-weight:800;cursor:pointer;text-align:center;text-decoration:none;margin-top:12px;}
-.btn-buy:hover{background:#1a9e52;}
-h1{font-size:1.2rem;font-weight:800;margin-bottom:8px;}
-h2{font-size:.9rem;font-weight:800;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
-ul{list-style:none;padding:0;}
+body{font-family:'Inter',sans-serif;background:#f8f9fa;color:#1a1a1a;min-height:100vh;}
+
+/* HEADER */
+.top-bar{background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.logo-area{display:flex;align-items:center;gap:8px;}
+.logo-badge{width:32px;height:32px;background:linear-gradient(135deg,#25D366,#128C7E);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.logo-text{font-weight:800;font-size:.95rem;color:#1a1a1a;}
+.logo-sub{font-size:.7rem;color:#9ca3af;font-weight:500;}
+.share-btn{padding:7px 14px;background:#f3f4f6;border:none;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;color:#374151;display:flex;align-items:center;gap:5px;}
+.share-btn:hover{background:#e5e7eb;}
+
+/* GALLERY */
+.gallery-wrap{position:relative;background:#000;max-height:420px;overflow:hidden;}
+.slide img{width:100%;max-height:420px;object-fit:contain;display:block;}
+.nav-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.5);color:#fff;border:none;width:40px;height:40px;border-radius:50%;font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;transition:background .2s;}
+.nav-btn:hover{background:rgba(0,0,0,.8);}
+.nav-prev{left:10px;}
+.nav-next{right:10px;}
+.dots{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;}
+.dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.5);cursor:pointer;transition:all .2s;}
+.dot.active{background:#fff;width:20px;border-radius:4px;}
+.photo-count{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.6);color:#fff;padding:3px 8px;border-radius:12px;font-size:.72rem;font-weight:600;}
+
+/* MAIN CONTENT */
+.main{max-width:640px;margin:0 auto;padding:16px;}
+
+/* PRICE CARD */
+.price-card{background:#fff;border-radius:14px;padding:20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);}
+.article-title{font-size:1.15rem;font-weight:700;line-height:1.4;color:#1a1a1a;margin-bottom:8px;}
+.condition-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:#f0fdf4;border-radius:20px;font-size:.72rem;font-weight:700;margin-bottom:12px;}
+.price-main{font-size:2.2rem;font-weight:900;color:#15803d;letter-spacing:-1px;margin-bottom:4px;}
+.price-range{font-size:.8rem;color:#9ca3af;margin-bottom:16px;}
+${expiryNote ? '.expiry-note{background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:.8rem;color:#92400e;font-weight:600;margin-bottom:12px;}' : ''}
+.cta-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px;background:linear-gradient(135deg,#25D366,#1da851);color:#fff;border:none;border-radius:12px;font-size:1.05rem;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 4px 12px rgba(37,211,102,.35);transition:all .2s;letter-spacing:.2px;}
+.cta-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(37,211,102,.45);}
+.cta-btn:active{transform:translateY(0);}
+
+/* SECTIONS */
+.section-card{background:#fff;border-radius:14px;padding:18px 20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);}
+.section-heading{font-size:.72rem;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+
+/* HIGHLIGHTS */
+.highlight-list{list-style:none;display:flex;flex-direction:column;gap:8px;}
+.highlight-item{display:flex;align-items:flex-start;gap:10px;font-size:.88rem;line-height:1.5;}
+.highlight-dot{width:20px;height:20px;border-radius:50%;background:#dcfce7;color:#15803d;font-size:.75rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+
+/* DESCRIPTION */
+.desc-text{font-size:.88rem;line-height:1.7;color:#374151;}
+
+/* DELIVERY */
+.delivery-item{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6;}
+.delivery-item:last-child{border-bottom:none;}
+.delivery-icon{width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;}
+.delivery-title{font-weight:700;font-size:.88rem;margin-bottom:2px;}
+.delivery-sub{font-size:.78rem;color:#6b7280;}
+
+/* TAGS */
+.tags-wrap{display:flex;flex-wrap:wrap;gap:6px;}
+.tag{padding:4px 10px;background:#f3f4f6;border-radius:20px;font-size:.72rem;color:#374151;font-weight:500;}
+
+/* CONDITION */
+.condition-box{background:#f9fafb;border-radius:10px;padding:12px 14px;font-size:.85rem;line-height:1.6;color:#374151;}
+
+/* DISCLAIMER */
+.disclaimer{background:#f9fafb;border-radius:10px;padding:14px;font-size:.72rem;color:#9ca3af;line-height:1.6;margin-top:4px;margin-bottom:20px;}
+.disclaimer a{color:#9ca3af;}
+
+/* FOOTER */
+.site-footer{text-align:center;padding:20px;font-size:.72rem;color:#d1d5db;}
+.footer-logo{font-weight:800;color:#25D366;font-size:.85rem;}
+
+@media(max-width:400px){
+  .price-main{font-size:1.8rem;}
+  .gallery-wrap{max-height:280px;}
+  .slide img{max-height:280px;}
+}
 </style>
 </head>
 <body>
-<div class="header">📦 Converdino Marktplatz</div>
-<div class="container">
-  <div class="card">
-    ${photoHTML}
-    <h1>${esc(an.title_long || article.title || 'Produkt')}</h1>
-    <p style="color:#6b7280;font-size:.88rem;margin-top:6px;">${esc(an.short_desc || '')}</p>
+
+<div class="top-bar">
+  <div class="logo-area">
+    <div class="logo-badge">📦</div>
+    <div>
+      <div class="logo-text">Converdino</div>
+      <div class="logo-sub">Geprüftes Angebot</div>
+    </div>
   </div>
-
-  <div class="price-box">
-    <div class="price-main">€${price.toLocaleString('de-AT')}</div>
-    ${priceMin && priceMax ? '<div class="price-range">Preisrahmen: €' + priceMin + ' – €' + priceMax + '</div>' : ''}
-    <a class="btn-buy" href="https://p.converdino.com/p/${landingpage.slug}/buy">🛒 Jetzt kaufen</a>
-  </div>
-
-  ${an.bullet_points && an.bullet_points.length ? '<div class="card"><h2>✨ Highlights</h2><ul>' + bulletHTML + '</ul></div>' : ''}
-
-  ${an.long_desc ? '<div class="card"><h2>📋 Beschreibung</h2><p style="font-size:.88rem;line-height:1.6;">' + esc(an.long_desc) + '</p></div>' : ''}
-
-  ${an.condition ? '<div class="card"><h2>📊 Zustand</h2><p style="font-size:.88rem;">' + esc(an.condition) + '</p></div>' : ''}
-
-  <div class="card"><h2>🚚 Lieferung</h2>${deliveryHTML}</div>
-
-  ${disclaimer}
+  <button class="share-btn" onclick="shareLP()">↗ Teilen</button>
 </div>
-${botWidget}
+
+${photos.length > 0 ? `
+<div class="gallery-wrap">
+  ${photoSlides}
+  ${photoNav}
+  ${photos.length > 1 ? '<div class="dots">' + photoDots + '</div>' : ''}
+  ${photos.length > 1 ? '<div class="photo-count">📷 ' + photos.length + ' Fotos</div>' : ''}
+</div>` : ''}
+
+<div class="main">
+
+  <div class="price-card">
+    <div class="article-title">${esc(an.title_long || article.title || 'Produkt')}</div>
+    ${an.condition ? '<div class="condition-badge" style="color:' + condColor + ';background:' + condColor + '18;">⬤ ' + esc(an.condition.split('.')[0]) + '</div>' : ''}
+    <div class="price-main">${priceStr}</div>
+    ${an.price_min && an.price_max ? '<div class="price-range">Marktpreis: €' + an.price_min + ' – €' + an.price_max + '</div>' : ''}
+    ${expiryNote}
+    <a class="cta-btn" href="mailto:?subject=${encodeURIComponent(esc(an.title_short||article.title||'Angebot'))}&body=${encodeURIComponent('Ich interessiere mich für dieses Angebot: https://p.converdino.com/p/' + lp.slug)}" id="cta-btn">
+      🛒 Jetzt kaufen / Anfragen
+    </a>
+  </div>
+
+  ${bulletHTML ? `
+  <div class="section-card">
+    <div class="section-heading">✨ Highlights</div>
+    <ul class="highlight-list">${bulletHTML}</ul>
+  </div>` : ''}
+
+  ${an.short_desc || an.long_desc ? `
+  <div class="section-card">
+    <div class="section-heading">📋 Beschreibung</div>
+    <p class="desc-text">${esc(an.long_desc || an.short_desc || '')}</p>
+  </div>` : ''}
+
+  ${an.condition ? `
+  <div class="section-card">
+    <div class="section-heading">🔍 Zustand</div>
+    <div class="condition-box">${esc(an.condition)}</div>
+  </div>` : ''}
+
+  ${deliveryItems.length ? `
+  <div class="section-card">
+    <div class="section-heading">🚚 Lieferung & Abholung</div>
+    ${deliveryItems.join('')}
+  </div>` : ''}
+
+  ${keywordHTML ? `
+  <div class="section-card">
+    <div class="section-heading">🏷 Tags</div>
+    <div class="tags-wrap">${keywordHTML}</div>
+  </div>` : ''}
+
+  <div class="disclaimer">
+    <strong>Hinweis:</strong> Converdino ist ausschließlich Vermittler zwischen Käufer und Verkäufer. Vertragspartner des Kaufvertrags ist ausschließlich der Anbieter dieses Artikels. Converdino übernimmt keine Haftung für Produktbeschaffenheit, Lieferung oder Gewährleistungsansprüche. Diese richten sich ausschließlich an den Verkäufer.
+  </div>
+
+</div>
+
+<div class="site-footer">
+  <div class="footer-logo">Converdino</div>
+  <div style="margin-top:4px;">Der smarte Weg zum Verkauf</div>
+</div>
+
+<script>
+// ── FOTO GALLERY ──────────────────────────────────────────
+var currentSlide = 0;
+var slides = document.querySelectorAll('.slide');
+var dots = document.querySelectorAll('.dot');
+
+function goSlide(n) {
+  if (!slides.length) return;
+  slides[currentSlide].style.display = 'none';
+  dots[currentSlide] && dots[currentSlide].classList.remove('active');
+  currentSlide = (n + slides.length) % slides.length;
+  slides[currentSlide].style.display = 'block';
+  dots[currentSlide] && dots[currentSlide].classList.add('active');
+}
+function changeSlide(dir) { goSlide(currentSlide + dir); }
+
+// Touch/Swipe
+var tsX = 0;
+var galleryEl = document.querySelector('.gallery-wrap');
+if (galleryEl) {
+  galleryEl.addEventListener('touchstart', function(e) { tsX = e.touches[0].clientX; }, {passive:true});
+  galleryEl.addEventListener('touchend', function(e) {
+    var diff = tsX - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 40) changeSlide(diff > 0 ? 1 : -1);
+  }, {passive:true});
+}
+
+// ── SHARE ─────────────────────────────────────────────────
+function shareLP() {
+  var url = window.location.href;
+  var title = document.title;
+  if (navigator.share) {
+    navigator.share({ title: title, url: url }).catch(function(){});
+  } else {
+    navigator.clipboard && navigator.clipboard.writeText(url).then(function() {
+      var btn = document.querySelector('.share-btn');
+      if (btn) { btn.textContent = '✓ Kopiert!'; setTimeout(function(){btn.innerHTML='↗ Teilen';},2000); }
+    });
+  }
+}
+</script>
+
 </body>
 </html>`;
 }
