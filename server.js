@@ -1320,16 +1320,15 @@ app.get('/p/:slug/success', async (req, res) => {
     // Verkäufer-Info für Bestätigungsseite (sellerBd bereits geladen)
     let sellerHtml = '';
     if (sellerBd) {
-        sellerHtml = '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px;margin-bottom:16px;">' +
-          '<div style="font-weight:800;color:#15803d;margin-bottom:8px;"> ' + (isShipping ? 'Versender' : 'Abholadresse') + '</div>' +
-          '<div style="font-size:.9rem;line-height:1.8;">' +
-          '<strong>' + esc(bd.company_name||'') + '</strong><br>' +
-          (bd.seller_address ? esc(bd.seller_address) + '<br>' : '') +
-          (bd.seller_zip && bd.seller_city ? esc(bd.seller_zip) + ' ' + esc(bd.seller_city) + '<br>' : '') +
-          (bd.phone ? 'Tel: ' + esc(bd.phone) + '<br>' : '') +
-          (bd.seller_email ? '<a href="mailto:' + esc(bd.seller_email) + '" style="color:#25D366;">' + esc(bd.seller_email) + '</a>' : '') +
-          '</div></div>';
-      }
+      sellerHtml = '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px;margin-bottom:16px;">' +
+        '<div style="font-weight:800;color:#15803d;margin-bottom:8px;">' + (isShipping ? 'Versender' : 'Abholadresse') + '</div>' +
+        '<div style="font-size:.9rem;line-height:1.8;">' +
+        '<strong>' + esc(sellerBd.company_name||'') + '</strong><br>' +
+        (sellerBd.seller_address ? esc(sellerBd.seller_address) + '<br>' : '') +
+        (sellerBd.seller_zip && sellerBd.seller_city ? esc(sellerBd.seller_zip) + ' ' + esc(sellerBd.seller_city) + '<br>' : '') +
+        (sellerBd.phone ? 'Tel: ' + esc(sellerBd.phone) + '<br>' : '') +
+        (sellerBd.seller_email ? '<a href="mailto:' + esc(sellerBd.seller_email) + '" style="color:#25D366;">' + esc(sellerBd.seller_email) + '</a>' : '') +
+        '</div></div>';
     }
 
     const html = `<!DOCTYPE html>
