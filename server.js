@@ -1135,6 +1135,8 @@ app.get('/p/:slug/buy', async (req, res) => {
     const checkoutParams = {
       mode: 'payment',
       payment_method_types: ['card'],
+      customer_creation: 'always',
+      customer_email: undefined,
       line_items: [{
         price_data: {
           currency: 'eur',
@@ -1157,11 +1159,12 @@ app.get('/p/:slug/buy', async (req, res) => {
       cancel_url: 'https://p.converdino.com/p/' + lp.slug
     };
 
-    // Versand: Adresse abfragen
+    // Immer: E-Mail abfragen (Pflicht für Bestätigung)
+    // Stripe sammelt E-Mail automatisch wenn customer_creation: 'always'
+
+    // Versand: zusätzlich Adresse abfragen + Versandkosten
     if (isShipping) {
       checkoutParams.shipping_address_collection = { allowed_countries: ['AT', 'DE', 'CH'] };
-      checkoutParams.customer_creation = 'always';
-      // Versandkosten als extra Line Item
       if (lp.shipping_cost > 0) {
         checkoutParams.line_items.push({
           price_data: {
@@ -1172,11 +1175,6 @@ app.get('/p/:slug/buy', async (req, res) => {
           quantity: 1
         });
       }
-    }
-
-    // Abholung: anonym, nur Karte
-    if (!isShipping) {
-      checkoutParams.phone_number_collection = { enabled: false };
     }
 
     const checkout = await stripe.checkout.sessions.create(checkoutParams);
@@ -1247,16 +1245,72 @@ app.get('/p/:slug/success', async (req, res) => {
       await vkSendWhatsApp(sellerPhone, sellerMsg);
     }
 
+    // E-Mail an Käufer senden via Resend
+    const buyerEmailAddr = stripeSession?.customer_details?.email;
+    if (buyerEmailAddr) {
+      try {
+        const articleTitle = an.title_short || (lp.vk_articles || {}).title || 'Produkt';
+        const lpUrl = 'https://p.converdino.com/p/' + lp.slug;
+        const qrImgForEmail = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(qrData) + '&color=1b4332&margin=10';
+
+        let emailHtml = '<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;">';
+        emailHtml += '<h2 style="color:#1b4332;">Zahlung bestaetigt!</h2>';
+        emailHtml += '<p>Vielen Dank fuer deinen Kauf bei Converdino.</p>';
+        emailHtml += '<p><strong>Artikel:</strong> ' + articleTitle + '</p>';
+        emailHtml += '<p><strong>Betrag:</strong> EUR ' + (stripeSession.amount_total / 100).toFixed(2) + '</p>';
+
+        if (isShipping) {
+          emailHtml += '<p>Der Verkäufer wurde informiert und wird deinen Artikel versenden.</p>';
+        } else {
+          emailHtml += '<h3 style="color:#1b4332;">Dein QR Code fuer die Abholung:</h3>';
+          emailHtml += '<img src="' + qrImgForEmail + '" style="width:200px;height:200px;" alt="QR Code">';
+          emailHtml += '<p style="font-family:monospace;font-size:1.1rem;font-weight:bold;">' + qrData + '</p>';
+          emailHtml += '<p>Zeige diesen QR Code bei der Abholung vor.</p>';
+        }
+
+        // Verkäufer-Kontaktdaten in E-Mail
+        if (sellerBd) {
+          emailHtml += '<hr style="margin:20px 0;">';
+          emailHtml += '<h3 style="color:#1b4332;">' + (isShipping ? 'Versender' : 'Abholadresse') + '</h3>';
+          emailHtml += '<p>' + (sellerBd.company_name || '') + '<br>';
+          if (sellerBd.seller_address) emailHtml += sellerBd.seller_address + '<br>';
+          if (sellerBd.seller_zip && sellerBd.seller_city) emailHtml += sellerBd.seller_zip + ' ' + sellerBd.seller_city + '<br>';
+          if (sellerBd.phone) emailHtml += 'Tel: ' + sellerBd.phone + '<br>';
+          if (sellerBd.seller_email) emailHtml += 'E-Mail: ' + sellerBd.seller_email;
+          emailHtml += '</p>';
+        }
+
+        emailHtml += '<hr style="margin:20px 0;">';
+        emailHtml += '<p style="font-size:.8rem;color:#9ca3af;">Converdino – Betrieben von Ynhald Corp, 425 W Colonial Dr Ste 303 #292, Orlando, FL 32804, USA</p>';
+        emailHtml += '</div>';
+
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY },
+          body: JSON.stringify({
+            from: 'Converdino <noreply@converdino.com>',
+            to: buyerEmailAddr,
+            subject: 'Zahlung bestaetigt: ' + articleTitle,
+            html: emailHtml
+          })
+        });
+        console.log('Buyer email sent to:', buyerEmailAddr);
+      } catch(emailErr) {
+        console.error('Buyer email error:', emailErr.message);
+      }
+    }
+
     // Bestätigungsseite für Käufer
     const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(qrData) + '&color=1b4332&margin=10';
 
-    // Verkäufer-Info für Bestätigungsseite
+    // Verkäufer-Info für Bestätigungsseite + E-Mail
     let sellerHtml = '';
+    let sellerBd = null;
     if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
       const { data: bd } = await supabase.from('vk_business_discounts')
         .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city').eq('id', lp.vk_sessions.business_discount_id).single();
-      if (bd) {
+      if (bd) { sellerBd = bd;
         sellerHtml = '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px;margin-bottom:16px;">' +
           '<div style="font-weight:800;color:#15803d;margin-bottom:8px;"> ' + (isShipping ? 'Versender' : 'Abholadresse') + '</div>' +
           '<div style="font-size:.9rem;line-height:1.8;">' +
