@@ -1503,7 +1503,7 @@ app.get('/api/vk/lp/label/:slug', async (req, res) => {
 
 
 // ── ROUTE: Verkäufe & Provisionen ────────────────────────
-app.get('/api/vk/admin/verkaeufe', vkAdminAuth, async (req, res) => {
+app.get('/api/vk/admin/verkaeufe', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('vk_landingpages')
@@ -1540,7 +1540,7 @@ app.get('/api/vk/admin/verkaeufe', vkAdminAuth, async (req, res) => {
 });
 
 // ── ROUTE: Auszahlungsstatus ändern ──────────────────────
-app.put('/api/vk/admin/verkaeufe/:id/payout', vkAdminAuth, async (req, res) => {
+app.put('/api/vk/admin/verkaeufe/:id/payout', async (req, res) => {
   try {
     const { payout_status } = req.body;
     if (!['open','done','suspended'].includes(payout_status))
