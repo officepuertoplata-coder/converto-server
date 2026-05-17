@@ -635,7 +635,7 @@ app.get('/api/vk/session/:token/discount', async (req, res) => {
         if (!isExpired && !isFull) {
           // Session-Wert auch aktualisieren
           await supabase.from('vk_sessions').update({ business_discount_pct: bd.discount_percent }).eq('token', req.params.token);
-          return res.json({ has_discount: true, percent: bd.discount_percent, company: bd.company_name });
+          return res.json({ has_discount: true, percent: bd.discount_percent, company: bd.company_name, landingpage_enabled: !!bd.landingpage_enabled });
         }
       }
     }
@@ -645,7 +645,7 @@ app.get('/api/vk/session/:token/discount', async (req, res) => {
       const bd = await vkGetBusinessDiscount(session.phone);
       if (bd) {
         await supabase.from('vk_sessions').update({ business_discount_id: bd.id, business_discount_pct: bd.discount_percent }).eq('token', req.params.token);
-        return res.json({ has_discount: true, percent: bd.discount_percent, company: bd.company_name });
+        return res.json({ has_discount: true, percent: bd.discount_percent, company: bd.company_name, landingpage_enabled: !!bd.landingpage_enabled });
       }
     }
 
@@ -1013,6 +1013,11 @@ function vkCalcPrice(articles) {
       total += Math.max(0, photoCount - 1) * 0.25; // weitere Fotos 0.25€
     }
     if (a.extended) total += 1.00; // 7-Tage Speicherung
+    // LP Kosten
+    if (a.lp_booked && a.lp_days > 0) {
+      const lpRate = a.lp_has_bot ? 1.00 : 0.40;
+      total += Math.round(a.lp_days * lpRate * 100) / 100;
+    }
   }
   return Math.round(total * 100) / 100;
 }
@@ -1155,10 +1160,13 @@ app.get('/api/vk/session/:token', async (req, res) => {
 app.post('/api/vk/article', async (req, res) => { try { const { token, title } = req.body; const { data: session } = await supabase.from('vk_sessions').select('id').eq('token', token).single(); if (!session) return res.status(404).json({ error: 'Session nicht gefunden' }); const { data: count } = await supabase.from('vk_articles').select('id', { count: 'exact' }).eq('session_id', session.id); if ((count?.length || 0) >= 20) return res.status(400).json({ error: 'Maximal 20 Artikel' }); const { data, error } = await supabase.from('vk_articles').insert({ session_id: session.id, title: title || 'Neuer Artikel', sort_order: (count?.length || 0) + 1, extended: false }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, article: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.put('/api/vk/article/:id/notes', async (req, res) => {
   try {
-    const { notes, title } = req.body;
+    const { notes, title, lp_booked, lp_days, lp_has_bot } = req.body;
     const updates = {};
     if (notes !== undefined) updates.notes = notes || null;
     if (title !== undefined && title.trim()) updates.title = title.trim();
+    if (lp_booked !== undefined) updates.lp_booked = !!lp_booked;
+    if (lp_days !== undefined) updates.lp_days = parseInt(lp_days) || 7;
+    if (lp_has_bot !== undefined) updates.lp_has_bot = !!lp_has_bot;
     const { data, error } = await supabase.from('vk_articles').update(updates).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, article: data });
