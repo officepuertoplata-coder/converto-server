@@ -969,7 +969,12 @@ ${photos.length > 0 ? `
 
 <div class="site-footer">
   <div class="footer-logo">Converdino</div>
-  <div style="margin-top:4px;">Der smarte Weg zum Verkauf</div>
+  <div style="margin-top:4px;margin-bottom:8px;">Der smarte Weg zum Verkauf</div>
+  <div style="font-size:.68rem;color:#9ca3af;line-height:1.6;">
+    Betrieben von <strong style="color:#6b7280;">Ynhald Corp</strong><br>
+    425 W Colonial Dr Ste 303 #292, Orlando, FL 32804, USA<br>
+    <a href="mailto:office@ynhald.com" style="color:#9ca3af;">office@ynhald.com</a>
+  </div>
 </div>
 
 <script>
