@@ -1136,7 +1136,6 @@ app.get('/p/:slug/buy', async (req, res) => {
       mode: 'payment',
       payment_method_types: ['card'],
       customer_creation: 'always',
-      customer_email: undefined,
       line_items: [{
         price_data: {
           currency: 'eur',
@@ -1156,7 +1155,8 @@ app.get('/p/:slug/buy', async (req, res) => {
         delivery_type: isShipping ? 'shipping' : 'pickup'
       },
       success_url: 'https://p.converdino.com/p/' + lp.slug + '/success?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://p.converdino.com/p/' + lp.slug
+      cancel_url: 'https://p.converdino.com/p/' + lp.slug,
+      billing_address_collection: 'required'
     };
 
     // Immer: E-Mail abfragen (Pflicht für Bestätigung)
@@ -1222,6 +1222,15 @@ app.get('/p/:slug/success', async (req, res) => {
       metadata: { lp_id: lp.id, lp_slug: lp.slug, stripe_session: session_id }
     });
 
+    // Verkäufer-Info laden (wird für WhatsApp + E-Mail benötigt)
+    let sellerBd = null;
+    if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
+      const { data: bdData } = await supabase.from('vk_business_discounts')
+        .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city')
+        .eq('id', lp.vk_sessions.business_discount_id).single();
+      if (bdData) sellerBd = bdData;
+    }
+
     // Verkäufer per WhatsApp informieren
     if (sellerPhone) {
       const article = lp.vk_articles || {};
@@ -1246,7 +1255,11 @@ app.get('/p/:slug/success', async (req, res) => {
     }
 
     // E-Mail an Käufer senden via Resend
-    const buyerEmailAddr = stripeSession?.customer_details?.email;
+    // E-Mail aus Stripe Session - mehrere Quellen prüfen
+    const buyerEmailAddr = stripeSession?.customer_details?.email 
+      || stripeSession?.customer_email
+      || null;
+    console.log('Buyer email:', buyerEmailAddr, 'Session ID:', session_id);
     if (buyerEmailAddr) {
       try {
         const articleTitle = an.title_short || (lp.vk_articles || {}).title || 'Produkt';
@@ -1304,13 +1317,9 @@ app.get('/p/:slug/success', async (req, res) => {
     const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(qrData) + '&color=1b4332&margin=10';
 
-    // Verkäufer-Info für Bestätigungsseite + E-Mail
+    // Verkäufer-Info für Bestätigungsseite (sellerBd bereits geladen)
     let sellerHtml = '';
-    let sellerBd = null;
-    if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
-      const { data: bd } = await supabase.from('vk_business_discounts')
-        .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city').eq('id', lp.vk_sessions.business_discount_id).single();
-      if (bd) { sellerBd = bd;
+    if (sellerBd) {
         sellerHtml = '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px;margin-bottom:16px;">' +
           '<div style="font-weight:800;color:#15803d;margin-bottom:8px;"> ' + (isShipping ? 'Versender' : 'Abholadresse') + '</div>' +
           '<div style="font-size:.9rem;line-height:1.8;">' +
