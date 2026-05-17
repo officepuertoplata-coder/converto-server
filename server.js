@@ -1505,34 +1505,49 @@ app.get('/api/vk/lp/label/:slug', async (req, res) => {
 // ── ROUTE: Verkäufe & Provisionen ────────────────────────
 app.get('/api/vk/admin/verkaeufe', async (req, res) => {
   try {
+    // Step 1: LPs mit Verkäufen laden
     const { data, error } = await supabase
       .from('vk_landingpages')
-      .select(`
-        id, slug, sale_price, sale_amount, commission_amount,
-        payout_status, payout_due_at, sold_at, buyer_email,
-        stripe_session_id, delivery_pickup, delivery_shipping,
-        vk_articles(title, analysis),
-        vk_sessions(phone, business_discount_id,
-          vk_business_discounts:business_discount_id(company_name, sales_commission_percent))
-      `)
+      .select('id, slug, sale_price, sale_amount, commission_amount, payout_status, payout_due_at, sold_at, buyer_email, delivery_pickup, delivery_shipping, article_id, session_id')
       .not('sold_at', 'is', null)
       .order('sold_at', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
 
-    const result = (data || []).map(v => ({
-      id: v.id,
-      slug: v.slug,
-      product_title: v.vk_articles?.analysis?.title_short || v.vk_articles?.title || 'Produkt',
-      company_name: v.vk_sessions?.vk_business_discounts?.company_name || '-',
-      seller_phone: v.vk_sessions?.phone || null,
-      sale_amount: v.sale_amount || v.sale_price || 0,
-      commission_amount: v.commission_amount || 0,
-      payout_status: v.payout_status || 'open',
-      payout_due_at: v.payout_due_at,
-      sold_at: v.sold_at,
-      buyer_email: v.buyer_email,
-      delivery_type: v.delivery_pickup ? 'Abholung' : 'Versand'
+    // Step 2: Artikel + Session Daten separat laden und zusammenführen
+    const result = await Promise.all((data || []).map(async v => {
+      let productTitle = 'Produkt';
+      let companyName = '-';
+
+      if (v.article_id) {
+        const { data: art } = await supabase.from('vk_articles')
+          .select('title, analysis').eq('id', v.article_id).single();
+        if (art) productTitle = art.analysis?.title_short || art.title || 'Produkt';
+      }
+
+      if (v.session_id) {
+        const { data: sess } = await supabase.from('vk_sessions')
+          .select('phone, business_discount_id').eq('id', v.session_id).single();
+        if (sess && sess.business_discount_id) {
+          const { data: bd } = await supabase.from('vk_business_discounts')
+            .select('company_name').eq('id', sess.business_discount_id).single();
+          if (bd) companyName = bd.company_name || '-';
+        }
+      }
+
+      return {
+        id: v.id,
+        slug: v.slug,
+        product_title: productTitle,
+        company_name: companyName,
+        sale_amount: parseFloat(v.sale_amount || v.sale_price || 0),
+        commission_amount: parseFloat(v.commission_amount || 0),
+        payout_status: v.payout_status || 'open',
+        payout_due_at: v.payout_due_at,
+        sold_at: v.sold_at,
+        buyer_email: v.buyer_email,
+        delivery_type: v.delivery_pickup ? 'Abholung' : 'Versand'
+      };
     }));
 
     res.json(result);
