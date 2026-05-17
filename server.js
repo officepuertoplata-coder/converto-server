@@ -1605,6 +1605,109 @@ app.put('/api/vk/admin/verkaeufe/:id/payout', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+
+// ── ROUTE: Aktive LPs für Sandbox Dropdown ───────────────
+app.get('/api/vk/admin/active-lps', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('vk_landingpages')
+      .select('id, slug, sale_price, min_price, negotiation_level, status, vk_articles(title, analysis)')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const result = (data || []).map(lp => ({
+      slug: lp.slug,
+      sale_price: lp.sale_price,
+      min_price: lp.min_price,
+      negotiation_level: lp.negotiation_level || 'professional',
+      title: lp.vk_articles?.analysis?.title_short || lp.vk_articles?.title || lp.slug
+    }));
+
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ROUTE: LP Bot Sandbox (Admin Test ohne WhatsApp) ──────
+app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
+  try {
+    const { lp_slug, messages } = req.body;
+    if (!lp_slug || !messages) return res.status(400).json({ error: 'lp_slug und messages erforderlich' });
+
+    const { data: lp } = await supabase.from('vk_landingpages')
+      .select('*, vk_articles(title, analysis)')
+      .eq('slug', lp_slug).maybeSingle();
+
+    if (!lp) return res.status(404).json({ error: 'LP nicht gefunden' });
+
+    const article = lp.vk_articles || {};
+    const an = article.analysis || {};
+    const price = parseFloat(lp.sale_price || an.price_recommended || 0);
+    const minPrice = parseFloat(lp.min_price || price * 0.8);
+
+    const aggrLevel = lp.negotiation_level || 'professional';
+    const aggrMap = {
+      friendly:     { label: 'freundlich', maxDiscount: 0.10, patience: 4 },
+      professional: { label: 'professionell', maxDiscount: 0.06, patience: 3 },
+      hard:         { label: 'hart', maxDiscount: 0.03, patience: 2 }
+    };
+    const aggr = aggrMap[aggrLevel] || aggrMap.professional;
+    const absoluteMin = Math.max(minPrice, price - Math.round(price * aggr.maxDiscount));
+
+    const systemPrompt = `Du bist Max, erfahrener Verkaufsprofi bei Converdino. Du verkaufst diesen Artikel.
+
+ARTIKEL: ${an.title_short || article.title || 'Produkt'}
+FESTPREIS: EUR ${price}
+DEIN ABSOLUTES MINIMUM: EUR ${absoluteMin} (NIEMALS darunter, NIEMALS nennen)
+ZUSTAND: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
+BESCHREIBUNG: ${an.short_desc || ''}
+HIGHLIGHTS: ${(an.bullet_points || []).slice(0, 4).join(' | ')}
+MARKTPREIS: EUR ${an.price_min || Math.round(price * 0.9)} - EUR ${an.price_max || Math.round(price * 1.15)}
+LIEFERUNG: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? ' oder Versand EUR ' + (lp.shipping_cost || 0) : ''}
+
+VERHANDLUNGSSTRATEGIE (${aggr.label}):
+1. Fragen zum Produkt: Kompetent und ehrlich beantworten
+2. Erstes Preisangebot unter Festpreis: Ablehnen, Wert und Qualitaet betonen
+3. Zweites Angebot: Maximal 2-3% nachgeben
+4. Drittes Angebot: Bis EUR ${absoluteMin} wenn noetig, dann hart bleiben
+5. Unter EUR ${absoluteMin}: "Das ist leider nicht moeglich"
+
+EINWAND-BEHANDLUNG:
+- "Zu teuer" → Marktpreis und Qualitaet betonen
+- "Woanders billiger" → Vergleich anbieten
+- "Muss ueberlegen" → Druck aufbauen (weitere Interessenten)
+
+WICHTIGE REGELN:
+- Antworte IMMER auf Deutsch, max 3-4 kurze Saetze
+- Nie als erster Rabatt anbieten, nie Mindestpreis nennen
+- Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]" senden`;
+
+    const isNegotiating = messages.length > 0 &&
+      (messages[messages.length-1].content || '').match(/\d+|euro|eur|preis|rabatt|billiger/i);
+    const model = isNegotiating ? 'claude-opus-4-5' : 'claude-haiku-4-5';
+
+    const fetch = require('node-fetch');
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: 400, system: systemPrompt, messages })
+    });
+    const data = await response.json();
+    const reply = data.content?.[0]?.text || 'Fehler bei der Antwort';
+
+    const paymentMatch = reply.match(/ZAHLUNG_LINK:(\d+(?:\.\d+)?)/);
+    res.json({
+      reply,
+      model,
+      payment_link: paymentMatch ? { amount: parseFloat(paymentMatch[1]) } : null
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════
 // CRON CLEANUP ENDPOINT – wird von Railway Cron aufgerufen
 // ═══════════════════════════════════════════════════════════
@@ -2091,23 +2194,47 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
   const minPrice = parseFloat(lp.min_price || price * 0.8);
 
   // System Prompt mit Artikel-Kontext
-  const systemPrompt = `Du bist Verkaufsassistent fuer Converdino. Du hilfst beim Verkauf dieses Artikels ueber WhatsApp.
+  const aggrLevel = lp.negotiation_level || 'professional';
+  const aggrMap = {
+    friendly:     { label: 'freundlich', maxDiscount: 0.10, patience: 4 },
+    professional: { label: 'professionell', maxDiscount: 0.06, patience: 3 },
+    hard:         { label: 'hart', maxDiscount: 0.03, patience: 2 }
+  };
+  const aggr = aggrMap[aggrLevel] || aggrMap.professional;
+  const maxDiscount = Math.round(price * aggr.maxDiscount);
+  const absoluteMin = Math.max(minPrice, price - maxDiscount);
+
+  const systemPrompt = `Du bist Max, erfahrener Verkaufsprofi bei Converdino. Du verkaufst diesen Artikel per WhatsApp.
 
 ARTIKEL: ${an.title_short || article.title || 'Produkt'}
-PREIS: EUR ${price}
-MINDESTPREIS: EUR ${minPrice} (NICHT unterschreiten - intern, nicht nennen)
-ZUSTAND: ${an.condition ? an.condition.split('.')[0] : 'Gut'}
+FESTPREIS: EUR ${price}
+DEIN ABSOLUTES MINIMUM: EUR ${absoluteMin} (NIEMALS darunter gehen, NIEMALS nennen)
+ZUSTAND: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
 BESCHREIBUNG: ${an.short_desc || ''}
-HIGHLIGHTS: ${(an.bullet_points || []).slice(0,4).join(', ')}
-LIEFERUNG: ${lp.delivery_pickup ? 'Selbstabholung moeglich' + (lp.pickup_location ? ' in ' + lp.pickup_location : '') : ''}${lp.delivery_shipping ? (lp.delivery_pickup ? ', ' : '') + 'Versand moeglich (EUR ' + (lp.shipping_cost || 0) + ')' : ''}
+HIGHLIGHTS: ${(an.bullet_points || []).slice(0, 4).join(' | ')}
+MARKTPREIS: EUR ${an.price_min || Math.round(price * 0.9)} - EUR ${an.price_max || Math.round(price * 1.15)}
+LIEFERUNG: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? (lp.delivery_pickup ? ' oder ' : '') + 'Versand EUR ' + (lp.shipping_cost || 0) : ''}
 
-REGELN:
-- Antworte auf Deutsch, freundlich und professionell
-- Beantworte Fragen zum Produkt
-- Fuehre den Kaeufer zur Kaufentscheidung
-- Du darfst maximal bis EUR ${minPrice} runterhandeln
-- Wenn Einigung erzielt: Antworte mit dem Satz "ZAHLUNG_LINK:EUR_BETRAG" (z.B. "ZAHLUNG_LINK:3200")
-- Halte Antworten kurz (max 3-4 Saetze fuer WhatsApp)`;
+VERHANDLUNGSSTRATEGIE (${aggr.label}):
+1. Fragen zum Produkt: Kompetent und ehrlich beantworten
+2. Erstes Preisangebot unter Festpreis: Ablehnen, Wert und Qualitaet betonen
+3. Zweites Angebot: Maximal 2-3% nachgeben, Einzigartigkeit hervorheben
+4. Drittes Angebot: Bis EUR ${absoluteMin} gehen wenn noetig, dann hart bleiben
+5. Unter EUR ${absoluteMin}: Hoeflich aber klar ablehnen - "Das ist leider nicht moeglich"
+
+EINWAND-BEHANDLUNG:
+- "Zu teuer" → Marktpreis nennen, Zustand und Qualitaet betonen
+- "Woanders billiger" → "Zeigen Sie mir wo genau, gerne schauen wir uns das an"
+- "Muss ueberlegen" → "Ich habe noch ${aggr.patience > 2 ? 'weiteres Interesse' : '2-3 weitere Interessenten'} - das Angebot gilt noch heute"
+- Keine Antwort → Nach 1 Nachricht nochmal hoeflich nachfragen
+
+WICHTIGE REGELN:
+- Antworte IMMER auf Deutsch
+- Max 3-4 kurze Saetze pro Nachricht (WhatsApp Format)
+- Nie als erster einen Rabatt anbieten
+- Nie den Mindestpreis nennen
+- Bei Einigung: NUR diesen Satz senden: "ZAHLUNG_LINK:[BETRAG]" (Beispiel: "ZAHLUNG_LINK:3200")
+- Bei Abschluss zum Festpreis ebenfalls: "ZAHLUNG_LINK:${price}"`;
 
   // Konversation initialisieren
   const session = {
