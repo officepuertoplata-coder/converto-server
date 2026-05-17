@@ -1222,6 +1222,34 @@ app.get('/p/:slug/success', async (req, res) => {
       metadata: { lp_id: lp.id, lp_slug: lp.slug, stripe_session: session_id }
     });
 
+    // Verkauf + Provision in vk_landingpages speichern
+    const saleAmount = stripeSession ? (stripeSession.amount_total / 100) : parseFloat(lp.sale_price || 0);
+    // Provision aus Business Discount laden
+    let commissionPct = 0;
+    if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
+      const { data: bdComm } = await supabase.from('vk_business_discounts')
+        .select('sales_commission_percent').eq('id', lp.vk_sessions.business_discount_id).single();
+      if (bdComm) commissionPct = bdComm.sales_commission_percent || 0;
+    }
+    const commissionAmount = Math.round(saleAmount * commissionPct / 100 * 100) / 100;
+    const soldAt = new Date();
+    // payout_due_at: Abholung = sofort, Versand = +14 Tage
+    const payoutDueAt = isShipping
+      ? new Date(soldAt.getTime() + 14 * 24 * 60 * 60 * 1000)
+      : soldAt;
+
+    await supabase.from('vk_landingpages').update({
+      sold_at: soldAt.toISOString(),
+      buyer_email: stripeSession?.customer_details?.email || null,
+      sale_amount: saleAmount,
+      stripe_session_id: session_id || null,
+      commission_amount: commissionAmount,
+      payout_status: 'open',
+      payout_due_at: payoutDueAt.toISOString()
+    }).eq('id', lp.id);
+
+    console.log('Sale saved: EUR ' + saleAmount + ', commission: EUR ' + commissionAmount + ', due: ' + payoutDueAt.toISOString());
+
     // Verkäufer-Info laden (wird für WhatsApp + E-Mail benötigt)
     let sellerBd = null;
     if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
@@ -1471,6 +1499,57 @@ app.get('/api/vk/lp/label/:slug', async (req, res) => {
     console.error('LP label error:', e.message);
     res.status(500).send('Fehler: ' + e.message);
   }
+});
+
+
+// ── ROUTE: Verkäufe & Provisionen ────────────────────────
+app.get('/api/vk/admin/verkaeufe', vkAdminAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('vk_landingpages')
+      .select(`
+        id, slug, sale_price, sale_amount, commission_amount,
+        payout_status, payout_due_at, sold_at, buyer_email,
+        stripe_session_id, delivery_pickup, delivery_shipping,
+        vk_articles(title, analysis),
+        vk_sessions(phone, business_discount_id,
+          vk_business_discounts:business_discount_id(company_name, sales_commission_percent))
+      `)
+      .not('sold_at', 'is', null)
+      .order('sold_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const result = (data || []).map(v => ({
+      id: v.id,
+      slug: v.slug,
+      product_title: v.vk_articles?.analysis?.title_short || v.vk_articles?.title || 'Produkt',
+      company_name: v.vk_sessions?.vk_business_discounts?.company_name || '-',
+      seller_phone: v.vk_sessions?.phone || null,
+      sale_amount: v.sale_amount || v.sale_price || 0,
+      commission_amount: v.commission_amount || 0,
+      payout_status: v.payout_status || 'open',
+      payout_due_at: v.payout_due_at,
+      sold_at: v.sold_at,
+      buyer_email: v.buyer_email,
+      delivery_type: v.delivery_pickup ? 'Abholung' : 'Versand'
+    }));
+
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ROUTE: Auszahlungsstatus ändern ──────────────────────
+app.put('/api/vk/admin/verkaeufe/:id/payout', vkAdminAuth, async (req, res) => {
+  try {
+    const { payout_status } = req.body;
+    if (!['open','done','suspended'].includes(payout_status))
+      return res.status(400).json({ error: 'Ungültiger Status' });
+    const { error } = await supabase.from('vk_landingpages')
+      .update({ payout_status }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ═══════════════════════════════════════════════════════════
