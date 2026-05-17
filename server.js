@@ -581,7 +581,7 @@ app.get('/api/vk/admin/business-discounts', async (req, res) => {
 
 app.post('/api/vk/admin/business-discounts', async (req, res) => {
   try {
-    const { company_name, phone, discount_percent, valid_until, max_uses, notes } = req.body;
+    const { company_name, phone, discount_percent, valid_until, max_uses, notes, sales_commission_percent, landingpage_enabled, wise_email } = req.body;
     if (!company_name || !phone || !discount_percent)
       return res.status(400).json({ error: 'company_name, phone und discount_percent erforderlich' });
     const cleanPhone = phone.replace(/[^0-9+]/g, '');
@@ -591,6 +591,9 @@ app.post('/api/vk/admin/business-discounts', async (req, res) => {
       valid_until: valid_until || null,
       max_uses: max_uses || null,
       notes: notes || null,
+      sales_commission_percent: parseInt(sales_commission_percent) || 0,
+      landingpage_enabled: landingpage_enabled === true || landingpage_enabled === 'true',
+      wise_email: wise_email || null,
       active: true, used_count: 0
     }).select().single();
     if (error) return res.status(400).json({ error: error.message });
