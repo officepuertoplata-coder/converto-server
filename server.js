@@ -1027,17 +1027,21 @@ function shareLP() {
 app.get('/p/:slug', async (req, res) => {
   try {
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(*, vk_photos(*)), vk_sessions(phone, business_discount_id)')
+      .select('*, vk_articles(*, vk_photos(*)), vk_sessions(phone)')
       .eq('slug', req.params.slug)
       .single();
 
     // Verkäufer-Stammdaten laden
     let sellerInfo = null;
-    if (lp && lp.vk_sessions && lp.vk_sessions.business_discount_id) {
-      const { data: bd } = await supabase.from('vk_business_discounts')
-        .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city, seller_uid')
-        .eq('id', lp.vk_sessions.business_discount_id).single();
-      if (bd) sellerInfo = bd;
+    if (lp && lp.session_id) {
+      const { data: sess } = await supabase.from('vk_sessions')
+        .select('business_discount_id').eq('id', lp.session_id).maybeSingle();
+      if (sess && sess.business_discount_id) {
+        const { data: bd } = await supabase.from('vk_business_discounts')
+          .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city, seller_uid')
+          .eq('id', sess.business_discount_id).maybeSingle();
+        if (bd) sellerInfo = bd;
+      }
     }
 
     if (!lp) return res.status(404).send('<h1>Seite nicht gefunden</h1>');
@@ -1118,7 +1122,7 @@ app.delete('/api/vk/landingpage/:id', async (req, res) => {
 app.get('/p/:slug/buy', async (req, res) => {
   try {
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(title, analysis), vk_sessions(phone, business_discount_id)')
+      .select('*, vk_articles(title, analysis), vk_sessions(phone)')
       .eq('slug', req.params.slug).single();
 
     if (!lp || lp.status !== 'active') return res.status(410).send('<h1>Angebot nicht mehr verfügbar.</h1>');
@@ -1190,7 +1194,7 @@ app.get('/p/:slug/success', async (req, res) => {
   try {
     const { session_id } = req.query;
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(title, analysis), vk_sessions(phone, business_discount_id)')
+      .select('*, vk_articles(title, analysis), vk_sessions(phone)')
       .eq('slug', req.params.slug).single();
 
     if (!lp) return res.status(404).send('<h1>Nicht gefunden</h1>');
@@ -1226,10 +1230,14 @@ app.get('/p/:slug/success', async (req, res) => {
     const saleAmount = stripeSession ? (stripeSession.amount_total / 100) : parseFloat(lp.sale_price || 0);
     // Provision aus Business Discount laden
     let commissionPct = 0;
-    if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
-      const { data: bdComm } = await supabase.from('vk_business_discounts')
-        .select('sales_commission_percent').eq('id', lp.vk_sessions.business_discount_id).single();
-      if (bdComm) commissionPct = bdComm.sales_commission_percent || 0;
+    if (lp.session_id) {
+      const { data: sessComm } = await supabase.from('vk_sessions')
+        .select('business_discount_id').eq('id', lp.session_id).maybeSingle();
+      if (sessComm && sessComm.business_discount_id) {
+        const { data: bdComm } = await supabase.from('vk_business_discounts')
+          .select('sales_commission_percent').eq('id', sessComm.business_discount_id).maybeSingle();
+        if (bdComm) commissionPct = bdComm.sales_commission_percent || 0;
+      }
     }
     const commissionAmount = Math.round(saleAmount * commissionPct / 100 * 100) / 100;
     const soldAt = new Date();
@@ -1521,16 +1529,16 @@ app.get('/api/vk/admin/verkaeufe', async (req, res) => {
 
       if (v.article_id) {
         const { data: art } = await supabase.from('vk_articles')
-          .select('title, analysis').eq('id', v.article_id).single();
+          .select('title, analysis').eq('id', v.article_id).maybeSingle();
         if (art) productTitle = art.analysis?.title_short || art.title || 'Produkt';
       }
 
       if (v.session_id) {
         const { data: sess } = await supabase.from('vk_sessions')
-          .select('phone, business_discount_id').eq('id', v.session_id).single();
+          .select('phone, business_discount_id').eq('id', v.session_id).maybeSingle();
         if (sess && sess.business_discount_id) {
           const { data: bd } = await supabase.from('vk_business_discounts')
-            .select('company_name').eq('id', sess.business_discount_id).single();
+            .select('company_name').eq('id', sess.business_discount_id).maybeSingle();
           if (bd) companyName = bd.company_name || '-';
         }
       }
