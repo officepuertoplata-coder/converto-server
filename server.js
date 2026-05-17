@@ -1225,30 +1225,19 @@ app.get('/p/:slug/success', async (req, res) => {
       const buyerName = stripeSession?.customer_details?.name || 'Käufer';
       const buyerEmail = stripeSession?.customer_details?.email || '';
       const amount = stripeSession ? (stripeSession.amount_total / 100).toFixed(2) : lp.sale_price;
-      let sellerMsg = '🎉 Artikel verkauft!
-
-';
-      sellerMsg += '📦 ' + (an.title_short || article.title || 'Produkt') + '
-';
-      sellerMsg += '💰 Betrag: €' + amount + '
-
-';
+      let sellerMsg = 'Artikel verkauft!\n\n';
+      sellerMsg += 'Artikel: ' + (an.title_short || article.title || 'Produkt') + '\n';
+      sellerMsg += 'Betrag: EUR ' + amount + '\n\n';
       if (isShipping && stripeSession?.shipping_details) {
         const addr = stripeSession.shipping_details.address;
-        sellerMsg += '📦 VERSAND an:
-';
-        sellerMsg += buyerName + '
-';
-        sellerMsg += addr.line1 + (addr.line2 ? ', ' + addr.line2 : '') + '
-';
-        sellerMsg += addr.postal_code + ' ' + addr.city + ', ' + addr.country + '
-';
-        if (buyerEmail) sellerMsg += '📧 ' + buyerEmail + '
-';
+        sellerMsg += 'VERSAND an:\n';
+        sellerMsg += buyerName + '\n';
+        sellerMsg += addr.line1 + (addr.line2 ? ', ' + addr.line2 : '') + '\n';
+        sellerMsg += addr.postal_code + ' ' + addr.city + ', ' + addr.country + '\n';
+        if (buyerEmail) sellerMsg += 'Email: ' + buyerEmail + '\n';
       } else {
-        sellerMsg += '🤝 Abholung – Käufer kommt zu dir.
-';
-        sellerMsg += 'QR Code zur Bestätigung: ' + qrData;
+        sellerMsg += 'Abholung - Kaeufer kommt zu dir.\n';
+        sellerMsg += 'QR Code: ' + qrData;
       }
       await vkSendWhatsApp(sellerPhone, sellerMsg);
     }
@@ -1264,7 +1253,7 @@ app.get('/p/:slug/success', async (req, res) => {
         .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city').eq('id', lp.vk_sessions.business_discount_id).single();
       if (bd) {
         sellerHtml = '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px;margin-bottom:16px;">' +
-          '<div style="font-weight:800;color:#15803d;margin-bottom:8px;">📍 ' + (isShipping ? 'Versender' : 'Abholadresse') + '</div>' +
+          '<div style="font-weight:800;color:#15803d;margin-bottom:8px;"> ' + (isShipping ? 'Versender' : 'Abholadresse') + '</div>' +
           '<div style="font-size:.9rem;line-height:1.8;">' +
           '<strong>' + esc(bd.company_name||'') + '</strong><br>' +
           (bd.seller_address ? esc(bd.seller_address) + '<br>' : '') +
@@ -1293,11 +1282,11 @@ h1{font-size:1.3rem;font-weight:800;text-align:center;margin-bottom:6px;}
 .footer{font-size:.72rem;color:#9ca3af;text-align:center;margin-top:16px;}
 </style></head><body>
 <div class="card">
-  <div class="check">✅</div>
+  <div class="check"></div>
   <h1>Zahlung bestätigt!</h1>
   <p class="sub">Vielen Dank für deinen Kauf.</p>
 
-  ${isShipping ? '<div style="background:#dbeafe;border:1.5px solid #93c5fd;border-radius:12px;padding:14px;margin-bottom:16px;font-size:.88rem;color:#1e40af;">📦 Der Verkäufer wurde informiert und wird deinen Artikel versenden.</div>' :
+  ${isShipping ? '<div style="background:#dbeafe;border:1.5px solid #93c5fd;border-radius:12px;padding:14px;margin-bottom:16px;font-size:.88rem;color:#1e40af;"> Der Verkäufer wurde informiert und wird deinen Artikel versenden.</div>' :
   '<div class="qr-box"><img src="' + qrImgUrl + '" alt="QR Code"><div class="qr-label">Zeige diesen QR Code bei der Abholung</div><div class="qr-code">' + qrData + '</div></div>'}
 
   ${sellerHtml}
