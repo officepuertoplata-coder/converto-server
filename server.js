@@ -1074,6 +1074,109 @@ app.delete('/api/vk/landingpage/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── ROUTE: Druckbares Produktetikett ──────────────────────
+app.get('/api/vk/lp/label/:slug', async (req, res) => {
+  try {
+    const { data: lp } = await supabase.from('vk_landingpages')
+      .select('*, vk_articles(title, analysis, vk_photos(public_url))')
+      .eq('slug', req.params.slug).single();
+
+    if (!lp) return res.status(404).send('<h1>Nicht gefunden</h1>');
+
+    const article = lp.vk_articles || {};
+    const an = article.analysis || {};
+    const photos = article.vk_photos || [];
+    const url = 'https://p.converdino.com/p/' + lp.slug;
+    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=' + encodeURIComponent(url) + '&color=1b4332&bgcolor=ffffff&margin=20';
+    const title = an.title_short || article.title || 'Produkt';
+    const price = lp.sale_price ? '€ ' + parseFloat(lp.sale_price).toLocaleString('de-AT', {minimumFractionDigits:2}) : '';
+    const condition = an.condition ? an.condition.split('.')[0] : '';
+    const photo = photos[0] ? photos[0].public_url : null;
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Produktetikett – ${esc(title)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #fff; }
+
+  /* Druckseite: A4 */
+  .page { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+  /* Print Button */
+  .print-btn { display: block; margin: 0 auto 24px; padding: 12px 32px; background: #1b4332; color: #fff; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+  @media print { .print-btn { display: none; } }
+
+  /* Etikett Grid – 2 pro Reihe */
+  .label-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .label {
+    border: 2px solid #1b4332;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    page-break-inside: avoid;
+    background: #fff;
+  }
+  .label-left { flex: 1; min-width: 0; }
+  .label-brand { font-size: .6rem; font-weight: 800; color: #25D366; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .label-title { font-size: .78rem; font-weight: 700; line-height: 1.3; margin-bottom: 6px; color: #1a1a1a; }
+  .label-price { font-size: 1.3rem; font-weight: 900; color: #1b4332; margin-bottom: 4px; }
+  .label-condition { font-size: .65rem; color: #6b7280; margin-bottom: 8px; }
+  .label-scan { font-size: .6rem; color: #6b7280; font-weight: 700; text-align: center; margin-top: 4px; }
+  .label-right { flex-shrink: 0; text-align: center; }
+  .label-right img.qr { width: 90px; height: 90px; border: 1px solid #e5e7eb; border-radius: 6px; }
+  .label-right img.photo { width: 90px; height: 70px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; display: block; margin-bottom: 4px; }
+  .label-logo { font-size: .55rem; font-weight: 900; color: #1b4332; letter-spacing: .5px; }
+
+  /* Hinweis */
+  .hint { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: .82rem; color: #15803d; }
+</style>
+</head>
+<body>
+<div class="page">
+  <button class="print-btn" onclick="window.print()">Etiketten drucken</button>
+
+  <div class="hint">
+    Diese Seite enthält 4 identische Etiketten zum Ausschneiden. Einfach ausdrucken, ausschneiden und am Produkt befestigen.
+    Jeder QR Code führt direkt zur Produktseite.
+  </div>
+
+  <div class="label-grid">
+    ${[1,2,3,4].map(() => `
+    <div class="label">
+      <div class="label-left">
+        <div class="label-brand">Converdino Marktplatz</div>
+        <div class="label-title">${esc(title)}</div>
+        ${price ? `<div class="label-price">${esc(price)}</div>` : ''}
+        ${condition ? `<div class="label-condition">${esc(condition)}</div>` : ''}
+      </div>
+      <div class="label-right">
+        ${photo ? `<img class="photo" src="${photo}" alt="Foto">` : ''}
+        <img class="qr" src="${qrUrl}" alt="QR Code">
+        <div class="label-scan">Jetzt scannen</div>
+        <div class="label-logo">converdino.com</div>
+      </div>
+    </div>`).join('')}
+  </div>
+</div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch(e) {
+    console.error('LP label error:', e.message);
+    res.status(500).send('Fehler: ' + e.message);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════
 // CRON CLEANUP ENDPOINT – wird von Railway Cron aufgerufen
 // ═══════════════════════════════════════════════════════════
