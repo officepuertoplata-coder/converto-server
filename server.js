@@ -242,6 +242,31 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             try { const { data: merchant } = await supabase.from('merchants').select('id').eq('meta_phone_number_id', phoneId).single(); await vkHandleWhatsAppImage(from, msg.image.id, merchant?.id || null); } catch(e) { console.error('VK image handler error:', e.message); }
             continue;
           }
+          // ── LP BOT: Prüfe ob Nachricht LP-Kontext hat ──────
+          const rawText = msg.text?.body || '';
+          const lpSlugMatch = rawText.match(/p\.converdino\.com\/p\/([\w-]+)/);
+          if (lpSlugMatch && msgType === 'text') {
+            try {
+              await vkHandleLPBot(from, rawText, lpSlugMatch[1], phoneId);
+              continue;
+            } catch(lpErr) {
+              console.error('LP Bot error:', lpErr.message);
+            }
+          }
+
+          // Prüfe ob aktive LP Bot Konversation läuft
+          if (msgType === 'text') {
+            const hasActiveBot = await vkCheckActiveLPBot(from);
+            if (hasActiveBot) {
+              try {
+                await vkHandleLPBotReply(from, rawText, phoneId);
+                continue;
+              } catch(lpErr) {
+                console.error('LP Bot reply error:', lpErr.message);
+              }
+            }
+          }
+
           const { data: merchant, error: mErr } = await supabase.from('merchants').select('id, name, slug').eq('meta_phone_number_id', phoneId).single();
           console.log('Merchant lookup phoneId:', phoneId, 'found:', merchant?.id, 'error:', mErr?.message);
           if (!merchant) continue;
@@ -911,11 +936,16 @@ ${photos.length > 0 ? `
     ${an.condition ? '<div class="condition-badge" style="color:' + condColor + ';background:' + condColor + '18;">⬤ ' + esc(an.condition.split('.')[0]) + '</div>' : ''}
     <div class="price-main">${priceStr}</div>
     ${an.price_min && an.price_max ? '<div class="price-range">Marktpreis: €' + an.price_min + ' – €' + an.price_max + '</div>' : ''}
+    ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich ab €' + lp.min_price + '</div>' : ''}
     ${expiryNote}
     <a class="cta-btn" href="/p/${lp.slug}/buy" id="cta-btn">
       🛒 Jetzt kaufen
     </a>
     <div style="text-align:center;margin-top:8px;font-size:.75rem;color:#9ca3af;">Sichere Zahlung via Stripe</div>
+    <a href="https://wa.me/4367764118095?text=${encodeURIComponent('Hallo, ich interessiere mich für: ' + (an.title_short || article.title || 'Produkt') + ' (%E2%82%AC' + price + ')%0Ahttps://p.converdino.com/p/' + lp.slug)}" target="_blank"
+       style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;background:#fff;border:2px solid #25D366;border-radius:12px;font-size:.95rem;font-weight:800;color:#25D366;text-decoration:none;margin-top:10px;transition:all .2s;">
+      💬 Über WhatsApp anfragen / verhandeln
+    </a>
   </div>
 
   ${bulletHTML ? `
@@ -2034,6 +2064,179 @@ async function vkGetBusinessDiscount(phone) {
 
 // In-Memory Debounce Map: phone → { timer, sessionId, sessionToken, batchCount, merchantId }
 const vkPendingWA = new Map();
+
+// ── LP BOT: Konversations-Speicher (In-Memory) ──────────
+const vkLPBotSessions = new Map(); // phone → { lpSlug, messages[], article, lp }
+
+async function vkCheckActiveLPBot(phone) {
+  return vkLPBotSessions.has(phone);
+}
+
+async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
+  const fetch = require('node-fetch');
+
+  // LP + Artikel aus DB laden
+  const { data: lp } = await supabase.from('vk_landingpages')
+    .select('*, vk_articles(title, analysis)')
+    .eq('slug', lpSlug).maybeSingle();
+
+  if (!lp) {
+    await vkSendWhatsApp(phone, 'Dieses Angebot ist leider nicht mehr verfügbar.');
+    return;
+  }
+
+  const article = lp.vk_articles || {};
+  const an = article.analysis || {};
+  const price = parseFloat(lp.sale_price || an.price_recommended || 0);
+  const minPrice = parseFloat(lp.min_price || price * 0.8);
+
+  // System Prompt mit Artikel-Kontext
+  const systemPrompt = `Du bist Verkaufsassistent fuer Converdino. Du hilfst beim Verkauf dieses Artikels ueber WhatsApp.
+
+ARTIKEL: ${an.title_short || article.title || 'Produkt'}
+PREIS: EUR ${price}
+MINDESTPREIS: EUR ${minPrice} (NICHT unterschreiten - intern, nicht nennen)
+ZUSTAND: ${an.condition ? an.condition.split('.')[0] : 'Gut'}
+BESCHREIBUNG: ${an.short_desc || ''}
+HIGHLIGHTS: ${(an.bullet_points || []).slice(0,4).join(', ')}
+LIEFERUNG: ${lp.delivery_pickup ? 'Selbstabholung moeglich' + (lp.pickup_location ? ' in ' + lp.pickup_location : '') : ''}${lp.delivery_shipping ? (lp.delivery_pickup ? ', ' : '') + 'Versand moeglich (EUR ' + (lp.shipping_cost || 0) + ')' : ''}
+
+REGELN:
+- Antworte auf Deutsch, freundlich und professionell
+- Beantworte Fragen zum Produkt
+- Fuehre den Kaeufer zur Kaufentscheidung
+- Du darfst maximal bis EUR ${minPrice} runterhandeln
+- Wenn Einigung erzielt: Antworte mit dem Satz "ZAHLUNG_LINK:EUR_BETRAG" (z.B. "ZAHLUNG_LINK:3200")
+- Halte Antworten kurz (max 3-4 Saetze fuer WhatsApp)`;
+
+  // Konversation initialisieren
+  const session = {
+    lpSlug,
+    lp,
+    article,
+    systemPrompt,
+    minPrice,
+    price,
+    messages: [{ role: 'user', content: text }]
+  };
+  vkLPBotSessions.set(phone, session);
+
+  // Claude antworten lassen
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      system: systemPrompt,
+      messages: session.messages
+    })
+  });
+  const data = await response.json();
+  const reply = data.content?.[0]?.text || 'Entschuldigung, ich konnte Ihre Anfrage nicht verarbeiten.';
+
+  // Prüfen ob Payment Link generiert werden soll
+  const paymentMatch = reply.match(/ZAHLUNG_LINK:(\d+(?:\.\d+)?)/);
+  if (paymentMatch) {
+    const agreedPrice = parseFloat(paymentMatch[1]);
+    await vkSendLPPaymentLink(phone, lp, agreedPrice, phoneId);
+    vkLPBotSessions.delete(phone);
+    return;
+  }
+
+  // Antwort speichern und senden
+  session.messages.push({ role: 'assistant', content: reply });
+  await vkSendWhatsApp(phone, reply);
+}
+
+async function vkHandleLPBotReply(phone, text, phoneId) {
+  const fetch = require('node-fetch');
+  const session = vkLPBotSessions.get(phone);
+  if (!session) return;
+
+  // Konversation abbrechen wenn Käufer abbricht
+  const cancelWords = ['stop', 'nein', 'danke', 'tschüss', 'bye', 'kein interesse'];
+  if (cancelWords.some(w => text.toLowerCase().includes(w))) {
+    vkLPBotSessions.delete(phone);
+    await vkSendWhatsApp(phone, 'Kein Problem! Falls Sie doch Interesse haben, schreiben Sie einfach nochmal. 😊');
+    return;
+  }
+
+  session.messages.push({ role: 'user', content: text });
+
+  // Opus für Preisverhandlung, Haiku für normale Fragen
+  const isNegotiating = text.match(/\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger/i);
+  const model = isNegotiating ? 'claude-opus-4-5' : 'claude-haiku-4-5';
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      max_tokens: 300,
+      system: session.systemPrompt,
+      messages: session.messages
+    })
+  });
+  const data = await response.json();
+  const reply = data.content?.[0]?.text || 'Entschuldigung, ein Fehler ist aufgetreten.';
+
+  // Payment Link check
+  const paymentMatch = reply.match(/ZAHLUNG_LINK:(\d+(?:\.\d+)?)/);
+  if (paymentMatch) {
+    const agreedPrice = parseFloat(paymentMatch[1]);
+    await vkSendLPPaymentLink(phone, session.lp, agreedPrice, phoneId);
+    vkLPBotSessions.delete(phone);
+    return;
+  }
+
+  session.messages.push({ role: 'assistant', content: reply });
+
+  // Max 10 Nachrichten dann Session beenden
+  if (session.messages.length > 20) {
+    vkLPBotSessions.delete(phone);
+    await vkSendWhatsApp(phone, reply + '\n\nFür weitere Fragen besuchen Sie unsere Webseite: https://p.converdino.com/p/' + session.lpSlug);
+  } else {
+    await vkSendWhatsApp(phone, reply);
+  }
+}
+
+async function vkSendLPPaymentLink(phone, lp, agreedPrice, phoneId) {
+  try {
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const article = lp.vk_articles || {};
+    const an = article.analysis || {};
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      customer_creation: 'always',
+      billing_address_collection: 'required',
+      line_items: [{
+        price_data: {
+          currency: 'eur',
+          product_data: { name: an.title_short || article.title || 'Produkt' },
+          unit_amount: Math.round(agreedPrice * 100)
+        },
+        quantity: 1
+      }],
+      metadata: {
+        lp_id: lp.id,
+        lp_slug: lp.slug,
+        delivery_type: lp.delivery_pickup ? 'pickup' : 'shipping',
+        negotiated: 'true'
+      },
+      success_url: 'https://p.converdino.com/p/' + lp.slug + '/success?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: 'https://p.converdino.com/p/' + lp.slug
+    });
+
+    const msg = 'Super! Hier ist Ihr persönlicher Zahlungslink:\n\n' + session.url + '\n\nBetrag: EUR ' + agreedPrice.toFixed(2) + '\n\nDer Link ist 24 Stunden gültig.';
+    await vkSendWhatsApp(phone, msg);
+  } catch(e) {
+    console.error('LP Payment Link error:', e.message);
+    await vkSendWhatsApp(phone, 'Entschuldigung, der Zahlungslink konnte nicht erstellt werden. Bitte kaufen Sie direkt auf der Webseite: https://p.converdino.com/p/' + lp.slug);
+  }
+}
 
 async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
   try {
