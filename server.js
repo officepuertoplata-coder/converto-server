@@ -709,6 +709,225 @@ app.post('/api/vk/business-free', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ═══════════════════════════════════════════════════════════
+// PRODUKT-LANDINGPAGES – p.converdino.com/p/:slug
+// ═══════════════════════════════════════════════════════════
+
+// Slug aus Titel generieren
+function vkGenerateSlug(title) {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss')
+    .replace(/[^a-z0-9\s-]/g,'')
+    .replace(/\s+/g,'-')
+    .replace(/-+/g,'-')
+    .substring(0, 60)
+    .replace(/^-|-$/g,'')
+    + '-' + Math.random().toString(36).substring(2,7);
+}
+
+// Produktseite HTML generieren
+function vkBuildLandingpageHTML(article, session, landingpage) {
+  const an = article.analysis || {};
+  const photos = article.vk_photos || [];
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const photoHTML = photos.map(p =>
+    '<img src="' + p.public_url + '" alt="' + esc(article.title) + '" style="width:100%;max-height:400px;object-fit:cover;border-radius:12px;margin-bottom:10px;">'
+  ).join('');
+
+  const price = landingpage.sale_price || an.price_recommended || 0;
+  const priceMin = an.price_min || 0;
+  const priceMax = an.price_max || 0;
+
+  const deliveryHTML = [
+    landingpage.delivery_pickup ? '<div style="display:flex;align-items:center;gap:8px;padding:10px;background:#f0fdf4;border-radius:8px;margin-bottom:8px;"><span>🤝</span><div><strong>Selbstabholung</strong>' + (landingpage.pickup_location ? '<br><small style="color:#6b7280;">' + esc(landingpage.pickup_location) + '</small>' : '') + '</div></div>' : '',
+    landingpage.delivery_shipping ? '<div style="display:flex;align-items:center;gap:8px;padding:10px;background:#f0fdf4;border-radius:8px;margin-bottom:8px;"><span>📦</span><div><strong>Versand möglich</strong><br><small style="color:#6b7280;">Versandkosten: €' + (landingpage.shipping_cost||0).toFixed(2) + '</small></div></div>' : ''
+  ].filter(Boolean).join('');
+
+  const bulletHTML = (an.bullet_points||[]).map(b =>
+    '<li style="padding:6px 0;border-bottom:1px solid #f3f4f6;">' + esc(b) + '</li>'
+  ).join('');
+
+  const disclaimer = '<div style="background:#f9fafb;border-radius:8px;padding:12px;font-size:.75rem;color:#9ca3af;line-height:1.6;margin-top:20px;">Converdino ist ausschließlich Vermittler zwischen Käufer und Verkäufer. Vertragspartner des Kaufvertrags ist ausschließlich der Anbieter dieses Artikels. Converdino übernimmt keine Haftung für Produktbeschaffenheit, Lieferung oder Gewährleistungsansprüche.</div>';
+
+  const botWidget = landingpage.has_bot ? `
+    <div id="chat-widget" style="position:fixed;bottom:24px;right:24px;z-index:1000;">
+      <button onclick="document.getElementById('chat-box').style.display=document.getElementById('chat-box').style.display==='none'?'flex':'none'" style="width:56px;height:56px;border-radius:50%;background:#25D366;border:none;cursor:pointer;font-size:24px;box-shadow:0 4px 12px rgba(37,211,102,.4);">💬</button>
+      <div id="chat-box" style="display:none;position:absolute;bottom:70px;right:0;width:320px;height:420px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.15);flex-direction:column;overflow:hidden;">
+        <div style="background:#25D366;color:#fff;padding:14px 16px;font-weight:800;">💬 Frage zum Artikel</div>
+        <div id="chat-msgs" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;"></div>
+        <div style="padding:10px;border-top:1px solid #f3f4f6;display:flex;gap:8px;">
+          <input id="chat-inp" placeholder="Deine Frage..." style="flex:1;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;outline:none;" onkeydown="if(event.key==='Enter')sendChat()">
+          <button onclick="sendChat()" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:8px 12px;cursor:pointer;">➤</button>
+        </div>
+      </div>
+    </div>
+    <script>
+    var chatHistory = [];
+    var articleContext = ${JSON.stringify({title: article.title, price, condition: an.condition, description: an.short_desc, pickup: landingpage.pickup_location, shipping: landingpage.delivery_shipping, shipping_cost: landingpage.shipping_cost})};
+    async function sendChat() {
+      var inp = document.getElementById('chat-inp');
+      var msg = inp.value.trim(); if (!msg) return;
+      inp.value = '';
+      addMsg('user', msg);
+      chatHistory.push({role:'user', content: msg});
+      var loadDiv = addMsg('ai', '...');
+      try {
+        var res = await fetch('https://converto-server-production.up.railway.app/api/vk/lp/chat', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ lp_id: '${landingpage.id}', message: msg, history: chatHistory.slice(-10) })
+        });
+        var data = await res.json();
+        loadDiv.textContent = data.reply || 'Fehler';
+        chatHistory.push({role:'assistant', content: data.reply});
+      } catch(e) { loadDiv.textContent = 'Verbindungsfehler'; }
+    }
+    function addMsg(role, text) {
+      var d = document.createElement('div');
+      d.textContent = text;
+      d.style.cssText = 'max-width:85%;padding:8px 12px;border-radius:12px;font-size:.83rem;' + (role==='user' ? 'align-self:flex-end;background:#25D366;color:#fff;' : 'align-self:flex-start;background:#f3f4f6;');
+      document.getElementById('chat-msgs').appendChild(d);
+      document.getElementById('chat-msgs').scrollTop = 9999;
+      return d;
+    }
+    </script>` : '';
+
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(article.title || an.title_short || 'Produkt')} – Converdino</title>
+<meta name="description" content="${esc(an.short_desc || '')}">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#1a1a1a;}
+.container{max-width:640px;margin:0 auto;padding:16px;}
+.header{background:#25D366;color:#fff;padding:14px 20px;text-align:center;font-weight:800;font-size:1rem;}
+.card{background:#fff;border-radius:12px;padding:20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+.price-box{background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:16px;text-align:center;margin-bottom:12px;}
+.price-main{font-size:2rem;font-weight:900;color:#15803d;}
+.price-range{font-size:.82rem;color:#6b7280;margin-top:4px;}
+.btn-buy{display:block;width:100%;padding:16px;background:#25D366;color:#fff;border:none;border-radius:10px;font-size:1.05rem;font-weight:800;cursor:pointer;text-align:center;text-decoration:none;margin-top:12px;}
+.btn-buy:hover{background:#1a9e52;}
+h1{font-size:1.2rem;font-weight:800;margin-bottom:8px;}
+h2{font-size:.9rem;font-weight:800;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+ul{list-style:none;padding:0;}
+</style>
+</head>
+<body>
+<div class="header">📦 Converdino Marktplatz</div>
+<div class="container">
+  <div class="card">
+    ${photoHTML}
+    <h1>${esc(an.title_long || article.title || 'Produkt')}</h1>
+    <p style="color:#6b7280;font-size:.88rem;margin-top:6px;">${esc(an.short_desc || '')}</p>
+  </div>
+
+  <div class="price-box">
+    <div class="price-main">€${price.toLocaleString('de-AT')}</div>
+    ${priceMin && priceMax ? '<div class="price-range">Preisrahmen: €' + priceMin + ' – €' + priceMax + '</div>' : ''}
+    <a class="btn-buy" href="https://p.converdino.com/p/${landingpage.slug}/buy">🛒 Jetzt kaufen</a>
+  </div>
+
+  ${an.bullet_points && an.bullet_points.length ? '<div class="card"><h2>✨ Highlights</h2><ul>' + bulletHTML + '</ul></div>' : ''}
+
+  ${an.long_desc ? '<div class="card"><h2>📋 Beschreibung</h2><p style="font-size:.88rem;line-height:1.6;">' + esc(an.long_desc) + '</p></div>' : ''}
+
+  ${an.condition ? '<div class="card"><h2>📊 Zustand</h2><p style="font-size:.88rem;">' + esc(an.condition) + '</p></div>' : ''}
+
+  <div class="card"><h2>🚚 Lieferung</h2>${deliveryHTML}</div>
+
+  ${disclaimer}
+</div>
+${botWidget}
+</body>
+</html>`;
+}
+
+// ── ROUTE: Produktseite ausliefern ─────────────────────────
+app.get('/p/:slug', async (req, res) => {
+  try {
+    const { data: lp } = await supabase.from('vk_landingpages')
+      .select('*, vk_articles(*, vk_photos(*)), vk_sessions(phone)')
+      .eq('slug', req.params.slug)
+      .single();
+
+    if (!lp) return res.status(404).send('<h1>Seite nicht gefunden</h1>');
+    if (lp.status !== 'active') return res.status(410).send('<h1>Dieses Angebot ist nicht mehr verfügbar.</h1>');
+    if (lp.active_until && new Date(lp.active_until) < new Date()) {
+      await supabase.from('vk_landingpages').update({ status: 'expired' }).eq('id', lp.id);
+      return res.status(410).send('<h1>Dieses Angebot ist abgelaufen.</h1>');
+    }
+
+    // View Counter erhöhen
+    await supabase.from('vk_landingpages').update({ views: (lp.views||0) + 1 }).eq('id', lp.id);
+
+    const html = vkBuildLandingpageHTML(lp.vk_articles, lp.vk_sessions, lp);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch(e) {
+    console.error('LP route error:', e.message);
+    res.status(500).send('<h1>Fehler beim Laden</h1>');
+  }
+});
+
+// ── ROUTE: LP erstellen ────────────────────────────────────
+app.post('/api/vk/landingpage', async (req, res) => {
+  try {
+    const { article_id, session_id, days, has_bot, delivery_pickup, delivery_shipping, shipping_cost, pickup_location, sale_price } = req.body;
+    if (!article_id || !session_id || !days) return res.status(400).json({ error: 'article_id, session_id und days erforderlich' });
+
+    // Business-Check: Landingpage aktiviert?
+    const { data: session } = await supabase.from('vk_sessions').select('business_discount_id, phone').eq('id', session_id).single();
+    if (session && session.business_discount_id) {
+      const { data: bd } = await supabase.from('vk_business_discounts').select('landingpage_enabled').eq('id', session.business_discount_id).single();
+      if (!bd || !bd.landingpage_enabled) return res.status(403).json({ error: 'Landingpage für diesen Account nicht freigeschaltet' });
+    }
+
+    const { data: article } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('id', article_id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+    const slug = vkGenerateSlug(article.title || (article.analysis?.title_short) || 'produkt');
+    const activeUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: lp, error } = await supabase.from('vk_landingpages').insert({
+      article_id, session_id, slug,
+      active_until: activeUntil,
+      has_bot: !!has_bot,
+      delivery_pickup: delivery_pickup !== false,
+      delivery_shipping: !!delivery_shipping,
+      shipping_cost: parseFloat(shipping_cost) || 0,
+      pickup_location: pickup_location || null,
+      sale_price: parseFloat(sale_price) || null,
+      status: 'active', views: 0
+    }).select().single();
+
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, landingpage: lp, url: 'https://p.converdino.com/p/' + slug });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ROUTE: LP Info abrufen ─────────────────────────────────
+app.get('/api/vk/landingpage/article/:articleId', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_landingpages')
+      .select('*').eq('article_id', req.params.articleId)
+      .neq('status', 'deleted').order('created_at', { ascending: false }).limit(1).maybeSingle();
+    res.json(data || null);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ROUTE: LP deaktivieren ─────────────────────────────────
+app.delete('/api/vk/landingpage/:id', async (req, res) => {
+  try {
+    await supabase.from('vk_landingpages').update({ status: 'deleted' }).eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════
 // CRON CLEANUP ENDPOINT – wird von Railway Cron aufgerufen
 // ═══════════════════════════════════════════════════════════
