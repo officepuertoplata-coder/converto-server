@@ -453,7 +453,10 @@ app.post('/api/vk/check-payment', async (req, res) => {
           for (const article of (articles || [])) {
             if (!(article.vk_photos || []).length) continue;
             const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
-            await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+            const newTitle = analysis.title_short || null;
+          const articleUpdate = { analysis, status: 'analyzed' };
+          if (newTitle) articleUpdate.title = newTitle;
+          await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id);
             if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
           }
           const anyExtended = (articles || []).some(a => a.extended);
@@ -688,7 +691,10 @@ app.post('/api/vk/business-free', async (req, res) => {
         for (const article of (articles || [])) {
           if (!(article.vk_photos || []).length) continue;
           const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
-          await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id);
+          const newTitle = analysis.title_short || null;
+          const articleUpdate = { analysis, status: 'analyzed' };
+          if (newTitle) articleUpdate.title = newTitle;
+          await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id);
           if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
         }
         const anyExtended = (articles || []).some(a => a.extended);
@@ -1505,7 +1511,10 @@ app.post('/api/vk/stripe-webhook', express.raw({ type: 'application/json' }), as
       (async () => {
         try {
           const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
-          for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : (phone || '')).catch(function(e){console.error('Market bg:',e.message);}); } }
+          for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); const newTitle = analysis.title_short || null;
+          const articleUpdate = { analysis, status: 'analyzed' };
+          if (newTitle) articleUpdate.title = newTitle;
+          await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : (phone || '')).catch(function(e){console.error('Market bg:',e.message);}); } }
           const anyExtended = (articles || []).some(a => a.extended), days = anyExtended ? 7 : 3;
           await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
           const link = `https://converdino.com/ergebnis.html?s=${vkToken}`;
@@ -1569,7 +1578,10 @@ app.post('/api/vk/admin/analyze/:sessionId', async (req, res) => {
     res.json({ success: true, message: 'Analyse gestartet' });
     (async () => {
       const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
-      for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : (phone || '')).catch(function(e){console.error('Market bg:',e.message);}); } }
+      for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); const newTitle = analysis.title_short || null;
+          const articleUpdate = { analysis, status: 'analyzed' };
+          if (newTitle) articleUpdate.title = newTitle;
+          await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : (phone || '')).catch(function(e){console.error('Market bg:',e.message);}); } }
       const anyExtended = (articles || []).some(a => a.extended), days = anyExtended ? 7 : 3;
       await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
       const link = `https://converdino.com/ergebnis.html?s=${session.token}`;
@@ -1791,7 +1803,10 @@ app.post('/api/vk/coupon/redeem', async (req, res) => {
       (async () => {
         try {
           const { data: arts } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
-          for (const article of (arts||[])) { if (!(article.vk_photos||[]).length) continue; const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : ''); await supabase.from('vk_articles').update({ analysis, status: 'analyzed' }).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); } }
+          for (const article of (arts||[])) { if (!(article.vk_photos||[]).length) continue; const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : ''); const newTitle = analysis.title_short || null;
+          const articleUpdate = { analysis, status: 'analyzed' };
+          if (newTitle) articleUpdate.title = newTitle;
+          await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); } }
           const anyExtended = (arts||[]).some(a => a.extended), days = anyExtended ? 7 : 3;
           await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
           await vkSendWhatsApp(session.phone, `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\nhttps://converdino.com/ergebnis.html?s=${token}\n\nWird in ${days} Tagen gelöscht.`);
