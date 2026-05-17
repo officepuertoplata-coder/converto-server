@@ -584,7 +584,7 @@ app.get('/api/vk/admin/business-discounts', async (req, res) => {
 
 app.post('/api/vk/admin/business-discounts', async (req, res) => {
   try {
-    const { company_name, phone, discount_percent, valid_until, max_uses, notes, sales_commission_percent, landingpage_enabled, wise_email } = req.body;
+    const { company_name, phone, discount_percent, valid_until, max_uses, notes, sales_commission_percent, landingpage_enabled, wise_email, seller_email, seller_address, seller_zip, seller_city, seller_uid } = req.body;
     if (!company_name || !phone || !discount_percent)
       return res.status(400).json({ error: 'company_name, phone und discount_percent erforderlich' });
     const cleanPhone = phone.replace(/[^0-9+]/g, '');
@@ -597,6 +597,11 @@ app.post('/api/vk/admin/business-discounts', async (req, res) => {
       sales_commission_percent: parseInt(sales_commission_percent) || 0,
       landingpage_enabled: landingpage_enabled === true || landingpage_enabled === 'true',
       wise_email: wise_email || null,
+      seller_email: seller_email || null,
+      seller_address: seller_address || null,
+      seller_zip: seller_zip || null,
+      seller_city: seller_city || null,
+      seller_uid: seller_uid || null,
       active: true, used_count: 0
     }).select().single();
     if (error) return res.status(400).json({ error: error.message });
@@ -734,7 +739,7 @@ function vkGenerateSlug(title) {
 }
 
 // Produktseite HTML generieren
-function vkBuildLandingpageHTML(article, session, lp) {
+function vkBuildLandingpageHTML(article, session, lp, sellerInfo) {
   const an = article.analysis || {};
   const photos = article.vk_photos || [];
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -907,9 +912,10 @@ ${photos.length > 0 ? `
     <div class="price-main">${priceStr}</div>
     ${an.price_min && an.price_max ? '<div class="price-range">Marktpreis: €' + an.price_min + ' – €' + an.price_max + '</div>' : ''}
     ${expiryNote}
-    <a class="cta-btn" href="mailto:?subject=${encodeURIComponent(esc(an.title_short||article.title||'Angebot'))}&body=${encodeURIComponent('Ich interessiere mich für dieses Angebot: https://p.converdino.com/p/' + lp.slug)}" id="cta-btn">
-      🛒 Jetzt kaufen / Anfragen
+    <a class="cta-btn" href="/p/${lp.slug}/buy" id="cta-btn">
+      🛒 Jetzt kaufen
     </a>
+    <div style="text-align:center;margin-top:8px;font-size:.75rem;color:#9ca3af;">Sichere Zahlung via Stripe</div>
   </div>
 
   ${bulletHTML ? `
@@ -940,6 +946,19 @@ ${photos.length > 0 ? `
   <div class="section-card">
     <div class="section-heading">🏷 Tags</div>
     <div class="tags-wrap">${keywordHTML}</div>
+  </div>` : ''}
+
+  ${sellerInfo ? `
+  <div class="section-card">
+    <div class="section-heading">👤 Anbieter dieses Artikels</div>
+    <div style="font-size:.85rem;line-height:1.8;color:#374151;">
+      <strong>${esc(sellerInfo.company_name || '')}</strong><br>
+      ${sellerInfo.seller_address ? esc(sellerInfo.seller_address) + '<br>' : ''}
+      ${sellerInfo.seller_zip && sellerInfo.seller_city ? esc(sellerInfo.seller_zip) + ' ' + esc(sellerInfo.seller_city) + '<br>' : ''}
+      ${sellerInfo.seller_email ? '<a href="mailto:' + esc(sellerInfo.seller_email) + '" style="color:#25D366;">' + esc(sellerInfo.seller_email) + '</a><br>' : ''}
+      ${sellerInfo.phone ? 'Tel: ' + esc(sellerInfo.phone) : ''}
+      ${sellerInfo.seller_uid ? '<br>UID: ' + esc(sellerInfo.seller_uid) : ''}
+    </div>
   </div>` : ''}
 
   <div class="disclaimer">
@@ -1003,9 +1022,18 @@ function shareLP() {
 app.get('/p/:slug', async (req, res) => {
   try {
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(*, vk_photos(*)), vk_sessions(phone)')
+      .select('*, vk_articles(*, vk_photos(*)), vk_sessions(phone, business_discount_id)')
       .eq('slug', req.params.slug)
       .single();
+
+    // Verkäufer-Stammdaten laden
+    let sellerInfo = null;
+    if (lp && lp.vk_sessions && lp.vk_sessions.business_discount_id) {
+      const { data: bd } = await supabase.from('vk_business_discounts')
+        .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city, seller_uid')
+        .eq('id', lp.vk_sessions.business_discount_id).single();
+      if (bd) sellerInfo = bd;
+    }
 
     if (!lp) return res.status(404).send('<h1>Seite nicht gefunden</h1>');
     if (lp.status !== 'active') return res.status(410).send('<h1>Dieses Angebot ist nicht mehr verfügbar.</h1>');
@@ -1017,7 +1045,7 @@ app.get('/p/:slug', async (req, res) => {
     // View Counter erhöhen
     await supabase.from('vk_landingpages').update({ views: (lp.views||0) + 1 }).eq('id', lp.id);
 
-    const html = vkBuildLandingpageHTML(lp.vk_articles, lp.vk_sessions, lp);
+    const html = vkBuildLandingpageHTML(lp.vk_articles, lp.vk_sessions, lp, sellerInfo);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   } catch(e) {
@@ -1078,6 +1106,212 @@ app.delete('/api/vk/landingpage/:id', async (req, res) => {
     await supabase.from('vk_landingpages').update({ status: 'deleted' }).eq('id', req.params.id);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ── ROUTE: LP Sofortkauf Stripe Checkout ──────────────────
+app.get('/p/:slug/buy', async (req, res) => {
+  try {
+    const { data: lp } = await supabase.from('vk_landingpages')
+      .select('*, vk_articles(title, analysis), vk_sessions(phone, business_discount_id)')
+      .eq('slug', req.params.slug).single();
+
+    if (!lp || lp.status !== 'active') return res.status(410).send('<h1>Angebot nicht mehr verfügbar.</h1>');
+    if (lp.active_until && new Date(lp.active_until) < new Date()) return res.status(410).send('<h1>Angebot abgelaufen.</h1>');
+
+    const article = lp.vk_articles || {};
+    const an = article.analysis || {};
+    const price = parseFloat(lp.sale_price || an.price_recommended || 0);
+    if (!price || price <= 0) return res.status(400).send('<h1>Kein Preis definiert.</h1>');
+
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const isShipping = !!lp.delivery_shipping;
+
+    const checkoutParams = {
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'eur',
+          product_data: {
+            name: an.title_short || article.title || 'Produkt',
+            description: an.short_desc || null
+          },
+          unit_amount: Math.round(price * 100)
+        },
+        quantity: 1
+      }],
+      metadata: {
+        lp_id: lp.id,
+        lp_slug: lp.slug,
+        session_id: lp.session_id,
+        article_id: lp.article_id,
+        delivery_type: isShipping ? 'shipping' : 'pickup'
+      },
+      success_url: 'https://p.converdino.com/p/' + lp.slug + '/success?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: 'https://p.converdino.com/p/' + lp.slug
+    };
+
+    // Versand: Adresse abfragen
+    if (isShipping) {
+      checkoutParams.shipping_address_collection = { allowed_countries: ['AT', 'DE', 'CH'] };
+      checkoutParams.customer_creation = 'always';
+      // Versandkosten als extra Line Item
+      if (lp.shipping_cost > 0) {
+        checkoutParams.line_items.push({
+          price_data: {
+            currency: 'eur',
+            product_data: { name: 'Versandkosten' },
+            unit_amount: Math.round(lp.shipping_cost * 100)
+          },
+          quantity: 1
+        });
+      }
+    }
+
+    // Abholung: anonym, nur Karte
+    if (!isShipping) {
+      checkoutParams.phone_number_collection = { enabled: false };
+    }
+
+    const checkout = await stripe.checkout.sessions.create(checkoutParams);
+    res.redirect(303, checkout.url);
+  } catch(e) {
+    console.error('LP checkout error:', e.message);
+    res.status(500).send('Fehler beim Checkout: ' + e.message);
+  }
+});
+
+// ── ROUTE: LP Kauf Bestätigung ────────────────────────────
+app.get('/p/:slug/success', async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    const { data: lp } = await supabase.from('vk_landingpages')
+      .select('*, vk_articles(title, analysis), vk_sessions(phone, business_discount_id)')
+      .eq('slug', req.params.slug).single();
+
+    if (!lp) return res.status(404).send('<h1>Nicht gefunden</h1>');
+
+    // Stripe Session laden
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    let stripeSession = null;
+    if (session_id) {
+      stripeSession = await stripe.checkout.sessions.retrieve(session_id);
+    }
+
+    const isShipping = lp.delivery_shipping;
+    const sellerPhone = lp.vk_sessions ? lp.vk_sessions.phone : null;
+    const an = (lp.vk_articles || {}).analysis || {};
+
+    // QR Code für Übergabe generieren
+    const qrCode = require('crypto').randomBytes(8).toString('hex').toUpperCase();
+    const qrData = 'CONV-' + qrCode;
+
+    // QR Code in DB speichern
+    await supabase.from('qr_codes').insert({
+      merchant_id: null,
+      code: qrData,
+      product_name: an.title_short || lp.vk_articles?.title || 'Produkt',
+      customer_name: stripeSession?.customer_details?.name || 'Käufer',
+      customer_email: stripeSession?.customer_details?.email || null,
+      quantity: 1,
+      status: 'open',
+      metadata: { lp_id: lp.id, lp_slug: lp.slug, stripe_session: session_id }
+    });
+
+    // Verkäufer per WhatsApp informieren
+    if (sellerPhone) {
+      const article = lp.vk_articles || {};
+      const buyerName = stripeSession?.customer_details?.name || 'Käufer';
+      const buyerEmail = stripeSession?.customer_details?.email || '';
+      const amount = stripeSession ? (stripeSession.amount_total / 100).toFixed(2) : lp.sale_price;
+      let sellerMsg = '🎉 Artikel verkauft!
+
+';
+      sellerMsg += '📦 ' + (an.title_short || article.title || 'Produkt') + '
+';
+      sellerMsg += '💰 Betrag: €' + amount + '
+
+';
+      if (isShipping && stripeSession?.shipping_details) {
+        const addr = stripeSession.shipping_details.address;
+        sellerMsg += '📦 VERSAND an:
+';
+        sellerMsg += buyerName + '
+';
+        sellerMsg += addr.line1 + (addr.line2 ? ', ' + addr.line2 : '') + '
+';
+        sellerMsg += addr.postal_code + ' ' + addr.city + ', ' + addr.country + '
+';
+        if (buyerEmail) sellerMsg += '📧 ' + buyerEmail + '
+';
+      } else {
+        sellerMsg += '🤝 Abholung – Käufer kommt zu dir.
+';
+        sellerMsg += 'QR Code zur Bestätigung: ' + qrData;
+      }
+      await vkSendWhatsApp(sellerPhone, sellerMsg);
+    }
+
+    // Bestätigungsseite für Käufer
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(qrData) + '&color=1b4332&margin=10';
+
+    // Verkäufer-Info für Bestätigungsseite
+    let sellerHtml = '';
+    if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
+      const { data: bd } = await supabase.from('vk_business_discounts')
+        .select('company_name, phone, seller_email, seller_address, seller_zip, seller_city').eq('id', lp.vk_sessions.business_discount_id).single();
+      if (bd) {
+        sellerHtml = '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px;margin-bottom:16px;">' +
+          '<div style="font-weight:800;color:#15803d;margin-bottom:8px;">📍 ' + (isShipping ? 'Versender' : 'Abholadresse') + '</div>' +
+          '<div style="font-size:.9rem;line-height:1.8;">' +
+          '<strong>' + esc(bd.company_name||'') + '</strong><br>' +
+          (bd.seller_address ? esc(bd.seller_address) + '<br>' : '') +
+          (bd.seller_zip && bd.seller_city ? esc(bd.seller_zip) + ' ' + esc(bd.seller_city) + '<br>' : '') +
+          (bd.phone ? 'Tel: ' + esc(bd.phone) + '<br>' : '') +
+          (bd.seller_email ? '<a href="mailto:' + esc(bd.seller_email) + '" style="color:#25D366;">' + esc(bd.seller_email) + '</a>' : '') +
+          '</div></div>';
+      }
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kauf bestätigt – Converdino</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:#f8f9fa;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.card{background:#fff;border-radius:16px;padding:28px 24px;max-width:480px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.08);}
+.check{width:64px;height:64px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 16px;}
+h1{font-size:1.3rem;font-weight:800;text-align:center;margin-bottom:6px;}
+.sub{font-size:.88rem;color:#6b7280;text-align:center;margin-bottom:20px;}
+.qr-box{text-align:center;background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px;margin-bottom:16px;}
+.qr-box img{width:160px;height:160px;border-radius:8px;display:block;margin:0 auto 8px;}
+.qr-label{font-size:.75rem;font-weight:700;color:#15803d;}
+.qr-code{font-family:monospace;font-size:1rem;font-weight:800;color:#1b4332;margin-top:4px;}
+.footer{font-size:.72rem;color:#9ca3af;text-align:center;margin-top:16px;}
+</style></head><body>
+<div class="card">
+  <div class="check">✅</div>
+  <h1>Zahlung bestätigt!</h1>
+  <p class="sub">Vielen Dank für deinen Kauf.</p>
+
+  ${isShipping ? '<div style="background:#dbeafe;border:1.5px solid #93c5fd;border-radius:12px;padding:14px;margin-bottom:16px;font-size:.88rem;color:#1e40af;">📦 Der Verkäufer wurde informiert und wird deinen Artikel versenden.</div>' :
+  '<div class="qr-box"><img src="' + qrImgUrl + '" alt="QR Code"><div class="qr-label">Zeige diesen QR Code bei der Abholung</div><div class="qr-code">' + qrData + '</div></div>'}
+
+  ${sellerHtml}
+
+  <div class="footer">Converdino – Sicherer Marktplatz</div>
+</div>
+</body></html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch(e) {
+    console.error('LP success error:', e.message);
+    res.status(500).send('Fehler: ' + e.message);
+  }
 });
 
 
