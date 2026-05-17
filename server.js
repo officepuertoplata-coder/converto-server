@@ -649,7 +649,7 @@ app.get('/api/vk/session/:token/discount', async (req, res) => {
       }
     }
 
-    res.json({ has_discount: false });
+    res.json({ has_discount: false, landingpage_enabled: false });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
