@@ -1359,7 +1359,7 @@ app.post('/api/vk/checkout', async (req, res) => {
     if (session.business_discount_pct && session.business_discount_pct > 0) {
       const pct = session.business_discount_pct;
       const disc = Math.round(price * pct / 100 * 100) / 100;
-      finalPrice = Math.max(0.50, price - disc);
+      finalPrice = pct >= 100 ? 0 : Math.max(0.50, price - disc);
       discountLabel = pct + '% Firmenrabatt';
       // Nutzungszähler erhöhen
       if (session.business_discount_id) {
