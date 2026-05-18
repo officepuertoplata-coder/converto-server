@@ -430,7 +430,7 @@ app.get('/api/vk/session/:token', async (req, res) => {
       photo_count: (a.vk_photos || []).length
     }));
     const price = vkCalcPrice(articles);
-    res.json({ ...session, vk_articles: articles, calculated_price: price });
+    res.json({ ...session, vk_articles: articles, articles: articles, calculated_price: price });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
