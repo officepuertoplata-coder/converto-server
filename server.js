@@ -479,9 +479,32 @@ app.post('/api/vk/check-payment', async (req, res) => {
             if (!(article.vk_photos || []).length) continue;
             const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
             const newTitle = analysis.title_short || null;
-          const articleUpdate = { analysis, status: 'analyzed' };
+          const comp = analysis.compliance || {};
+          const auth = analysis.authenticity || {};
+          const articleUpdate = {
+            analysis,
+            status: 'analyzed',
+            article_category: analysis.article_category || 'standard',
+            compliance_status: comp.blocked ? 'blocked' : (comp.category <= 2 ? 'needs_review' : 'approved'),
+            compliance_category: comp.category || 3,
+            compliance_flags: comp.flags || [],
+            compliance_blocked_reason: comp.reason || null,
+            authenticity_score: auth.score || null,
+            authenticity_verdict: auth.verdict || null,
+            authenticity_flags: auth.flags || [],
+            authenticity_warning: auth.warning || null
+          };
           if (newTitle) articleUpdate.title = newTitle;
           await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id);
+
+          // Compliance Log
+          if (comp.blocked || comp.category <= 2) {
+            await supabase.from('vk_compliance_log').insert({
+              article_id: article.id,
+              action: comp.blocked ? 'auto_blocked' : 'needs_review',
+              reason: comp.reason || (comp.category === 2 ? 'Kategorie 2 - manuelle Prüfung erforderlich' : null)
+            });
+          }
             if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
           }
           const anyExtended = (articles || []).some(a => a.extended);
@@ -722,9 +745,32 @@ app.post('/api/vk/business-free', async (req, res) => {
           if (!(article.vk_photos || []).length) continue;
           const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
           const newTitle = analysis.title_short || null;
-          const articleUpdate = { analysis, status: 'analyzed' };
+          const comp = analysis.compliance || {};
+          const auth = analysis.authenticity || {};
+          const articleUpdate = {
+            analysis,
+            status: 'analyzed',
+            article_category: analysis.article_category || 'standard',
+            compliance_status: comp.blocked ? 'blocked' : (comp.category <= 2 ? 'needs_review' : 'approved'),
+            compliance_category: comp.category || 3,
+            compliance_flags: comp.flags || [],
+            compliance_blocked_reason: comp.reason || null,
+            authenticity_score: auth.score || null,
+            authenticity_verdict: auth.verdict || null,
+            authenticity_flags: auth.flags || [],
+            authenticity_warning: auth.warning || null
+          };
           if (newTitle) articleUpdate.title = newTitle;
           await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id);
+
+          // Compliance Log
+          if (comp.blocked || comp.category <= 2) {
+            await supabase.from('vk_compliance_log').insert({
+              article_id: article.id,
+              action: comp.blocked ? 'auto_blocked' : 'needs_review',
+              reason: comp.reason || (comp.category === 2 ? 'Kategorie 2 - manuelle Prüfung erforderlich' : null)
+            });
+          }
           if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
         }
         const anyExtended = (articles || []).some(a => a.extended);
@@ -934,6 +980,10 @@ ${photos.length > 0 ? `
   <div class="price-card">
     <div class="article-title">${esc(an.title_long || article.title || 'Produkt')}</div>
     ${an.condition ? '<div class="condition-badge" style="color:' + condColor + ';background:' + condColor + '18;">⬤ ' + esc(an.condition.split('.')[0]) + '</div>' : ''}
+    ${lp.badge_type && lp.badge_type !== 'none' ? `
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:700;margin-bottom:8px;background:${lp.badge_type === 'admin_verified' ? '#f5f3ff' : lp.badge_type === 'seller_confirmed' ? '#f0fdf4' : '#eff6ff'};color:${lp.badge_type === 'admin_verified' ? '#6d28d9' : lp.badge_type === 'seller_confirmed' ? '#15803d' : '#1d4ed8'};">
+      ${lp.badge_type === 'admin_verified' ? '🏆 Vom Converdino Team geprüft' : lp.badge_type === 'seller_confirmed' ? '✅ Vom Verkäufer bestätigt' : '🔍 KI-geprüft'}
+    </div>` : ''}
     <div class="price-main">${priceStr}</div>
     ${an.price_min && an.price_max ? '<div class="price-range">Marktpreis: €' + an.price_min + ' – €' + an.price_max + '</div>' : ''}
     ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich ab €' + lp.min_price + '</div>' : ''}
@@ -1710,6 +1760,80 @@ WICHTIGE REGELN:
   }
 });
 
+
+// ── ROUTE: Compliance Freigabe ────────────────────────────
+app.put('/api/vk/admin/compliance/:articleId', async (req, res) => {
+  try {
+    const { action, reason } = req.body;
+    // action: 'approve' | 'reject'
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+
+    const { data: article } = await supabase.from('vk_articles')
+      .select('id, title, session_id')
+      .eq('id', req.params.articleId).maybeSingle();
+
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+    await supabase.from('vk_articles').update({
+      compliance_status: newStatus,
+      admin_verified: action === 'approve',
+      compliance_blocked_reason: action === 'reject' ? reason : null
+    }).eq('id', req.params.articleId);
+
+    // Compliance Log
+    await supabase.from('vk_compliance_log').insert({
+      article_id: req.params.articleId,
+      action: action === 'approve' ? 'admin_approved' : 'admin_rejected',
+      reason: reason || null
+    });
+
+    // Bei Ablehnung: E-Mail an Verkäufer
+    if (action === 'reject' && reason) {
+      const { data: sess } = await supabase.from('vk_sessions')
+        .select('phone, business_discount_id')
+        .eq('id', article.session_id).maybeSingle();
+
+      if (sess) {
+        // WhatsApp Benachrichtigung
+        const waMsg = 'Dein Artikel "' + (article.title || 'Unbekannt') + '" wurde leider nicht freigegeben.\n\nGrund: ' + reason + '\n\nBei Fragen: office@ynhald.com';
+        await vkSendWhatsApp(sess.phone, waMsg);
+
+        // E-Mail wenn vorhanden
+        let sellerEmail = null;
+        if (sess.business_discount_id) {
+          const { data: bd } = await supabase.from('vk_business_discounts')
+            .select('seller_email, company_name').eq('id', sess.business_discount_id).maybeSingle();
+          if (bd && bd.seller_email) {
+            sellerEmail = bd.seller_email;
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY },
+              body: JSON.stringify({
+                from: 'Converdino <noreply@converdino.com>',
+                to: sellerEmail,
+                subject: 'Ihr Artikel wurde nicht freigegeben',
+                html: '<p>Guten Tag,</p><p>leider koennen wir folgenden Artikel nicht freigeben:</p><p><strong>' + (article.title || '') + '</strong></p><p>Grund: ' + reason + '</p><p>Bei Fragen: <a href="mailto:office@ynhald.com">office@ynhald.com</a></p><p>Mit freundlichen Gruessen<br>Das Converdino Team</p>'
+              })
+            });
+          }
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ROUTE: Admin Verifizierung (Auth Badge) ───────────────
+app.put('/api/vk/admin/verify/:articleId', async (req, res) => {
+  try {
+    await supabase.from('vk_articles')
+      .update({ admin_verified: true, compliance_status: 'approved' })
+      .eq('id', req.params.articleId);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════
 // CRON CLEANUP ENDPOINT – wird von Railway Cron aufgerufen
 // ═══════════════════════════════════════════════════════════
@@ -2065,7 +2189,7 @@ app.get('/api/vk/results/:token', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/vk/admin/sessions', async (req, res) => { try { const { data, error } = await supabase.from('vk_sessions').select('*, vk_articles(id, status, extended)').order('created_at', { ascending: false }); if (error) return res.status(500).json({ error: error.message }); res.json(data || []); } catch(e) { res.status(500).json({ error: e.message }); } });
+app.get('/api/vk/admin/sessions', async (req, res) => { try { const { data, error } = await supabase.from('vk_sessions').select('*, vk_articles(id, title, status, extended, compliance_status, compliance_category, compliance_flags, compliance_blocked_reason, authenticity_score, authenticity_verdict, admin_verified, article_category)').order('created_at', { ascending: false }); if (error) return res.status(500).json({ error: error.message }); res.json(data || []); } catch(e) { res.status(500).json({ error: e.message }); } });
 
 app.get('/api/vk/admin/stats', async (req, res) => {
   try {
@@ -2372,6 +2496,107 @@ async function vkSendLPPaymentLink(phone, lp, agreedPrice, phoneId) {
   }
 }
 
+
+// ── COMPLIANCE & KATEGORIE CHECK ─────────────────────────
+const VK_CATEGORY_MAP = {
+  luxury_watch:  { maxPhotos: 15, label: 'Luxusuhr' },
+  luxury_bag:    { maxPhotos: 15, label: 'Luxustasche' },
+  jewelry:       { maxPhotos: 12, label: 'Schmuck' },
+  electronics:   { maxPhotos: 8,  label: 'Elektronik' },
+  vehicle:       { maxPhotos: 20, label: 'Fahrzeug' },
+  medical:       { maxPhotos: 30, label: 'Medizintechnik' },
+  industrial:    { maxPhotos: 30, label: 'Industrie' },
+  art:           { maxPhotos: 15, label: 'Kunst/Antiquität' },
+  standard:      { maxPhotos: 10, label: 'Standard' }
+};
+
+async function vkComplianceCheckPhoto(imageBase64, mediaType) {
+  const fetch = require('node-fetch');
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+            { type: 'text', text: `Analysiere dieses Bild fuer einen Online-Marktplatz. Antworte NUR mit JSON:
+{
+  "compliance_category": 1,
+  "blocked": false,
+  "block_reason": null,
+  "article_category": "standard",
+  "needs_review": false,
+  "review_reason": null
+}
+
+compliance_category:
+1 = Absolut verboten (Nazi/SS Symbole, Waffen, Drogen, Pornografie, lebende Tiere, gefaelschte Dokumente, Wildtierprodukte)
+2 = Pruefung erforderlich (Militaria ohne NS, Repliken, Alkohol, Medizinprodukte, Messer)
+3 = Erlaubt
+
+article_category: luxury_watch / luxury_bag / jewelry / electronics / vehicle / medical / industrial / art / standard
+
+blocked: true nur bei category 1
+needs_review: true bei category 2` }
+          ]
+        }]
+      })
+    });
+    const d = await r.json();
+    const text = d.content?.[0]?.text || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    console.error('Compliance check error:', e.message);
+    return { compliance_category: 3, blocked: false, article_category: 'standard', needs_review: false };
+  }
+}
+
+async function vkGroupPhotosAndAnalyze(sessionId, articles) {
+  const fetch = require('node-fetch');
+  try {
+    // Alle Fotos der Session laden
+    const { data: photos } = await supabase.from('vk_photos')
+      .select('id, article_id, public_url')
+      .in('article_id', articles.map(a => a.id));
+
+    if (!photos || photos.length < 2) return null;
+
+    // Claude gruppiert Fotos
+    const photoList = photos.map((p, i) => i + ': ' + p.public_url).join('\n');
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: `Diese Fotos wurden zusammen hochgeladen. Gruppiere sie nach Artikel und gib jedem einen Kurztitel.
+Fotos (Index: URL):
+${photoList}
+
+Antworte NUR mit JSON:
+[
+  { "title": "Kurztitel", "photo_indices": [0, 1, 2], "category": "standard" }
+]`
+        }]
+      })
+    });
+    const d = await r.json();
+    const text = d.content?.[0]?.text || '[]';
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    console.error('Group photos error:', e.message);
+    return null;
+  }
+}
+
 async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
   try {
     let session, article, pending;
@@ -2393,7 +2618,7 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
       session = { id: pending.sessionId, token: pending.sessionToken };
 
       const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.sessionArticleBase + pending.batchCount, extended: false })
+        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.sessionArticleBase + pending.batchCount, extended: false, compliance_status: 'pending_review', compliance_category: 3 })
         .select().single();
       if (aErr) throw new Error(aErr.message);
       article = newArticle;
@@ -2470,17 +2695,25 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
       const final = vkPendingWA.get(phone);
       vkPendingWA.delete(phone);
       const batchCount = final ? final.batchCount : pending.batchCount;
-      let msg;
-      if (batchCount === 1) {
-        msg = '✅ Foto erhalten! Hier ist dein Auftrag-Link:\n\n' + link +
-              '\n\nDort kannst du:\n• Weitere Fotos hinzufügen\n• Neue Artikel anlegen\n• Deinen Bericht bestellen' +
-              '\n\n📂 Alle Aufträge:\n' + allLink;
-      } else {
-        msg = '✅ ' + batchCount + ' Fotos erhalten! Dein Auftrag hat ' + batchCount + ' neue Artikel.\n\n' +
-              '🔗 Hier zum Auftrag:\n' + link +
-              '\n\nFotos prüfen, weitere hinzufügen oder Bericht bestellen.' +
-              '\n\n📂 Alle Aufträge:\n' + allLink;
-      }
+      // Compliance Status aus DB laden
+      let compliantCount = 0, blockedCount = 0;
+      try {
+        const { data: arts } = await supabase.from('vk_articles')
+          .select('compliance_status, compliance_category')
+          .eq('session_id', final ? final.sessionId : pending.sessionId);
+        (arts || []).forEach(a => {
+          if (a.compliance_category <= 2) blockedCount++;
+          else compliantCount++;
+        });
+      } catch(e) {}
+
+      let msg = 'Wir haben ' + batchCount + ' Foto' + (batchCount > 1 ? 's' : '') + ' von dir erhalten.\n\n';
+      msg += 'Erkannte Artikel:\n';
+      if (compliantCount > 0) msg += compliantCount + ' Artikel bereit\n';
+      if (blockedCount > 0) msg += blockedCount + ' Artikel werden geprueft\n';
+      msg += '\nKlicke auf den Link um deinen Auftrag zu verwalten:\n' + link;
+      msg += '\n\nDort kannst du:\n• Verkaufsberichte bestellen\n• Landingpages einrichten\n• Deinen Converdino Berater aktivieren';
+      if (blockedCount > 0) msg += '\n\nBitte pruefe deine Auftragspositionen auf moegliche Compliance-Verstösse.';
       await sendWhatsApp(pending.merchantId, '+' + phone.replace(/[^0-9]/g,''), msg);
       console.log('VK debounce: WA sent for', phone, 'batch:', batchCount);
     }, 5000);
