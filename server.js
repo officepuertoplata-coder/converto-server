@@ -2150,10 +2150,50 @@ app.put('/api/vk/article/:id/notes', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/vk/article/:id', async (req, res) => { try { const { error } = await supabase.from('vk_articles').delete().eq('id', req.params.id); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true }); } catch(e) { res.status(500).json({ error: e.message }); } });
-// ══════════════════════════════════════════════════════
-// IN server.js EINFÜGEN – direkt nach:
-//   app.delete('/api/vk/article/:id', async (req, res) => { ... });
-// ══════════════════════════════════════════════════════
+// Artikel neu analysieren (mit aktualisierten Notizen)
+app.post('/api/vk/article/:id/reanalyze', async (req, res) => {
+  try {
+    const { data: article } = await supabase.from('vk_articles')
+      .select('*, vk_photos(*)').eq('id', req.params.id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+    if (!(article.vk_photos || []).length) return res.status(400).json({ error: 'Keine Fotos vorhanden' });
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('phone').eq('id', article.session_id).single();
+    await supabase.from('vk_articles').update({ status: 'pending' }).eq('id', article.id);
+    res.json({ success: true, message: 'Reanalyse gestartet' });
+    (async () => {
+      try {
+        const AUTH_CATS = ['luxury_watch', 'luxury_bag', 'jewelry', 'art', 'electronics'];
+        const analysis = await vkAnalyzeArticle(article, article.vk_photos, session?.phone || '');
+        const comp = analysis.compliance || {};
+        const auth = analysis.authenticity || {};
+        const authScore = (auth && auth.score !== null && auth.score !== undefined) ? auth.score : null;
+        const needsAuthReview = authScore !== null && authScore < 60 && AUTH_CATS.includes(analysis.article_category || '');
+        const update = {
+          analysis, status: 'analyzed',
+          article_category: analysis.article_category || article.article_category || 'standard',
+          compliance_status: comp.blocked ? 'blocked' : (comp.category <= 2 || needsAuthReview) ? 'needs_review' : 'approved',
+          compliance_category: comp.category || 3,
+          compliance_flags: comp.flags || [],
+          compliance_blocked_reason: comp.reason || null,
+          authenticity_score: authScore,
+          authenticity_verdict: auth.verdict || null,
+          authenticity_flags: auth.flags || [],
+          authenticity_warning: auth.warning || null
+        };
+        if (analysis.title_short) update.title = analysis.title_short;
+        await supabase.from('vk_articles').update(update).eq('id', article.id);
+        if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') {
+          vkRunMarketSearch(article.id, analysis.title_short, session?.phone || '')
+            .catch(e => console.error('Market reanalyze:', e.message));
+        }
+      } catch(e) {
+        console.error('Reanalyze error:', e.message);
+        await supabase.from('vk_articles').update({ status: 'analyzed' }).eq('id', article.id);
+      }
+    })();
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 app.put('/api/vk/photo/:photoId/move', async (req, res) => {
   try {
