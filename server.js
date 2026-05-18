@@ -1183,6 +1183,58 @@ app.post('/api/vk/admin/new-session', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── Artikel anlegen (bericht.html ruft diesen Endpoint auf) ──────────
+app.post('/api/vk/article', async (req, res) => {
+  try {
+    const { token, title } = req.body;
+    const { data: session } = await supabase.from('vk_sessions')
+      .select('id, vk_articles(id)')
+      .eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    const count = (session.vk_articles || []).length;
+    const { data: article, error } = await supabase.from('vk_articles').insert({
+      session_id: session.id,
+      title: title || `Artikel ${count + 1}`,
+      sort_order: count + 1
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, article });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Foto hochladen (bericht.html ruft /api/vk/photo auf) ─────────────
+app.post('/api/vk/photo', async (req, res) => {
+  try {
+    const { article_id, session_id, image_base64, content_type } = req.body;
+    if (!article_id || !image_base64) return res.status(400).json({ error: 'article_id und image_base64 erforderlich' });
+    const { data: article } = await supabase.from('vk_articles')
+      .select('id, session_id, vk_photos(id)')
+      .eq('id', article_id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+    if ((article.vk_photos || []).length >= 4)
+      return res.status(400).json({ error: 'Maximal 4 Fotos pro Artikel' });
+    const buffer = Buffer.from(image_base64, 'base64');
+    const ct = content_type || 'image/jpeg';
+    const ext = ct.includes('png') ? 'png' : 'jpg';
+    const sid = session_id || article.session_id;
+    const path = `${sid}/${article.id}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('vk-photos').upload(path, buffer, { contentType: ct, upsert: false });
+    if (upErr) return res.status(500).json({ error: upErr.message });
+    const { data: urlData } = supabase.storage.from('vk-photos').getPublicUrl(path);
+    const sortOrder = (article.vk_photos || []).length + 1;
+    const { data: photo } = await supabase.from('vk_photos').insert({
+      article_id: article.id,
+      session_id: sid,
+      storage_path: path,
+      public_url: urlData.publicUrl,
+      source: 'upload',
+      sort_order: sortOrder
+    }).select().single();
+    res.json(photo);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Converdino API v3.0 läuft auf Port ${PORT}`);
 });
