@@ -2243,7 +2243,25 @@ app.post('/api/vk/stripe-webhook', express.raw({ type: 'application/json' }), as
         try {
           const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
           for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); const newTitle = analysis.title_short || null;
-          const articleUpdate = { analysis, status: 'analyzed' };
+          const comp = analysis.compliance || {};
+const auth = analysis.authenticity || {};
+const authScore = (auth && auth.score !== null && auth.score !== undefined) ? auth.score : null;
+const AUTH_CATS = ['luxury_watch', 'luxury_bag', 'jewelry', 'art', 'electronics'];
+const needsAuthReview = authScore !== null && authScore < 60 && AUTH_CATS.includes(analysis.article_category || '');
+const articleUpdate = {
+  analysis,
+  status: 'analyzed',
+  article_category: analysis.article_category || 'standard',
+  compliance_status: comp.blocked ? 'blocked'
+    : (comp.category <= 2 || needsAuthReview) ? 'needs_review' : 'approved',
+  compliance_category: comp.category || 3,
+  compliance_flags: comp.flags || [],
+  compliance_blocked_reason: comp.reason || null,
+  authenticity_score: authScore,
+  authenticity_verdict: auth.verdict || null,
+  authenticity_flags: auth.flags || [],
+  authenticity_warning: auth.warning || null
+};
           if (newTitle) articleUpdate.title = newTitle;
           await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id); if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : (phone || '')).catch(function(e){console.error('Market bg:',e.message);}); } }
           const anyExtended = (articles || []).some(a => a.extended), days = anyExtended ? 7 : 3;
