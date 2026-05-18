@@ -2545,9 +2545,10 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
       const p = photos[i];
       try {
         const imgRes = await fetch(p.public_url);
-        const imgBuf = await imgRes.buffer();
+        const imgArrayBuf = await imgRes.arrayBuffer();
+        const imgBuf = Buffer.from(imgArrayBuf);
         const imgB64 = imgBuf.toString('base64');
-        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+        const contentType = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0];
         photoContents.push({ type: 'text', text: 'Foto ' + (i+1) + ':' });
         photoContents.push({ type: 'image', source: { type: 'base64', media_type: contentType, data: imgB64 } });
       } catch(imgErr) {
