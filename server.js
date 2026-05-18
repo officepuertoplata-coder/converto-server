@@ -1235,6 +1235,31 @@ app.post('/api/vk/photo', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── Alias /results/ → /result/ (ergebnis.html verwendet Plural) ──────
+app.get('/api/vk/results/:token', async (req, res) => {
+  try {
+    const { data: session } = await supabase.from('vk_sessions')
+      .select(`*, vk_articles (id, title, extended, notes, status, sort_order, analysis, vk_photos ( id, public_url, sort_order, article_id ))`)
+      .eq('token', req.params.token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    if (session.status !== 'done' && session.status !== 'analyzing')
+      return res.status(400).json({ error: 'Analyse noch nicht abgeschlossen', status: session.status });
+    if (session.vk_articles) {
+      session.vk_articles.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      for (const art of session.vk_articles) {
+        if (art.vk_photos) art.vk_photos.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      }
+    }
+    if (!session.result_viewed_at) {
+      await supabase.from('vk_sessions').update({ result_viewed_at: new Date().toISOString() }).eq('id', session.id);
+    }
+    // Map vk_articles → articles for frontend compatibility
+    const articles = session.vk_articles || [];
+    res.json({ ...session, articles, vk_articles: articles });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Converdino API v3.0 läuft auf Port ${PORT}`);
 });
