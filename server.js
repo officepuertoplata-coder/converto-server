@@ -1170,7 +1170,8 @@ app.post('/api/vk/landingpage', async (req, res) => {
 
     const slug = vkGenerateSlug(article.title || (article.analysis?.title_short) || 'produkt');
     const activeUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-
+const authScore = article.analysis?.authenticity?.score ?? null;
+const showBadge = !!show_score_badge && authScore !== null && authScore >= 60;
     const { data: lp, error } = await supabase.from('vk_landingpages').insert({
       article_id, session_id, slug,
       active_until: activeUntil,
@@ -1180,7 +1181,10 @@ app.post('/api/vk/landingpage', async (req, res) => {
       shipping_cost: parseFloat(shipping_cost) || 0,
       pickup_location: pickup_location || null,
       sale_price: parseFloat(sale_price) || null,
-      status: 'active', views: 0
+      status: 'active', views: 0,
+show_score_badge: showBadge,
+stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
+stock_sold: 0,
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
