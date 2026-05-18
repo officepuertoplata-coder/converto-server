@@ -1350,7 +1350,14 @@ app.get('/p/:slug/success', async (req, res) => {
     }).eq('id', lp.id);
 
     console.log('Sale saved: EUR ' + saleAmount + ', commission: EUR ' + commissionAmount + ', due: ' + payoutDueAt.toISOString());
-
+// Stock decrementieren
+if (lp.stock_quantity !== null) {
+  const newSold = (lp.stock_sold || 0) + 1;
+  const updateData = { stock_sold: newSold };
+  if (newSold >= lp.stock_quantity) updateData.status = 'sold_out';
+  await supabase.from('vk_landingpages').update(updateData).eq('id', lp.id);
+  console.log('Stock update: sold=' + newSold + '/' + lp.stock_quantity);
+}
     // Verkäufer-Info laden (wird für WhatsApp + E-Mail benötigt)
     let sellerBd = null;
     if (lp.vk_sessions && lp.vk_sessions.business_discount_id) {
