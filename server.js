@@ -650,6 +650,7 @@ app.post('/api/vk/admin/business-discounts', async (req, res) => {
       seller_zip: seller_zip || null,
       seller_city: seller_city || null,
       seller_uid: seller_uid || null,
+      upload_mode: req.body.upload_mode || 'standard',
       active: true, used_count: 0
     }).select().single();
     if (error) return res.status(400).json({ error: error.message });
@@ -2523,11 +2524,26 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
     // Claude gruppiert Fotos
     const photoList = photos.map((p, i) => (i + 1) + '. ' + p.public_url).join('\n');
 
+    // Upload mode aus Business Discount laden
+    let groupingModel = 'claude-haiku-4-5';
+    try {
+      const { data: sess } = await supabase.from('vk_sessions')
+        .select('business_discount_id').eq('id', sessionId).maybeSingle();
+      if (sess && sess.business_discount_id) {
+        const { data: bd } = await supabase.from('vk_business_discounts')
+          .select('upload_mode').eq('id', sess.business_discount_id).maybeSingle();
+        if (bd && bd.upload_mode === 'expert') {
+          groupingModel = 'claude-opus-4-5';
+          console.log('Expert mode: using Opus for grouping');
+        }
+      }
+    } catch(e) { console.error('upload_mode lookup:', e.message); }
+
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: groupingModel,
         max_tokens: 1000,
         messages: [{
           role: 'user',
@@ -2536,31 +2552,7 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
               { type: 'text', text: 'Foto ' + (i+1) + ':' },
               { type: 'image', source: { type: 'url', url: p.public_url } }
             ]).flat(),
-            { type: 'text', text: `AUFGABE: Gruppiere diese ${photos.length} Fotos nach physischen Objekten/Artikeln.
-
-WICHTIG: Jeder einzigartige physische Gegenstand = eigene Gruppe.
-- Ein Gabelstapler = 1 Gruppe (auch wenn 5 Fotos davon)
-- Ein Auto = 1 Gruppe
-- Ein Mixer = 1 Gruppe
-- Verschiedene Gegenstände = verschiedene Gruppen
-
-Schaue dir JEDES Foto genau an und bestimme welcher Gegenstand darauf zu sehen ist.
-
-Antworte NUR mit JSON (kein Text davor/danach):
-[
-  {
-    "title": "Kurztitel (max 50 Zeichen, Marke+Modell wenn erkennbar)",
-    "photo_indices": [1, 2, 3],
-    "article_category": "standard",
-    "compliance_category": 3,
-    "compliance_blocked": false,
-    "compliance_reason": null
-  }
-]
-
-article_category: luxury_watch/luxury_bag/jewelry/electronics/vehicle/medical/industrial/art/standard
-compliance_category: 1=VERBOTEN(Nazi/Waffen/Drogen/Pornografie/lebende Tiere), 2=PRUEFEN(Militaria/Messer), 3=OK
-photo_indices sind 1-basiert.` }
+            { type: 'text', text: 'AUFGABE: Gruppiere diese ' + photos.length + ' Fotos nach physischen Objekten.\n\nREGEL: Jeder einzigartige Gegenstand = eigene Gruppe. Gleicher Gegenstand aus verschiedenen Winkeln = eine Gruppe.\n\nAntworte NUR mit JSON:\n[{"title":"Kurztitel max 50 Zeichen","photo_indices":[1,2],"article_category":"standard","compliance_category":3,"compliance_blocked":false,"compliance_reason":null}]\n\narticle_category: luxury_watch/luxury_bag/jewelry/electronics/vehicle/medical/industrial/art/standard\ncompliance_category: 1=VERBOTEN(Nazi/Waffen/Drogen/Pornografie/Tiere), 2=PRUEFEN(Militaria/Messer), 3=OK\nphoto_indices 1-basiert.' }
           ]
         }]
       })
