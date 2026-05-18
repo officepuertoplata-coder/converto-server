@@ -2497,6 +2497,159 @@ async function vkSendLPPaymentLink(phone, lp, agreedPrice, phoneId) {
 }
 
 
+
+// ── MASSENUPLOAD: Fotos gruppieren und Artikel erstellen ──
+async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
+  const fetch = require('node-fetch');
+  let compliant = 0, blocked = 0;
+
+  try {
+    // Alle Fotos des Temp-Artikels laden
+    const { data: photos } = await supabase.from('vk_photos')
+      .select('id, public_url, sort_order')
+      .eq('article_id', tempArticleId)
+      .order('sort_order');
+
+    if (!photos || photos.length === 0) return { compliant: 0, blocked: 0 };
+
+    if (photos.length === 1) {
+      // Nur ein Foto - direkt Artikel erstellen mit Compliance
+      await supabase.from('vk_articles')
+        .update({ title: 'Artikel', sort_order: 1 })
+        .eq('id', tempArticleId);
+      return { compliant: 1, blocked: 0 };
+    }
+
+    // Claude gruppiert Fotos
+    const photoList = photos.map((p, i) => (i + 1) + '. ' + p.public_url).join('\n');
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 800,
+        messages: [{
+          role: 'user',
+          content: [
+            ...photos.slice(0, 10).map(p => ({ type: 'image', source: { type: 'url', url: p.public_url } })),
+            { type: 'text', text: `Diese ${photos.length} Fotos wurden zusammen hochgeladen. Gruppiere sie nach Artikel.
+Jede Gruppe = ein Verkaufsartikel.
+
+Antworte NUR mit JSON:
+[
+  {
+    "title": "Kurztitel des Artikels (max 50 Zeichen)",
+    "photo_indices": [1, 2, 3],
+    "article_category": "standard",
+    "compliance_category": 3,
+    "compliance_blocked": false,
+    "compliance_reason": null
+  }
+]
+
+article_category: luxury_watch/luxury_bag/jewelry/electronics/vehicle/medical/industrial/art/standard
+compliance_category: 1=verboten(Nazi/Waffen/Drogen/Pornografie), 2=pruefen, 3=ok
+Foto-Indices sind 1-basiert.` }
+          ]
+        }]
+      })
+    });
+
+    const d = await r.json();
+    const text = d.content?.[0]?.text || '[]';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const groups = JSON.parse(clean);
+
+    if (!groups || !groups.length) {
+      // Fallback: alles als ein Artikel
+      await supabase.from('vk_articles').update({ title: 'Artikel', sort_order: 1 }).eq('id', tempArticleId);
+      return { compliant: 1, blocked: 0 };
+    }
+
+    // Erste Gruppe: Temp-Artikel updaten
+    const firstGroup = groups[0];
+    const firstPhotoIds = (firstGroup.photo_indices || []).map(i => photos[i-1]?.id).filter(Boolean);
+    const catMap = { luxury_watch: 15, luxury_bag: 15, jewelry: 12, electronics: 8, vehicle: 20, medical: 30, industrial: 30, art: 15, standard: 10 };
+    const maxPhotos = catMap[firstGroup.article_category] || 10;
+
+    const firstStatus = firstGroup.compliance_blocked ? 'blocked' : (firstGroup.compliance_category <= 2 ? 'needs_review' : 'approved');
+
+    await supabase.from('vk_articles').update({
+      title: firstGroup.title || 'Artikel',
+      sort_order: 1,
+      article_category: firstGroup.article_category || 'standard',
+      max_photos: maxPhotos,
+      compliance_status: firstStatus,
+      compliance_category: firstGroup.compliance_category || 3,
+      compliance_blocked_reason: firstGroup.compliance_reason || null
+    }).eq('id', tempArticleId);
+
+    if (firstStatus === 'blocked') blocked++; else compliant++;
+
+    // Weitere Fotos für erste Gruppe zuweisen
+    if (firstPhotoIds.length > 0) {
+      const otherPhotos = photos.filter(p => !firstPhotoIds.includes(p.id));
+      // Fotos die nicht zur ersten Gruppe gehören werden später zugewiesen
+    }
+
+    // Weitere Gruppen: neue Artikel erstellen
+    for (let i = 1; i < groups.length; i++) {
+      const group = groups[i];
+      const groupPhotos = (group.photo_indices || []).map(idx => photos[idx-1]).filter(Boolean);
+      const gStatus = group.compliance_blocked ? 'blocked' : (group.compliance_category <= 2 ? 'needs_review' : 'approved');
+      const gMaxPhotos = catMap[group.article_category] || 10;
+
+      const { data: newArt } = await supabase.from('vk_articles').insert({
+        session_id: sessionId,
+        title: group.title || ('Artikel ' + (i + 1)),
+        sort_order: i + 1,
+        extended: false,
+        article_category: group.article_category || 'standard',
+        max_photos: gMaxPhotos,
+        compliance_status: gStatus,
+        compliance_category: group.compliance_category || 3,
+        compliance_blocked_reason: group.compliance_reason || null
+      }).select().single();
+
+      if (newArt && groupPhotos.length > 0) {
+        // Fotos zum neuen Artikel verschieben
+        await supabase.from('vk_photos').update({ article_id: newArt.id })
+          .in('id', groupPhotos.map(p => p.id));
+      }
+
+      if (gStatus === 'blocked') blocked++; else compliant++;
+
+      // Compliance Log für problematische Artikel
+      if (gStatus !== 'approved' && newArt) {
+        await supabase.from('vk_compliance_log').insert({
+          article_id: newArt.id,
+          action: gStatus === 'blocked' ? 'auto_blocked' : 'needs_review',
+          reason: group.compliance_reason || null
+        });
+      }
+    }
+
+    // Compliance Log für ersten Artikel wenn nötig
+    if (firstStatus !== 'approved') {
+      await supabase.from('vk_compliance_log').insert({
+        article_id: tempArticleId,
+        action: firstStatus === 'blocked' ? 'auto_blocked' : 'needs_review',
+        reason: firstGroup.compliance_reason || null
+      });
+    }
+
+    console.log('Grouping complete:', groups.length, 'articles,', compliant, 'compliant,', blocked, 'blocked');
+    return { compliant, blocked };
+
+  } catch(e) {
+    console.error('vkGroupAndCreateArticles error:', e.message);
+    // Fallback
+    await supabase.from('vk_articles').update({ title: 'Artikel', sort_order: 1 }).eq('id', tempArticleId);
+    return { compliant: 1, blocked: 0 };
+  }
+}
+
 // ── COMPLIANCE & KATEGORIE CHECK ─────────────────────────
 const VK_CATEGORY_MAP = {
   luxury_watch:  { maxPhotos: 15, label: 'Luxusuhr' },
@@ -2613,20 +2766,24 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
         waited += 100;
       }
 
-      // batchCount = nur neue Fotos in DIESEM Batch (nicht alte Artikel)
+      // Massenupload: Fotos sammeln, KEIN neuer Artikel pro Foto
       pending.batchCount++;
+      pending.photoIds = pending.photoIds || [];
       session = { id: pending.sessionId, token: pending.sessionToken };
 
-      const { data: newArticle, error: aErr } = await supabase.from('vk_articles')
-        .insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), sort_order: pending.sessionArticleBase + pending.batchCount, extended: false, compliance_status: 'pending_review', compliance_category: 3 })
-        .select().single();
-      if (aErr) throw new Error(aErr.message);
-      article = newArticle;
-      console.log('VK debounce: reuse session', session.token, 'batch count now', pending.batchCount);
+      // Temp-Artikel für Foto-Speicherung (wird nach Gruppierung ersetzt)
+      if (!pending.tempArticleId) {
+        const { data: tempArt } = await supabase.from('vk_articles')
+          .insert({ session_id: session.id, title: '_temp_' + phone, sort_order: 0, extended: false, compliance_status: 'pending_review' })
+          .select().single();
+        if (tempArt) pending.tempArticleId = tempArt.id;
+      }
+      article = { id: pending.tempArticleId };
+      console.log('VK massenupload: photo', pending.batchCount, 'for session', session.token);
 
     } else {
       // ── Erstes Foto – SOFORT Platzhalter setzen ──
-      pending = { sessionId: null, sessionToken: null, batchCount: 1, sessionArticleBase: 0, merchantId, timer: null };
+      pending = { sessionId: null, sessionToken: null, batchCount: 1, sessionArticleBase: 0, merchantId, timer: null, photoIds: [], tempArticleId: null };
       vkPendingWA.set(phone, pending);
 
       // DB prüfen: offene Session < 2h
@@ -2695,25 +2852,40 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
       const final = vkPendingWA.get(phone);
       vkPendingWA.delete(phone);
       const batchCount = final ? final.batchCount : pending.batchCount;
-      // Compliance Status aus DB laden
+      // Massenupload: Fotos gruppieren
+      const sessionId = final ? final.sessionId : pending.sessionId;
+      const tempArticleId = final ? final.tempArticleId : pending.tempArticleId;
       let compliantCount = 0, blockedCount = 0;
-      try {
-        const { data: arts } = await supabase.from('vk_articles')
-          .select('compliance_status, compliance_category')
-          .eq('session_id', final ? final.sessionId : pending.sessionId);
-        (arts || []).forEach(a => {
-          if (a.compliance_category <= 2) blockedCount++;
-          else compliantCount++;
-        });
-      } catch(e) {}
+
+      if (batchCount > 1 && tempArticleId) {
+        // Fotos gruppieren via Claude
+        try {
+          const groupResult = await vkGroupAndCreateArticles(sessionId, tempArticleId, phone);
+          compliantCount = groupResult.compliant;
+          blockedCount = groupResult.blocked;
+        } catch(groupErr) {
+          console.error('Grouping error:', groupErr.message);
+          compliantCount = batchCount;
+        }
+      } else {
+        // Einzelnes Foto - direkt Artikel umbenennen
+        if (tempArticleId) {
+          await supabase.from('vk_articles')
+            .update({ title: 'Artikel', sort_order: 1 })
+            .eq('id', tempArticleId);
+          compliantCount = 1;
+        }
+      }
 
       let msg = 'Wir haben ' + batchCount + ' Foto' + (batchCount > 1 ? 's' : '') + ' von dir erhalten.\n\n';
-      msg += 'Erkannte Artikel:\n';
-      if (compliantCount > 0) msg += compliantCount + ' Artikel bereit\n';
-      if (blockedCount > 0) msg += blockedCount + ' Artikel werden geprueft\n';
+      if (batchCount > 1) {
+        msg += 'Erkannte Artikel:\n';
+        if (compliantCount > 0) msg += compliantCount + (compliantCount === 1 ? ' Artikel bereit' : ' Artikel bereit') + '\n';
+        if (blockedCount > 0) msg += blockedCount + (blockedCount === 1 ? ' Artikel wird geprueft' : ' Artikel werden geprueft') + '\n';
+      }
       msg += '\nKlicke auf den Link um deinen Auftrag zu verwalten:\n' + link;
-      msg += '\n\nDort kannst du:\n• Verkaufsberichte bestellen\n• Landingpages einrichten\n• Deinen Converdino Berater aktivieren';
-      if (blockedCount > 0) msg += '\n\nBitte pruefe deine Auftragspositionen auf moegliche Compliance-Verstösse.';
+      msg += '\n\nDort kannst du:\n- Verkaufsberichte bestellen\n- Landingpages einrichten\n- Deinen Converdino Berater aktivieren';
+      if (blockedCount > 0) msg += '\n\nBitte pruefe deine Auftragspositionen auf moegliche Compliance-Verstoesse.';
       await sendWhatsApp(pending.merchantId, '+' + phone.replace(/[^0-9]/g,''), msg);
       console.log('VK debounce: WA sent for', phone, 'batch:', batchCount);
     }, 5000);
