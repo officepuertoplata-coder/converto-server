@@ -506,7 +506,7 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
           await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id);
 
           // Compliance Log
-          if (comp.blocked || comp.category <= 2) {
+         if (comp.blocked || comp.category <= 2 || needsAuthReview) {
             await supabase.from('vk_compliance_log').insert({
               article_id: article.id,
               action: comp.blocked ? 'auto_blocked' : 'needs_review',
