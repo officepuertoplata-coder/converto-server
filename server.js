@@ -2527,19 +2527,29 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 800,
+        model: 'claude-opus-4-5',
+        max_tokens: 1000,
         messages: [{
           role: 'user',
           content: [
-            ...photos.slice(0, 10).map(p => ({ type: 'image', source: { type: 'url', url: p.public_url } })),
-            { type: 'text', text: `Diese ${photos.length} Fotos wurden zusammen hochgeladen. Gruppiere sie nach Artikel.
-Jede Gruppe = ein Verkaufsartikel.
+            ...photos.slice(0, 15).map((p, i) => [
+              { type: 'text', text: 'Foto ' + (i+1) + ':' },
+              { type: 'image', source: { type: 'url', url: p.public_url } }
+            ]).flat(),
+            { type: 'text', text: `AUFGABE: Gruppiere diese ${photos.length} Fotos nach physischen Objekten/Artikeln.
 
-Antworte NUR mit JSON:
+WICHTIG: Jeder einzigartige physische Gegenstand = eigene Gruppe.
+- Ein Gabelstapler = 1 Gruppe (auch wenn 5 Fotos davon)
+- Ein Auto = 1 Gruppe
+- Ein Mixer = 1 Gruppe
+- Verschiedene Gegenstände = verschiedene Gruppen
+
+Schaue dir JEDES Foto genau an und bestimme welcher Gegenstand darauf zu sehen ist.
+
+Antworte NUR mit JSON (kein Text davor/danach):
 [
   {
-    "title": "Kurztitel des Artikels (max 50 Zeichen)",
+    "title": "Kurztitel (max 50 Zeichen, Marke+Modell wenn erkennbar)",
     "photo_indices": [1, 2, 3],
     "article_category": "standard",
     "compliance_category": 3,
@@ -2549,8 +2559,8 @@ Antworte NUR mit JSON:
 ]
 
 article_category: luxury_watch/luxury_bag/jewelry/electronics/vehicle/medical/industrial/art/standard
-compliance_category: 1=verboten(Nazi/Waffen/Drogen/Pornografie), 2=pruefen, 3=ok
-Foto-Indices sind 1-basiert.` }
+compliance_category: 1=VERBOTEN(Nazi/Waffen/Drogen/Pornografie/lebende Tiere), 2=PRUEFEN(Militaria/Messer), 3=OK
+photo_indices sind 1-basiert.` }
           ]
         }]
       })
