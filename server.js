@@ -2001,15 +2001,67 @@ async function vkAnalyzeArticle(article, photos, phone) {
   const fetch = require('node-fetch');
   const imageBlocks = photos.map(p => ({ type: 'image', source: { type: 'url', url: p.public_url } }));
   const notesText = article.notes ? '\n\nZusatzinfos vom Verkaeufer: ' + article.notes : '';
+ 
+  // Fälschungsrelevante Kategorien → Authentizitätsprüfung
+  const AUTH_CATS = ['luxury_watch', 'luxury_bag', 'jewelry', 'art', 'electronics'];
+  const needsAuth = AUTH_CATS.includes(article.article_category || '');
+ 
+  const authBlock = needsAuth
+    ? `  "authenticity": {
+    "score": 0-100,
+    "verdict": "authentic" ODER "suspicious" ODER "cannot_determine",
+    "positive_indicators": ["sichtbares positives Merkmal 1"],
+    "flags": ["sichtbare Auffaelligkeit 1"],
+    "warning": "Kurze Warnung auf Deutsch wenn verdaechtig, sonst null",
+    "checked_features": ["Seriennummer", "Logo", "Material", "Naehte", "Verpackung"]
+  }`
+    : '  "authenticity": null';
+ 
+  const authInstructions = needsAuth
+    ? `\n\nWICHTIG fuer authenticity score (Kategorie: ${article.article_category}):
+- Pruefe ALLE sichtbaren Echtheitsindikatoren auf den Fotos
+- Score 80-100: Merkmale sprechen klar fuer Echtheit
+- Score 60-79: Grossteils OK, leichte Auffaelligkeiten
+- Score 40-59: Deutliche Auffaelligkeiten sichtbar, Pruefung empfohlen
+- Score 0-39: Starker Faelschungsverdacht
+- Sei ehrlich und streng – lieber niedrigerer Score als falsches Vertrauen
+- "cannot_determine" wenn Fotos keine ausreichende Beurteilung ermoeglichen`
+    : '';
+ 
+  const prompt = `Analysiere dieses Produkt und erstelle folgendes JSON:${notesText}
+{
+  "title_short": "Kurztitel (max 60 Zeichen, SEO-optimiert)",
+  "title_long": "Ausfuehrlicher Titel mit Keywords",
+  "title_quick": "Quick-Sale Titel",
+  "short_desc": "2-3 Saetze Kurzbeschreibung",
+  "long_desc": "Ausfuehrliche Beschreibung",
+  "bullet_points": ["Highlight 1", "Highlight 2", "Highlight 3"],
+  "price_min": 0,
+  "price_max": 0,
+  "price_recommended": 0,
+  "price_reasoning": "Begruendung",
+  "condition": "Zustandsbeschreibung",
+  "keywords": ["keyword1", "keyword2"],
+  "tips": ["Verkaufstipp 1", "Verkaufstipp 2"],
+  "article_category": "luxury_watch ODER luxury_bag ODER jewelry ODER electronics ODER vehicle ODER medical ODER industrial ODER art ODER standard",
+${authBlock}
+}${authInstructions}`;
+ 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({
-      model: 'claude-opus-4-5', max_tokens: 2000,
+      model: 'claude-opus-4-5',
+      max_tokens: 2000,
       system: 'Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht. Antworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',
-      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: 'Analysiere dieses Produkt und erstelle folgendes JSON:\n{\n  "title_short": "Kurztitel (max 60 Zeichen, SEO-optimiert)",\n  "title_long": "Ausfuehrlicher Titel mit Keywords",\n  "title_quick": "Quick-Sale Titel",\n  "short_desc": "2-3 Saetze Kurzbeschreibung",\n  "long_desc": "Ausfuehrliche Beschreibung",\n  "bullet_points": ["Highlight 1", "Highlight 2", "Highlight 3"],\n  "price_min": 0, "price_max": 0, "price_recommended": 0,\n  "price_reasoning": "Begruendung",\n  "condition": "Zustandsbeschreibung",\n  "keywords": ["keyword1", "keyword2"],\n  "tips": ["Verkaufstipp 1", "Verkaufstipp 2"],\n  "category": "Produktkategorie"\n}' + notesText }] }]
+      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
     })
   });
+ 
   const data = await response.json();
   const text = data.content?.[0]?.text || '{}';
   let analysis;
