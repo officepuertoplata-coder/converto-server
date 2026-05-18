@@ -2080,7 +2080,26 @@ app.put('/api/vk/article/:id/notes', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/vk/article/:id', async (req, res) => { try { const { error } = await supabase.from('vk_articles').delete().eq('id', req.params.id); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true }); } catch(e) { res.status(500).json({ error: e.message }); } });
+// ══════════════════════════════════════════════════════
+// IN server.js EINFÜGEN – direkt nach:
+//   app.delete('/api/vk/article/:id', async (req, res) => { ... });
+// ══════════════════════════════════════════════════════
 
+app.put('/api/vk/photo/:photoId/move', async (req, res) => {
+  try {
+    const { photoId } = req.params;
+    const { article_id } = req.body;
+    if (!article_id) return res.status(400).json({ error: 'article_id fehlt' });
+    const { error } = await supabase.from('vk_photos')
+      .update({ article_id })
+      .eq('id', photoId);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Photo move error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
 app.post('/api/vk/photo', async (req, res) => {
   try {
     const { article_id, session_id, image_base64, content_type } = req.body;
