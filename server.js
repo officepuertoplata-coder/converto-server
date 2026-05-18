@@ -1155,7 +1155,7 @@ app.get('/p/:slug', async (req, res) => {
 // ── ROUTE: LP erstellen ────────────────────────────────────
 app.post('/api/vk/landingpage', async (req, res) => {
   try {
-    const { article_id, session_id, days, has_bot, delivery_pickup, delivery_shipping, shipping_cost, pickup_location, sale_price } = req.body;
+    const { article_id, session_id, days, has_bot, delivery_pickup, delivery_shipping, shipping_cost, pickup_location, sale_price, show_score_badge, stock_quantity } = req.body;
     if (!article_id || !session_id || !days) return res.status(400).json({ error: 'article_id, session_id und days erforderlich' });
 
     // Business-Check: Landingpage aktiviert?
