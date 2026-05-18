@@ -2575,8 +2575,14 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
 
     const d = await r.json();
     const text = d.content?.[0]?.text || '[]';
+    console.log('Claude grouping raw response:', text.substring(0, 500));
+    console.log('Photos sent:', photos.length, 'Photo download errors:', photoContents.filter(p => p.type === 'text' && p.text.includes('nicht ladbar')).length);
     const clean = text.replace(/```json|```/g, '').trim();
-    const groups = JSON.parse(clean);
+    let groups;
+    try { groups = JSON.parse(clean); } catch(parseErr) {
+      console.error('JSON parse error:', parseErr.message, 'Raw:', clean.substring(0, 200));
+      groups = null;
+    }
 
     if (!groups || !groups.length) {
       // Fallback: alles als ein Artikel
