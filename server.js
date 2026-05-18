@@ -479,21 +479,29 @@ app.post('/api/vk/check-payment', async (req, res) => {
             if (!(article.vk_photos || []).length) continue;
             const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
             const newTitle = analysis.title_short || null;
-          const comp = analysis.compliance || {};
-          const auth = analysis.authenticity || {};
-          const articleUpdate = {
-            analysis,
-            status: 'analyzed',
-            article_category: analysis.article_category || 'standard',
-            compliance_status: comp.blocked ? 'blocked' : (comp.category <= 2 ? 'needs_review' : 'approved'),
-            compliance_category: comp.category || 3,
-            compliance_flags: comp.flags || [],
-            compliance_blocked_reason: comp.reason || null,
-            authenticity_score: auth.score || null,
-            authenticity_verdict: auth.verdict || null,
-            authenticity_flags: auth.flags || [],
-            authenticity_warning: auth.warning || null
-          };
+         
+          // Authentizitäts-basierte Compliance
+const AUTH_CATS = ['luxury_watch', 'luxury_bag', 'jewelry', 'art', 'electronics'];
+const comp = analysis.compliance || {};
+const auth = analysis.authenticity || {};
+const authScore = (auth && auth.score !== null && auth.score !== undefined) ? auth.score : null;
+const needsAuthReview = authScore !== null && authScore < 60 && AUTH_CATS.includes(analysis.article_category || '');
+ 
+const articleUpdate = {
+  analysis,
+  status: 'analyzed',
+  article_category: analysis.article_category || 'standard',
+  compliance_status: comp.blocked ? 'blocked'
+    : (comp.category <= 2 || needsAuthReview) ? 'needs_review' : 'approved',
+  compliance_category: comp.category || 3,
+  compliance_flags: comp.flags || [],
+  compliance_blocked_reason: comp.reason || null,
+  authenticity_score: authScore,
+  authenticity_verdict: auth.verdict || null,
+  authenticity_flags: auth.flags || [],
+  authenticity_warning: auth.warning || null
+};
+if (analysis.title_short) articleUpdate.title = analysis.title_short;
           if (newTitle) articleUpdate.title = newTitle;
           await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id);
 
