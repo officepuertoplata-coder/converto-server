@@ -2539,6 +2539,23 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
       }
     } catch(e) { console.error('upload_mode lookup:', e.message); }
 
+    // Bilder als base64 laden für Claude API
+    const photoContents = [];
+    for (let i = 0; i < Math.min(photos.length, 15); i++) {
+      const p = photos[i];
+      try {
+        const imgRes = await fetch(p.public_url);
+        const imgBuf = await imgRes.buffer();
+        const imgB64 = imgBuf.toString('base64');
+        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+        photoContents.push({ type: 'text', text: 'Foto ' + (i+1) + ':' });
+        photoContents.push({ type: 'image', source: { type: 'base64', media_type: contentType, data: imgB64 } });
+      } catch(imgErr) {
+        console.error('Image download error:', imgErr.message);
+        photoContents.push({ type: 'text', text: 'Foto ' + (i+1) + ': (nicht ladbar)' });
+      }
+    }
+
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
@@ -2548,10 +2565,7 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
         messages: [{
           role: 'user',
           content: [
-            ...photos.slice(0, 15).map((p, i) => [
-              { type: 'text', text: 'Foto ' + (i+1) + ':' },
-              { type: 'image', source: { type: 'url', url: p.public_url } }
-            ]).flat(),
+            ...photoContents,
             { type: 'text', text: 'AUFGABE: Gruppiere diese ' + photos.length + ' Fotos nach physischen Objekten.\n\nREGEL: Jeder einzigartige Gegenstand = eigene Gruppe. Gleicher Gegenstand aus verschiedenen Winkeln = eine Gruppe.\n\nAntworte NUR mit JSON:\n[{"title":"Kurztitel max 50 Zeichen","photo_indices":[1,2],"article_category":"standard","compliance_category":3,"compliance_blocked":false,"compliance_reason":null}]\n\narticle_category: luxury_watch/luxury_bag/jewelry/electronics/vehicle/medical/industrial/art/standard\ncompliance_category: 1=VERBOTEN(Nazi/Waffen/Drogen/Pornografie/Tiere), 2=PRUEFEN(Militaria/Messer), 3=OK\nphoto_indices 1-basiert.' }
           ]
         }]
