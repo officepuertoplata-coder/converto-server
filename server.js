@@ -2076,7 +2076,7 @@ ${authBlock}
     body: JSON.stringify({
       model: 'claude-opus-4-5',
       max_tokens: 2000,
-      system: 'Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht. Antworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',
+      Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht.\n\nPREISSCHAETZUNG – WICHTIGE REGELN:\n- Lies Marke, Modell und Produktbezeichnung EXAKT von den Fotos ab (Beschriftungen, Typenschilder, Logos)\n- Uhren: Gebrauchtpreis = 35-65% vom Neupreis je nach Zustand. Haendlerpreis liegt 20-30% hoeher als Privatmarkt.\n- Wenn Modell nicht eindeutig erkennbar: niedrigere Preisspanne ansetzen und in price_reasoning erwaehnen\n- Nutze realistische oesterreichische/deutsche Marktpreise (Willhaben, Kleinanzeigen)\n- Bei Zusatzinfos vom Verkaeufer: diese haben hoechste Prioritaet fuer Modell und Neupreis\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',
       messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
     })
   });
