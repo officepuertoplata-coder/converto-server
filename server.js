@@ -906,7 +906,7 @@ body{font-family:'Inter',sans-serif;background:#f8f9fa;color:#1a1a1a;min-height:
 .share-btn:hover{background:#e5e7eb;}
 
 /* GALLERY */
-.gallery-wrap{position:relative;background:#000;max-height:420px;overflow:hidden;}
+.gallery-wrap{position:relative;background:##1b4332;max-height:420px;overflow:hidden;}
 .slide img{width:100%;max-height:420px;object-fit:contain;display:block;}
 .nav-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.5);color:#fff;border:none;width:40px;height:40px;border-radius:50%;font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;transition:background .2s;}
 .nav-btn:hover{background:rgba(0,0,0,.8);}
