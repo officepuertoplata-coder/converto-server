@@ -2110,7 +2110,7 @@ app.post('/api/vk/session', async (req, res) => {
   try {
     const { phone, media_id, customer_name } = req.body;
     if (!phone) return res.status(400).json({ error: 'phone erforderlich' });
-    const token = vkToken();
+    const token = generateToken();
     const { data: session, error: sErr } = await supabase.from('vk_sessions').insert({ phone, token, customer_name: customer_name || null, status: 'open' }).select().single();
     if (sErr) return res.status(400).json({ error: sErr.message });
     const { data: article, error: aErr } = await supabase.from('vk_articles').insert({ session_id: session.id, title: 'Artikel ' + (Date.now() % 1000), extended: false }).select().single();
