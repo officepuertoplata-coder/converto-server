@@ -49,9 +49,8 @@ function generateToken() {
 
 async function sendWhatsApp(merchantId, to, message) {
   try {
-    const { data: merchant } = await supabase.from('merchants').select('meta_phone_number_id, meta_access_token').eq('id', merchantId).single();
-    const phoneId = merchant?.meta_phone_number_id || process.env.META_PHONE_NUMBER_ID;
-    const token   = merchant?.meta_access_token    || process.env.META_ACCESS_TOKEN;
+    const phoneId = process.env.META_PHONE_NUMBER_ID;
+    const token = process.env.META_ACCESS_TOKEN;
     console.log('sendWhatsApp:', { to, phoneId: phoneId?.substring(0,8), hasToken: !!token });
     let cleanTo = to.replace('whatsapp:', '').replace(/\s/g, '');
     if (cleanTo.startsWith('+')) cleanTo = cleanTo.substring(1);
