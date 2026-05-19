@@ -2363,18 +2363,6 @@ setInterval(async () => {
   } catch(e) { console.error('VK cleanup error:', e.message); }
 }, 60 * 60 * 1000);
 
-async function vkSendWhatsApp(phone, message) {
-  try {
-    const { data: merchant } = await supabase.from('merchants').select('id, meta_phone_number_id, meta_access_token').eq('slug', 'sosuapesce').single();
-    if (merchant) { const formattedPhone = phone.startsWith('+') ? phone : '+' + phone.replace(/[^0-9]/g,''); await sendWhatsApp(merchant.id, formattedPhone, message); }
-    else {
-      const fetch = require('node-fetch'), phoneId = process.env.META_PHONE_NUMBER_ID, token = process.env.META_ACCESS_TOKEN;
-      const to = '+' + phone.replace(/[^0-9]/g, '');
-      const r = await fetch('https://graph.facebook.com/v18.0/' + phoneId + '/messages', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: message } }) });
-      console.log('vkSendWhatsApp fallback:', JSON.stringify(await r.json()));
-    }
-  } catch(e) { console.error('vkSendWhatsApp error:', e.message); }
-}
 
 
 // ── BUSINESS RABATT: Telefonnummer prüfen ─────────────────
