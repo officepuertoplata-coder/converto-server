@@ -358,7 +358,7 @@ app.post('/api/pages/extract-doc', async (req, res) => {
     const { base64, media_type, filename } = req.body;
     if (!base64) return res.status(400).json({ error: 'base64 fehlt' });
     const fetch = require('node-fetch');
-    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 2000, messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: media_type || 'application/pdf', data: base64 } }, { type: 'text', text: 'Extrahiere alle relevanten Informationen aus diesem Dokument für eine Firmen-Landingpage. Strukturiere die Ausgabe: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt, Zahlen/Statistiken, Referenzen. Nur die extrahierten Infos, kein Kommentar.' }] }] }) });
+    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 2000, messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: media_type || 'application/pdf', data: base64 } }, { type: 'text', text: 'Extrahiere alle relevanten Informationen aus diesem Dokument für eine Firmen-Landingpage. Strukturiere die Ausgabe: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt, Zahlen/Statistiken, Referenzen. Nur die extrahierten Infos, kein Kommentar.' }] }] }) });
     const data = await response.json();
     res.json({ success: true, extracted: data.content?.[0]?.text || '' });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -372,7 +372,7 @@ app.post('/api/pages/extract-url', async (req, res) => {
     if (!webRes.ok) throw new Error('Website nicht erreichbar: ' + webRes.status);
     let text = (await webRes.text()).replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim().substring(0, 8000);
     if (!text || text.length < 50) throw new Error('Kein lesbarer Inhalt gefunden');
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 2000, messages: [{ role: 'user', content: `Analysiere diesen Website-Inhalt:\n${text}\n\nExtrahiere: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt.` }] }) });
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 2000, messages: [{ role: 'user', content: `Analysiere diesen Website-Inhalt:\n${text}\n\nExtrahiere: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt.` }] }) });
     const aiData = await aiRes.json();
     if (aiData.error) throw new Error(aiData.error.message);
     res.json({ success: true, extracted: aiData.content?.[0]?.text || '', url });
@@ -385,7 +385,7 @@ app.post('/api/pages/chat-patch', async (req, res) => {
     if (!prompt || !html) return res.status(400).json({ error: 'prompt und html erforderlich' });
     const fetch = require('node-fetch');
     const compressedHtml = html.replace(/\s{3,}/g, ' ').replace(/<!--[\s\S]*?-->/g, '');
-    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 8000, system: 'Du bist ein Frontend-Entwickler. Gib NUR das vollständige geänderte HTML zurück, beginnend mit <!DOCTYPE html>. Keine Erklärungen, kein Markdown.', messages: [{ role: 'user', content: `AUFGABE: ${prompt}\n\nHTML:\n${compressedHtml.substring(0, 12000)}` }] }) });
+    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 8000, system: 'Du bist ein Frontend-Entwickler. Gib NUR das vollständige geänderte HTML zurück, beginnend mit <!DOCTYPE html>. Keine Erklärungen, kein Markdown.', messages: [{ role: 'user', content: `AUFGABE: ${prompt}\n\nHTML:\n${compressedHtml.substring(0, 12000)}` }] }) });
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
     let newHtml = data.content?.[0]?.text || '';
@@ -414,7 +414,7 @@ app.post('/api/pages/generate', async (req, res) => {
     const waNum = s.whatsapp ? s.whatsapp.replace(/[^0-9]/g,'') : '';
     const userPrompt = `Erstelle eine vollständige, professionelle HTML Landingpage:\n\nFIRMA: ${s.company_name || 'Unbekannt'}\nBRANCHE: ${s.industry || 'Allgemein'}\nBESCHREIBUNG: ${s.description || ''}\nZIELGRUPPE: ${s.target_audience || ''}\nUSP: ${s.usp || ''}\nLEISTUNGEN: ${s.services || ''}\nCTA: ${s.cta || 'Jetzt anfragen'}\nWHATSAPP: ${s.whatsapp || ''}\nEMAIL: ${s.email || ''}\nSPRACHE(N): ${langLabel}\nSECTIONS: ${sections}${extracted_text ? '\nZUSATZ-INFO:\n' + extracted_text.substring(0, 1000) : ''}${imgNote}\n\nFARBEN: Primär ${color1}, Sekundär ${color2}, Akzent1 ${color3}, Akzent2 ${color4}\n${isMultilang ? `MEHRSPRACHIG: Sprachwechsler (${langs.map(l=>langNames[l]).join(' | ')}). Standard: ${langNames[langs[0]]}.` : `SPRACHE: ${langNames[langs[0]]||'Deutsch'}.`}\n${waNum ? `WhatsApp Float Button mit href="https://wa.me/${waNum}"` : ''}\n\nGib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
     const msgContent = [...imgBlocks, { type: 'text', text: userPrompt }];
-    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] }) });
+    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] }) });
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
     let html = data.content?.[0]?.text || '';
@@ -1761,7 +1761,7 @@ WICHTIGE REGELN:
 
     const isNegotiating = messages.length > 0 &&
       (messages[messages.length-1].content || '').match(/\d+|euro|eur|preis|rabatt|billiger/i);
-    const model = isNegotiating ? 'claude-opus-4-5' : 'claude-haiku-4-5';
+    const model = isNegotiating ? 'claude-haiku-4-5' : 'claude-haiku-4-5';
 
     const fetch = require('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2059,7 +2059,7 @@ async function vkMarketSearch(productTitle, phone) {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-haiku-4-5',
         max_tokens: 1500,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         system: 'Du bist Marktanalyse-Experte. Suche aktiv und grosszuegig nach Vergleichspreisen. Antworte IMMER nur mit validem JSON, kein Markdown, keine Erklaerungen.',
@@ -2141,7 +2141,7 @@ ${authBlock}
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
+      model: 'claude-haiku-4-5',
       max_tokens: 2000,
 system: 'Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht.\n\nPREISREGELN (PFLICHT):\n- NEU, aktuelles Modell (OVP, ungetragen): 90-100% vom Neupreis. Wir verkaufen auch neue Artikel!\n- NEU/OVP aber altes Modell: 60-85% je nach Alter\n- Neuwertig (kaum getragen): 75-85% vom Neupreis\n- Sehr gut (wenig Spuren): 60-75% vom Neupreis\n- Gut (normale Spuren): 45-60% vom Neupreis\n- Gebraucht (sichtbare Maengel): 30-45% vom Neupreis\n- Zusatzinfos vom Verkaeufer haben HOECHSTE Prioritaet fuer Modell, Zustand und Neupreis\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
       messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
@@ -2588,7 +2588,7 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
 
   // Opus für Preisverhandlung, Haiku für normale Fragen
   const isNegotiating = text.match(/\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger/i);
-  const model = isNegotiating ? 'claude-opus-4-5' : 'claude-haiku-4-5';
+  const model = isNegotiating ? 'claude-haiku-4-5' : 'claude-haiku-4-5';
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -2696,7 +2696,7 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
         const { data: bd } = await supabase.from('vk_business_discounts')
           .select('upload_mode').eq('id', sess.business_discount_id).maybeSingle();
         if (bd && bd.upload_mode === 'expert') {
-          groupingModel = 'claude-opus-4-5';
+          groupingModel = 'claude-haiku-4-5';
           console.log('Expert mode: using Opus for grouping');
         }
       }
