@@ -1930,11 +1930,14 @@ app.post('/api/vk/admin/new-session', async (req, res) => {
       return res.status(401).json({ error: 'Falsches Passwort' });
     }
     const token = generateToken();
-    const testPhone = phone || ('test' + Date.now());
-    const { data: session, error } = await supabase.from('vk_sessions').insert({
-      token, phone: testPhone, status: 'open',
-      expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-    }).select().single();
+    const { business_phone } = req.body;
+    const testPhone = business_phone || phone || ('test' + Date.now());
+    const sessionInsert = { token, phone: testPhone, status: 'open', expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() };
+    if (business_phone) {
+      const bd = await vkGetBusinessDiscount(business_phone);
+      if (bd) { sessionInsert.business_discount_id = bd.id; sessionInsert.business_discount_pct = bd.discount_percent; }
+    }
+    const { data: session, error } = await supabase.from('vk_sessions').insert(sessionInsert).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, token, url: 'https://converdino.com/bericht.html?s=' + token });
   } catch(e) { res.status(500).json({ error: e.message }); }
