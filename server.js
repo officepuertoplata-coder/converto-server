@@ -2086,7 +2086,16 @@ async function vkMarketSearch(productTitle, phone) {
 
 async function vkAnalyzeArticle(article, photos, phone) {
   const fetch = require('node-fetch');
-  const imageBlocks = photos.map(p => ({ type: 'image', source: { type: 'url', url: p.public_url } }));
+ const imageBlocks = [];
+  for (const p of (photos || [])) {
+    try {
+      const imgRes = await fetch(p.public_url);
+      const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+      const ct = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0];
+      imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: ct, data: imgBuf.toString('base64') } });
+    } catch(imgErr) { console.error('Image download error:', imgErr.message); }
+  }
+  if (!imageBlocks.length) return { title_short: 'Analyse fehlgeschlagen', error: 'Keine Bilder ladbar' };
   const notesText = article.notes ? '\n\nZusatzinfos vom Verkaeufer: ' + article.notes : '';
  
  // Authentizitaet: Claude entscheidet selbst ob relevant
