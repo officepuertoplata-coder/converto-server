@@ -462,6 +462,8 @@ app.get('/api/availability/current/:merchantId', async (req, res) => {
 app.post('/api/vk/check-payment', async (req, res) => {
   try {
     const { token } = req.body;
+    const aiMode = req.body.ai_mode || 'sachbearbeiter';
+await supabase.from('vk_sessions').update({ ai_mode: aiMode }).eq('id', session.id);
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
     if (!session.stripe_session_id) return res.json({ paid: false, status: session.status });
