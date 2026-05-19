@@ -872,11 +872,11 @@ function vkBuildLandingpageHTML(article, session, lp, sellerInfo) {
   if (lp.active_until) {
     const days = Math.ceil((new Date(lp.active_until) - new Date()) / (1000*60*60*24));
    if (days > 0) {
-    const dateStr = new Date(lp.active_until).toLocaleDateString('de-AT', {day:'numeric', month:'long', year:'numeric'});
-    expiryNote = '<div class="expiry-note">⏳ Angebot gültig bis ' + dateStr + '</div>';
+    var d=new Date(lp.active_until);
+    expiryNote = '<div class="expiry-note">⏳ Angebot gültig bis ' + d.getDate() + '.' + (d.getMonth()+1) + '.' + d.getFullYear() + '</div>';
   }
-    expiryNote = '<div class="expiry-note">⏳ Angebot gültig bis ' + dateStr + '</div>';
   }
+  
 
   return `<!DOCTYPE html>
 <html lang="de">
