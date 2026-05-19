@@ -1233,8 +1233,15 @@ app.get('/p/:slug/buy', async (req, res) => {
     const price = parseFloat(lp.sale_price || an.price_recommended || 0);
     if (!price || price <= 0) return res.status(400).send('<h1>Kein Preis definiert.</h1>');
 
+    // Wenn beide Optionen aktiv → Auswahl anzeigen
+    const deliveryType = req.query.type;
+    if (lp.delivery_pickup && lp.delivery_shipping && !deliveryType) {
+      const esc2 = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return res.send(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lieferung wählen</title><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:sans-serif;background:#f8f9fa;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}.card{background:#fff;border-radius:16px;padding:28px 24px;max-width:420px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.08);}.title{font-size:1rem;font-weight:800;margin-bottom:4px;}.price{font-size:1.8rem;font-weight:900;color:#15803d;margin-bottom:18px;}.q{font-size:.9rem;color:#6b7280;font-weight:600;margin-bottom:16px;}.opt{display:block;width:100%;padding:16px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;text-decoration:none;text-align:center;margin-bottom:10px;}.opt-pickup{background:#f0fdf4;border:2px solid #25D366;color:#15803d;}.opt-ship{background:#eff6ff;border:2px solid #3b82f6;color:#1d4ed8;}.sub{font-size:.76rem;font-weight:500;opacity:.8;display:block;margin-top:3px;}</style></head><body><div class="card"><div class="title">${esc2(an.title_short||article.title||'Produkt')}</div><div class="price">€ ${parseFloat(lp.sale_price||an.price_recommended||0).toLocaleString('de-AT',{minimumFractionDigits:2})}</div><div class="q">Wie möchtest du den Artikel erhalten?</div><a class="opt opt-pickup" href="/p/${lp.slug}/buy?type=pickup">🤝 Selbstabholung<span class="sub">${lp.pickup_location||'Abholung beim Verkäufer'}</span></a><a class="opt opt-ship" href="/p/${lp.slug}/buy?type=shipping">📦 Versand<span class="sub">Versandkosten: €${parseFloat(lp.shipping_cost||0).toFixed(2)}</span></a></div></body></html>`);
+    }
+
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-    const isShipping = !!lp.delivery_shipping;
+    const isShipping = deliveryType ? deliveryType === 'shipping' : !!lp.delivery_shipping;
 
     const checkoutParams = {
       mode: 'payment',
