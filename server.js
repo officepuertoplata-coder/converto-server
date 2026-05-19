@@ -2086,6 +2086,10 @@ async function vkMarketSearch(productTitle, phone) {
 
 async function vkAnalyzeArticle(article, photos, phone) {
   const fetch = require('node-fetch');
+  if (!photos || !photos.length) {
+    const { data: fp } = await supabase.from('vk_photos').select('*').eq('article_id', article.id);
+    photos = fp || [];
+  }
  const imageBlocks = [];
   for (const p of (photos || [])) {
     try {
