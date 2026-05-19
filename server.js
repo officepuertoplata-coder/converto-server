@@ -2225,6 +2225,10 @@ app.get('/api/vk/session/:token', async (req, res) => {
     const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id).order('sort_order', { ascending: true });
     const enriched = (articles || []).map(a => ({ ...a, photo_count: (a.vk_photos || []).length }));
     const price = vkCalcPrice(enriched);
+    const aiMode = req.body.ai_mode || 'sachbearbeiter';
+const modeMultiplier = aiMode === 'experte' ? 4 : aiMode === 'abteilungsleiter' ? 2 : 1;
+finalPrice = Math.round(price * modeMultiplier * 100) / 100;
+await supabase.from('vk_sessions').update({ ai_mode: aiMode }).eq('id', session.id);
     res.json({ ...session, articles: enriched, price });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
