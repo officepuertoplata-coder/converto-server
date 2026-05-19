@@ -853,7 +853,7 @@ function vkBuildLandingpageHTML(article, session, lp, sellerInfo) {
   if (lp.delivery_shipping) {
     deliveryItems.push('<div class="delivery-item"><div class="delivery-icon">📦</div><div><div class="delivery-title">Versand möglich</div><div class="delivery-sub">Versandkosten: €' + parseFloat(lp.shipping_cost||0).toFixed(2) + '</div></div></div>');
   }
-
+const badgeHTML = (lp.show_score_badge && an && an.authenticity && an.authenticity.score !== null) ? '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:16px 20px;margin-bottom:16px;"><div style="display:flex;align-items:center;gap:12px;"><div style="font-size:1.5rem;">🔍</div><div><strong style="color:#15803d;">Authentizitätsprüfung: ' + an.authenticity.score + '/100</strong><br><span style="font-size:.8rem;color:#4b5563;">' + (an.authenticity.verdict==='authentic'?'✅ Keine Fälschungsmerkmale erkannt':'⚠️ Merkmale überprüft') + '</span></div></div></div>' : '';
   // Highlights
   const bulletHTML = (an.bullet_points||[]).slice(0,6).map(b =>
     '<li class="highlight-item"><span class="highlight-dot">✓</span><span>' + esc(b) + '</span></li>'
