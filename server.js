@@ -62,7 +62,10 @@ async function sendWhatsApp(merchantId, to, message) {
     return data.messages?.[0]?.id;
   } catch (e) { console.error('WhatsApp send error:', e); return null; }
 }
-
+async function vkSendWhatsApp(phone, message) {
+  const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
+  return sendWhatsApp(null, '+' + cleanPhone, message);
+}
 // ═══════════════════════════════════════════════════════════
 // HEALTH & AUTH
 // ═══════════════════════════════════════════════════════════
