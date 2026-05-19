@@ -997,7 +997,7 @@ ${photos.length > 0 ? `
       ${lp.badge_type === 'admin_verified' ? '🏆 Vom Converdino Team geprüft' : lp.badge_type === 'seller_confirmed' ? '✅ Vom Verkäufer bestätigt' : '🔍 KI-geprüft'}
     </div>` : ''}
     <div class="price-main">${priceStr}</div>
-    ${an.price_min && an.price_max ? '<div class="price-range">Marktpreis: €' + an.price_min + ' – €' + an.price_max + '</div>' : ''}
+    
     ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich ab €' + lp.min_price + '</div>' : ''}
     ${expiryNote}
     <a class="cta-btn" href="/p/${lp.slug}/buy" id="cta-btn">
