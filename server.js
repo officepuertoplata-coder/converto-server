@@ -1210,6 +1210,16 @@ app.get('/api/vk/landingpage/article/:articleId', async (req, res) => {
 });
 
 // ── ROUTE: LP deaktivieren ─────────────────────────────────
+app.put('/api/vk/landingpage/:id', async (req, res) => {
+  try {
+    const allowed = ['sale_price','min_price','delivery_pickup','delivery_shipping','shipping_cost','pickup_location','has_bot','stock_quantity','show_score_badge'];
+    const updates = {};
+    allowed.forEach(function(k){ if(req.body[k]!==undefined) updates[k]=req.body[k]; });
+    const { data, error } = await supabase.from('vk_landingpages').update(updates).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, landingpage: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 app.delete('/api/vk/landingpage/:id', async (req, res) => {
   try {
     await supabase.from('vk_landingpages').update({ status: 'deleted' }).eq('id', req.params.id);
