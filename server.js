@@ -2048,14 +2048,7 @@ async function vkAnalyzeArticle(article, photos, phone) {
   }`;
  
   const authInstructions = `\n\nAUTHENTIZITAET - NUR ausfuellen wenn article_category luxury_watch/luxury_bag/jewelry/art/electronics:\n- Bei anderen Kategorien: alle Felder auf null setzen\n- Score 85-100: eindeutig echt\n- Score 65-84: grossteils ok, leichte Auffaelligkeiten\n- Score 40-64: Pruefung empfohlen\n- Score 0-39: Faelschungsverdacht\n- verdict: "authentic" / "suspicious" / "cannot_determine" / null\n- Streng bewerten - lieber niedrig als falsch positiv`;
-- Pruefe ALLE sichtbaren Echtheitsindikatoren auf den Fotos
-- Score 80-100: Merkmale sprechen klar fuer Echtheit
-- Score 60-79: Grossteils OK, leichte Auffaelligkeiten
-- Score 40-59: Deutliche Auffaelligkeiten sichtbar, Pruefung empfohlen
-- Score 0-39: Starker Faelschungsverdacht
-- Sei ehrlich und streng – lieber niedrigerer Score als falsches Vertrauen
-- "cannot_determine" wenn Fotos keine ausreichende Beurteilung ermoeglichen`
-    : '';
+
  
   const prompt = `Analysiere dieses Produkt und erstelle folgendes JSON:${notesText}
 {
