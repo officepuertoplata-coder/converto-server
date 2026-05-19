@@ -2140,8 +2140,7 @@ async function vkAnalyzeArticle(article, photos, phone) {
 - positive_indicators: Array mit positiven Echtheitsnachweisen
 - flags: Array mit Auffaelligkeiten oder Verdachtsmomenten
 - warning: Warntext wenn verdaechtig, sonst null
-- Bei nicht-physischen Produkten oder unklaren Fotos: score null setzen`; luxury_watch/luxury_bag/jewelry/art/electronics:\n- Bei anderen Kategorien: alle Felder auf null setzen\n- Score 85-100: eindeutig echt\n- Score 65-84: grossteils ok, leichte Auffaelligkeiten\n- Score 40-64: Pruefung empfohlen\n- Score 0-39: Faelschungsverdacht\n- verdict: "authentic" / "suspicious" / "cannot_determine" / null\n- Streng bewerten - lieber niedrig als falsch positiv`;
-
+- Bei nicht-physischen Produkten oder unklaren Fotos: score null setzen`; 
  
   const prompt = `Analysiere dieses Produkt und erstelle folgendes JSON:${notesText}
 {
