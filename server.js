@@ -871,7 +871,8 @@ function vkBuildLandingpageHTML(article, session, lp, sellerInfo) {
   let expiryNote = '';
   if (lp.active_until) {
     const days = Math.ceil((new Date(lp.active_until) - new Date()) / (1000*60*60*24));
-    if (days > 0) expiryNote = '<div class="expiry-note">⏳ Angebot noch ' + days + ' Tag' + (days===1?'':'e') + ' verfügbar</div>';
+    if (days > 0) const dateStr = new Date(lp.active_until).toLocaleDateString('de-AT', {day:'numeric', month:'long', year:'numeric'});
+    expiryNote = '<div class="expiry-note">⏳ Angebot gültig bis ' + dateStr + '</div>';
   }
 
   return `<!DOCTYPE html>
