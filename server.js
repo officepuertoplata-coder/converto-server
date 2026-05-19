@@ -1922,6 +1922,23 @@ app.post('/api/vk/cron/cleanup', async (req, res) => {
   }
 });
 
+// ── Admin: Test-Session (Sandbox) ─────────────────────────
+app.post('/api/vk/admin/new-session', async (req, res) => {
+  try {
+    const { password, phone } = req.body;
+    if (password !== process.env.ADMIN_PASSWORD && password !== process.env.SUPERADMIN_PASSWORD) {
+      return res.status(401).json({ error: 'Falsches Passwort' });
+    }
+    const token = generateToken();
+    const testPhone = phone || ('test' + Date.now());
+    const { data: session, error } = await supabase.from('vk_sessions').insert({
+      token, phone: testPhone, status: 'open',
+      expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+    }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, token, url: 'https://converdino.com/bericht.html?s=' + token });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
 });
