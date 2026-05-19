@@ -1313,7 +1313,7 @@ app.get('/p/:slug/success', async (req, res) => {
       stripeSession = await stripe.checkout.sessions.retrieve(session_id);
     }
 
-    const isShipping = lp.delivery_shipping;
+    const isShipping = stripeSession?.metadata?.delivery_type === 'shipping';
     const sellerPhone = lp.vk_sessions ? lp.vk_sessions.phone : null;
     const an = (lp.vk_articles || {}).analysis || {};
 
