@@ -385,7 +385,7 @@ app.post('/api/pages/chat-patch', async (req, res) => {
     if (!prompt || !html) return res.status(400).json({ error: 'prompt und html erforderlich' });
     const fetch = require('node-fetch');
     const compressedHtml = html.replace(/\s{3,}/g, ' ').replace(/<!--[\s\S]*?-->/g, '');
-    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 8000, system: 'Du bist ein Frontend-Entwickler. Gib NUR das vollständige geänderte HTML zurück, beginnend mit <!DOCTYPE html>. Keine Erklärungen, kein Markdown.', messages: [{ role: 'user', content: `AUFGABE: ${prompt}\n\nHTML:\n${compressedHtml.substring(0, 12000)}` }] }) });
+    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 8000, system: 'Du bist ein Frontend-Entwickler. Gib NUR das vollständige geänderte HTML zurück, beginnend mit <!DOCTYPE html>. Keine Erklärungen, kein Markdown.', messages: [{ role: 'user', content: `AUFGABE: ${prompt}\n\nHTML:\n${compressedHtml.substring(0, 12000)}` }] }) });
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
     let newHtml = data.content?.[0]?.text || '';
