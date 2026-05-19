@@ -2821,46 +2821,7 @@ needs_review: true bei category 2` }
   }
 }
 
-async function vkGroupPhotosAndAnalyze(sessionId, articles) {
-  const fetch = require('node-fetch');
-  try {
-    // Alle Fotos der Session laden
-    const { data: photos } = await supabase.from('vk_photos')
-      .select('id, article_id, public_url')
-      .in('article_id', articles.map(a => a.id));
 
-    if (!photos || photos.length < 2) return null;
-
-    // Claude gruppiert Fotos
-    const photoList = photos.map((p, i) => i + ': ' + p.public_url).join('\n');
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 500,
-        messages: [{
-          role: 'user',
-          content: `Diese Fotos wurden zusammen hochgeladen. Gruppiere sie nach Artikel und gib jedem einen Kurztitel.
-Fotos (Index: URL):
-${photoList}
-
-Antworte NUR mit JSON:
-[
-  { "title": "Kurztitel", "photo_indices": [0, 1, 2], "category": "standard" }
-]`
-        }]
-      })
-    });
-    const d = await r.json();
-    const text = d.content?.[0]?.text || '[]';
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch(e) {
-    console.error('Group photos error:', e.message);
-    return null;
-  }
-}
 
 async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
   try {
