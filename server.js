@@ -1965,7 +1965,8 @@ app.post('/api/vk/article/:id/reanalyze', async (req, res) => {
     (async () => {
       try {
         const phone = article.vk_sessions?.phone || null;
-        const analysis = await vkAnalyzeArticle(article, article.vk_photos || [], phone);
+       const { data: freshPhotos } = await supabase.from('vk_photos').select('*').eq('article_id', id);
+const analysis = await vkAnalyzeArticle(article, freshPhotos || [], phone);
         const AUTH_CATS = ['luxury_watch', 'luxury_bag', 'jewelry', 'art', 'electronics'];
         const auth = analysis.authenticity || {};
         const authScore = (auth && auth.score != null) ? auth.score : null;
