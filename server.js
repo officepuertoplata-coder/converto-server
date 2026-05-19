@@ -1939,6 +1939,50 @@ app.post('/api/vk/admin/new-session', async (req, res) => {
     res.json({ success: true, token, url: 'https://converdino.com/bericht.html?s=' + token });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── Artikel neu analysieren (nur Business, max 3x) ────────
+app.post('/api/vk/article/:id/reanalyze', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: article } = await supabase.from('vk_articles')
+      .select('*, vk_photos(*), vk_sessions(phone, business_discount_id)')
+      .eq('id', id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+    const isBusiness = !!article.vk_sessions?.business_discount_id;
+    if (!isBusiness) return res.status(403).json({ error: 'Nur fuer Business-Kunden' });
+    const currentCount = article.analysis_count || 1;
+    if (currentCount >= 3) return res.status(400).json({ error: 'Maximum 3 Analysen erreicht', count: currentCount });
+
+    await supabase.from('vk_articles').update({ status: 'pending', analysis_count: currentCount + 1 }).eq('id', id);
+    res.json({ success: true, message: 'Neuanalyse gestartet', count: currentCount + 1 });
+
+    (async () => {
+      try {
+        const phone = article.vk_sessions?.phone || null;
+        const analysis = await vkAnalyzeArticle(article, article.vk_photos || [], phone);
+        const AUTH_CATS = ['luxury_watch', 'luxury_bag', 'jewelry', 'art', 'electronics'];
+        const auth = analysis.authenticity || {};
+        const authScore = (auth && auth.score != null) ? auth.score : null;
+        const needsAuthReview = authScore !== null && authScore < 60 && AUTH_CATS.includes(analysis.article_category || '');
+        await supabase.from('vk_articles').update({
+          analysis, status: 'analyzed',
+          article_category: analysis.article_category || 'standard',
+          authenticity_score: authScore,
+          authenticity_verdict: auth.verdict || null,
+          authenticity_flags: auth.flags || [],
+          authenticity_warning: auth.warning || null,
+          compliance_status: needsAuthReview ? 'needs_review' : 'approved'
+        }).eq('id', id);
+        if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') {
+          vkRunMarketSearch(article.id, analysis.title_short, phone).catch(e => console.error('Market bg:', e.message));
+        }
+      } catch(e) {
+        console.error('Reanalyze error:', e);
+        await supabase.from('vk_articles').update({ status: 'error' }).eq('id', id);
+      }
+    })();
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
 });
