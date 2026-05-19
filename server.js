@@ -1036,7 +1036,7 @@ ${photos.length > 0 ? `
 
   ${deliveryItems.length ? `
   <div class="section-card">
-    <div class="section-heading">🚚 Lieferung & Abholung</div>
+   ${badgeHTML}
     ${deliveryItems.join('')}
   </div>` : ''}
 
