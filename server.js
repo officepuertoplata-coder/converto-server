@@ -2076,7 +2076,7 @@ ${authBlock}
     body: JSON.stringify({
       model: 'claude-opus-4-5',
       max_tokens: 2000,
-      Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht.\n\nPREISSCHAETZUNG – WICHTIGE REGELN:\n- Lies Marke, Modell und Produktbezeichnung EXAKT von den Fotos ab (Beschriftungen, Typenschilder, Logos)\n- Uhren: Gebrauchtpreis = 35-65% vom Neupreis je nach Zustand. Haendlerpreis liegt 20-30% hoeher als Privatmarkt.\n- Wenn Modell nicht eindeutig erkennbar: niedrigere Preisspanne ansetzen und in price_reasoning erwaehnen\n- Nutze realistische oesterreichische/deutsche Marktpreise (Willhaben, Kleinanzeigen)\n- Bei Zusatzinfos vom Verkaeufer: diese haben hoechste Prioritaet fuer Modell und Neupreis\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',
+system: 'Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht.\n\nPREISREGELN (PFLICHT):\n- NEU, aktuelles Modell (OVP, ungetragen): 90-100% vom Neupreis. Wir verkaufen auch neue Artikel!\n- NEU/OVP aber altes Modell: 60-85% je nach Alter\n- Neuwertig (kaum getragen): 75-85% vom Neupreis\n- Sehr gut (wenig Spuren): 60-75% vom Neupreis\n- Gut (normale Spuren): 45-60% vom Neupreis\n- Gebraucht (sichtbare Maengel): 30-45% vom Neupreis\n- Zusatzinfos vom Verkaeufer haben HOECHSTE Prioritaet fuer Modell, Zustand und Neupreis\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
       messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
     })
   });
