@@ -2100,7 +2100,7 @@ async function vkMarketSearch(productTitle, phone) {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model: await getAIModel('sales_analysis_complex', phone ? (await supabase.from('vk_sessions').select('ai_mode').eq('phone', phone.replace(/[^0-9]/g,'')).order('created_at',{ascending:false}).limit(1).single()).data?.ai_mode : 'sachbearbeiter'),
         max_tokens: 1500,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         system: 'Du bist Marktanalyse-Experte. Suche aktiv und grosszuegig nach Vergleichspreisen. Antworte IMMER nur mit validem JSON, kein Markdown, keine Erklaerungen.',
