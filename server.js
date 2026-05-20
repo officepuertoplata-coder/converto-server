@@ -3154,3 +3154,81 @@ app.get('/api/vk/admin/coupons', async (req, res) => { try { const { data, error
 app.post('/api/vk/admin/coupons', async (req, res) => { try { const { code, type, value, max_uses, expires_at, description } = req.body; const finalCode = (code || Math.random().toString(36).substring(2,8)).toUpperCase(); const { data, error } = await supabase.from('vk_coupons').insert({ code: finalCode, type: type || 'free', value: value || 100, max_uses: max_uses || null, expires_at: expires_at || null, description: description || null, active: true, used_count: 0 }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, coupon: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.put('/api/vk/admin/coupons/:id', async (req, res) => { try { const { data, error } = await supabase.from('vk_coupons').update(req.body).eq('id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, coupon: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.delete('/api/vk/admin/coupons/:id', async (req, res) => { try { await supabase.from('vk_coupons').delete().eq('id', req.params.id); res.json({ success: true }); } catch(e) { res.status(500).json({ error: e.message }); } });
+// ── KI CONFIG ENDPOINTS ──────────────────────────────────────
+app.get('/api/vk/admin/ai-config', async (req, res) => {
+  try {
+    const { data } = await supabase.from('vk_ai_config').select('*').order('task_key');
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/vk/admin/ai-config/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_ai_config').update(req.body).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    _aiModelCache = null; // Cache invalidieren
+    res.json({ success: true, config: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/vk/admin/ai-config/key/:key', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_ai_config').update(req.body).eq('task_key', req.params.key).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    _aiModelCache = null;
+    res.json({ success: true, config: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── AUTO-GRUPPIERUNG ──────────────────────────────────────────
+app.post('/api/vk/auto-group', async (req, res) => {
+  try {
+    const { token, ai_mode } = req.body;
+    const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+    if (!articles || !articles.length) return res.json({ success: true, groups: 0 });
+    const allPhotos = [];
+    articles.forEach(function(a) { (a.vk_photos || []).forEach(function(p) { allPhotos.push({ ...p, article_id: a.id }); }); });
+    if (allPhotos.length < 2) return res.json({ success: true, groups: articles.length });
+    const fetch = require('node-fetch');
+    const model = await getAIModel('photo_grouping', ai_mode || session.ai_mode || 'sachbearbeiter');
+    const photoSample = allPhotos.slice(0, 20);
+    const imageBlocks = [];
+    for (const photo of photoSample) {
+      try {
+        const imgRes = await fetch(photo.public_url);
+        const buffer = Buffer.from(await imgRes.arrayBuffer());
+        imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: buffer.toString('base64') } });
+        imageBlocks.push({ type: 'text', text: '[Foto ID: ' + photo.id + ']' });
+      } catch(e) { console.error('Photo fetch error:', e.message); }
+    }
+    const groupPrompt = 'Du siehst ' + photoSample.length + ' Produktfotos mit IDs. Gruppiere sie: welche Fotos zeigen dasselbe Objekt? Antworte NUR mit JSON: { "groups": [["id1","id2"],["id3"]] }';
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: 1000, messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: groupPrompt }] }] })
+    });
+    const d = await r.json();
+    const text = d.content?.[0]?.text || '{}';
+    let groups;
+    try { groups = JSON.parse(text.replace(/```json|```/g, '').trim()).groups || []; } catch(e) { return res.json({ success: true, groups: articles.length, note: 'Gruppierung nicht möglich' }); }
+    let groupCount = 0;
+    for (let i = 0; i < groups.length; i++) {
+      const photoIds = groups[i];
+      if (!photoIds || !photoIds.length) continue;
+      let targetId;
+      if (i < articles.length) { targetId = articles[i].id; }
+      else {
+        const { data: newA } = await supabase.from('vk_articles').insert({ session_id: session.id, title: 'Artikel ' + (i + 1), status: 'pending' }).select().single();
+        targetId = newA?.id;
+      }
+      if (targetId) { await supabase.from('vk_photos').update({ article_id: targetId }).in('id', photoIds); groupCount++; }
+    }
+    for (const article of articles) {
+      const { count } = await supabase.from('vk_photos').select('id', { count: 'exact', head: true }).eq('article_id', article.id);
+      if (!count) await supabase.from('vk_articles').delete().eq('id', article.id);
+    }
+    res.json({ success: true, groups: groupCount });
+  } catch(e) { console.error('Auto-group error:', e.message); res.status(500).json({ error: e.message }); }
+});
