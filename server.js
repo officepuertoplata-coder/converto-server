@@ -3233,3 +3233,22 @@ app.post('/api/vk/auto-group', async (req, res) => {
     res.json({ success: true, groups: groupCount });
   } catch(e) { console.error('Auto-group error:', e.message); res.status(500).json({ error: e.message }); }
 });
+// Foto Reihenfolge speichern
+app.put('/api/vk/photo/:id/order', async (req, res) => {
+  try {
+    const { sort_order } = req.body;
+    const { error } = await supabase.from('vk_photos').update({ sort_order }).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Foto LP-Sichtbarkeit
+app.put('/api/vk/photo/:id/lp', async (req, res) => {
+  try {
+    const { show_on_lp } = req.body;
+    const { error } = await supabase.from('vk_photos').update({ show_on_lp }).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
