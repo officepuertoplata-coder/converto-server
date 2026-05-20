@@ -2294,7 +2294,7 @@ app.post('/api/vk/photo', async (req, res) => {
     const { article_id, session_id, image_base64, content_type } = req.body;
     if (!article_id || !image_base64) return res.status(400).json({ error: 'article_id und image_base64 erforderlich' });
     const { data: existing } = await supabase.from('vk_photos').select('id').eq('article_id', article_id);
-    if ((existing?.length || 0) >= 4) return res.status(400).json({ error: 'Maximal 4 Fotos pro Artikel' });
+    if ((existing?.length || 0) >= 99) return res.status(400).json({ error: 'Maximal 4 Fotos pro Artikel' });
     const ext = (content_type || 'image/jpeg').includes('png') ? 'png' : 'jpg';
     const path = `${session_id}/${article_id}/${Date.now()}.${ext}`;
     const buffer = Buffer.from(image_base64, 'base64');
