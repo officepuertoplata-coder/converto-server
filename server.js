@@ -1009,7 +1009,7 @@ ${photos.length > 0 ? `
       🛒 Jetzt kaufen
     </a>
     <div style="text-align:center;margin-top:8px;font-size:.75rem;color:#9ca3af;">Sichere Zahlung via Stripe</div>
-    <a href="https://wa.me/4367764118095?text=${encodeURIComponent('Hallo! Ich interessiere mich für "' + (an.title_short || article.title || 'Produkt') + '" (EUR ' + price + '). Hier der Link: https://p.converdino.com/p/' + lp.slug)}" target="_blank"
+    <a href="https://wa.me/4367764118066?text=${encodeURIComponent('Hallo! Ich interessiere mich für "' + (an.title_short || article.title || 'Produkt') + '" (EUR ' + price + '). Hier der Link: https://p.converdino.com/p/' + lp.slug)}" target="_blank"
        style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;background:#fff;border:2px solid #25D366;border-radius:12px;font-size:.95rem;font-weight:800;color:#25D366;text-decoration:none;margin-top:10px;transition:all .2s;">
       💬 Über WhatsApp anfragen / verhandeln
     </a>
