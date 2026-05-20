@@ -2179,16 +2179,17 @@ async function vkAnalyzeArticle(article, photos, phone, aiMode) {
 ${authBlock}
 }${authInstructions}`;
  
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5',
-      max_tokens: 2000,
+ const analysisModel = await getAIModel('sales_analysis_basic', aiMode);
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: analysisModel,
+        max_tokens: 2000,
 system: 'Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht.\n\nPREISREGELN (PFLICHT):\n- NEU, aktuelles Modell (OVP, ungetragen): 90-100% vom Neupreis. Wir verkaufen auch neue Artikel!\n- NEU/OVP aber altes Modell: 60-85% je nach Alter\n- Neuwertig (kaum getragen): 75-85% vom Neupreis\n- Sehr gut (wenig Spuren): 60-75% vom Neupreis\n- Gut (normale Spuren): 45-60% vom Neupreis\n- Gebraucht (sichtbare Maengel): 30-45% vom Neupreis\n- Zusatzinfos vom Verkaeufer haben HOECHSTE Prioritaet fuer Modell, Zustand und Neupreis\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
       messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
     })
