@@ -2125,7 +2125,7 @@ async function vkMarketSearch(productTitle, phone) {
   }
 }
 
-async function vkAnalyzeArticle(article, photos, phone) {
+async function vkAnalyzeArticle(article, photos, phone, aiMode) {
   const fetch = require('node-fetch');
   if (!photos || !photos.length) {
     const { data: fp } = await supabase.from('vk_photos').select('*').eq('article_id', article.id);
