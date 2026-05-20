@@ -11,7 +11,26 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
-
+// ── KI MODEL CONFIG (aus vk_ai_config Tabelle) ───────────────
+let _aiModelCache = null;
+let _aiModelCacheTime = 0;
+async function getAIModel(taskKey, aiMode) {
+  const now = Date.now();
+  if (!_aiModelCache || now - _aiModelCacheTime > 300000) {
+    try {
+      const { data } = await supabase.from('vk_ai_config').select('*').eq('active', true);
+      if (data && data.length) {
+        _aiModelCache = {};
+        data.forEach(function(r) { _aiModelCache[r.task_key] = r; });
+        _aiModelCacheTime = now;
+      }
+    } catch(e) { console.error('AI model config error:', e.message); }
+  }
+  const cfg = _aiModelCache && _aiModelCache[taskKey];
+  if (!cfg) return 'claude-haiku-4-5';
+  const col = (aiMode || 'sachbearbeiter') + '_model';
+  return cfg[col] || 'claude-haiku-4-5';
+}
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
 express.urlencoded({ extended: true, limit: '50mb' })
