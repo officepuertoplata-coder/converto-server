@@ -500,7 +500,7 @@ await supabase.from('vk_sessions').update({ ai_mode: aiMode }).eq('id', session.
           const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
           for (const article of (articles || [])) {
             if (!(article.vk_photos || []).length) continue;
-            const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
+            const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '', session ? session.ai_mode : 'sachbearbeiter');
             const newTitle = analysis.title_short || null;
          
           // Authentizitäts-basierte Compliance
