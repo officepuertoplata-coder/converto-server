@@ -3157,7 +3157,8 @@ app.delete('/api/vk/admin/coupons/:id', async (req, res) => { try { await supaba
 // ── KI CONFIG ENDPOINTS ──────────────────────────────────────
 app.get('/api/vk/admin/ai-config', async (req, res) => {
   try {
-    const { data } = await supabase.from('vk_ai_config').select('*').order('task_key');
+    const { data, error } = await supabase.from('vk_ai_config').select('*').order('task_key');
+    if (error) return res.status(500).json({ error: error.message, code: error.code });
     res.json(data || []);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
