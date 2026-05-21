@@ -3299,3 +3299,24 @@ app.put('/api/vk/admin/bot-config/:slug', async (req, res) => {
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── BOT CONFIG ────────────────────────────────────────────────
+app.get('/api/vk/admin/bot-config/:slug', async (req, res) => {
+  try {
+    const { data } = await supabase.from('merchant_pages')
+      .select('settings_json').eq('slug', req.params.slug).single();
+    res.json(data?.settings_json?.bot_config || {});
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/vk/admin/bot-config/:slug', async (req, res) => {
+  try {
+    const { data: current } = await supabase.from('merchant_pages')
+      .select('settings_json').eq('slug', req.params.slug).single();
+    const settings = current?.settings_json || {};
+    settings.bot_config = req.body;
+    const { error } = await supabase.from('merchant_pages')
+      .update({ settings_json: settings }).eq('slug', req.params.slug);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
