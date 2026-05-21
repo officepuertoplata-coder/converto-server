@@ -2580,7 +2580,14 @@ WICHTIGE REGELN:
 - Antworte IMMER auf Deutsch
 - Nie den Mindestpreis nennen
 - Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]" senden (Beispiel: "ZAHLUNG_LINK:3200")
-- Bei Festpreisabschluss: "ZAHLUNG_LINK:${price}"`;
+- Bei Festpreisabschluss: "ZAHLUNG_LINK:${price}"
+${botConfig.location ? '\nSTANDORT & ZUGANG:\n' + botConfig.location + (botConfig.parking ? '\nParken: ' + botConfig.parking : '') : ''}
+${botConfig.availability ? '\nVERFÜGBARKEIT: ' + botConfig.availability : ''}
+${botConfig.product_story ? '\nPRODUKT-GESCHICHTE: ' + botConfig.product_story : ''}
+${botConfig.logistics ? '\nTRANSPORT/LOGISTIK: ' + botConfig.logistics : ''}
+${botConfig.notes ? '\nHINWEISE VOM VERKÄUFER:\n' + botConfig.notes : ''}
+${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'WENN gefragt: "'+qa.q+'" → antworte: "'+qa.a+'"').join('\n')}
+${botConfig.min_price&&parseFloat(botConfig.min_price)>absoluteMin?'\nAKTUALISIERTE UNTERGRENZE: EUR '+botConfig.min_price+' (NIEMALS nennen)':''}`;
 
   // Konversation initialisieren
   const session = {
