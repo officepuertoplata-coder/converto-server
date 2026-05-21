@@ -2544,7 +2544,7 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
   const aggr = aggrMap[aggrLevel] || aggrMap.professional;
   const maxDiscount = Math.round(price * aggr.maxDiscount);
   const absoluteMin = Math.max(minPrice, price - maxDiscount);
-
+const botConfig = lp.settings_json?.bot_config || {};
   const systemPrompt = `Du bist Max, erfahrener Verkaufsprofi bei Converdino. Du verkaufst diesen Artikel per WhatsApp.
 
 ARTIKEL: ${an.title_short || article.title || 'Produkt'}
