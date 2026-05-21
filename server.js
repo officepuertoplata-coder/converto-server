@@ -2587,8 +2587,10 @@ ${botConfig.product_story ? '\nPRODUKT-GESCHICHTE: ' + botConfig.product_story :
 ${botConfig.logistics ? '\nTRANSPORT/LOGISTIK: ' + botConfig.logistics : ''}
 ${botConfig.notes ? '\nHINWEISE VOM VERKÄUFER:\n' + botConfig.notes : ''}
 ${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'WENN gefragt: "'+qa.q+'" → antworte: "'+qa.a+'"').join('\n')}
-${botConfig.min_price&&parseFloat(botConfig.min_price)>absoluteMin?'\nAKTUALISIERTE UNTERGRENZE: EUR '+botConfig.min_price+' (NIEMALS nennen)':''}`;
-
+${botConfig.min_price&&parseFloat(botConfig.min_price)>absoluteMin?'\nAKTUALISIERTE UNTERGRENZE: EUR '+botConfig.min_price+' (NIEMALS nennen)':''}
+${botConfig.emotion?'\n\nEMOTIONALER KONTEXT - WICHTIG:\n'+botConfig.emotion+'\nNur 1x einsetzen wenn Käufer zögert - natürlich, nicht als Script.':''}
+${botConfig.fomo?'\nDRINGLICHKEIT (nur wenn Käufer 2x zögert): '+botConfig.fomo:''}
+${botConfig.persona?'\nZIELGRUPPE: '+botConfig.persona+' - Stil entsprechend anpassen.':''}`;
   // Konversation initialisieren
   const session = {
     lpSlug,
