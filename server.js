@@ -3515,6 +3515,25 @@ app.post('/api/vk/admin/bot-ai-list', async (req, res) => {
     }
 
     let prompt;
+    if (type === 'values') {
+  prompt = `Analysiere dieses Produkt und erstelle eine Liste der Kernwerte die es verkörpert.
+${productInfo}
+${hint ? `Hinweis: ${hint}` : ''}
+
+Antworte NUR mit JSON:
+{"items":[{"label":"Wert/Begriff","meaning":"Was das für dieses Produkt konkret bedeutet (1 Satz)"}]}
+
+Erstelle 6-8 Werte. Beispiele: Pioniergeist, Exklusivität, Kompetenz, Status, Zeitlosigkeit, Handwerkskunst, Verlässlichkeit.`;
+} else if (type === 'fomo_list') {
+  prompt = `Erstelle situative Dringlichkeitsargumente für einen Verkaufsbot.
+${productInfo}
+${hint ? `Hinweis: ${hint}` : ''}
+
+Antworte NUR mit JSON:
+{"items":[{"situation":"Wann einsetzen","argument":"Konkretes Argument (1-2 Sätze, natürlich)"}]}
+
+Erstelle 5-6 verschiedene FOMO Argumente für verschiedene Situationen (zögert, will Rabatt, hat andere gesehen, wartet ab).`;
+} else
     if (type === 'fn') {
       prompt = `Du bist Verkaufsexperte. Erstelle Feature→Nutzen Paare für einen WhatsApp-Verkaufsbot.
 ${productInfo ? `\nProduktinfo:\n${productInfo}` : ''}
