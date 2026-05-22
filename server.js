@@ -480,8 +480,6 @@ app.get('/api/availability/current/:merchantId', async (req, res) => {
 app.post('/api/vk/check-payment', async (req, res) => {
   try {
     const { token } = req.body;
-    const aiMode = req.body.ai_mode || 'sachbearbeiter';
-await supabase.from('vk_sessions').update({ ai_mode: aiMode }).eq('id', session.id);
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
     if (!session.stripe_session_id) return res.json({ paid: false, status: session.status });
@@ -2246,10 +2244,6 @@ app.get('/api/vk/session/:token', async (req, res) => {
     const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id).order('sort_order', { ascending: true });
     const enriched = (articles || []).map(a => ({ ...a, photo_count: (a.vk_photos || []).length }));
     const price = vkCalcPrice(enriched);
-    const aiMode = req.body.ai_mode || 'sachbearbeiter';
-const modeMultiplier = aiMode === 'experte' ? 4 : aiMode === 'abteilungsleiter' ? 2 : 1;
-finalPrice = Math.round(price * modeMultiplier * 100) / 100;
-await supabase.from('vk_sessions').update({ ai_mode: aiMode }).eq('id', session.id);
     res.json({ ...session, articles: enriched, price });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -3232,7 +3226,7 @@ app.put('/api/vk/admin/ai-config/:id', async (req, res) => {
 
 app.put('/api/vk/admin/ai-config/key/:key', async (req, res) => {
   try {
-    res.json(data?.bot_config || {});
+    const { data, error } = await supabase.from('vk_ai_config').update(req.body).eq('task_key', req.params.key).select().single();
     if (error) return res.status(400).json({ error: error.message });
     _aiModelCache = null;
     res.json({ success: true, config: data });
