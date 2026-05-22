@@ -3341,4 +3341,29 @@ app.put('/api/vk/admin/bot-config/:slug', async (req, res) => {
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── BOT TEMPLATES ─────────────────────────────────────────────
+app.get('/api/vk/admin/bot-templates', async (req, res) => {
+  try {
+    const { data } = await supabase.from('vk_bot_templates')
+      .select('*').order('created_at', { ascending: false });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
+app.post('/api/vk/admin/bot-templates', async (req, res) => {
+  try {
+    const { name, bot_config } = req.body;
+    const { data, error } = await supabase.from('vk_bot_templates')
+      .insert({ name, bot_config }).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/vk/admin/bot-templates/:id', async (req, res) => {
+  try {
+    await supabase.from('vk_bot_templates')
+      .delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
