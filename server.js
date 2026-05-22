@@ -3328,7 +3328,7 @@ app.get('/api/vk/admin/bot-config/:slug', async (req, res) => {
   try {
     const { data } = await supabase.from('vk_landingpages')
       .select('bot_config').eq('slug', req.params.slug).single();
-    res.json(data?.settings_json?.bot_config || {});
+    res.json(data?.bot_config || {});
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
