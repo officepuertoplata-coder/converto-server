@@ -756,7 +756,8 @@ app.post('/api/vk/business-free', async (req, res) => {
     await supabase.from('vk_sessions').update({
       status: 'analyzing',
       paid_at: now.toISOString(),
-      total_price: 0
+      total_price: 0,
+      ai_mode: req.body.ai_mode || session.ai_mode || 'sachbearbeiter'
     }).eq('id', session.id);
 
     // Nutzungszähler des Business-Rabatts erhöhen
@@ -2310,6 +2311,10 @@ app.post('/api/vk/checkout', async (req, res) => {
     const { token } = req.body;
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    // ai_mode speichern
+    if (req.body.ai_mode) {
+      await supabase.from('vk_sessions').update({ ai_mode: req.body.ai_mode }).eq('id', session.id);
+    }
     const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(id)').eq('session_id', session.id);
     const enriched = (articles || []).map(a => ({ ...a, photo_count: (a.vk_photos || []).length }));
     if (!enriched.length) return res.status(400).json({ error: 'Keine Artikel vorhanden' });
