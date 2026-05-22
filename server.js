@@ -3226,7 +3226,7 @@ app.put('/api/vk/admin/ai-config/:id', async (req, res) => {
 
 app.put('/api/vk/admin/ai-config/key/:key', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('vk_ai_config').update(req.body).eq('task_key', req.params.key).select().single();
+    res.json(data?.bot_config || {});
     if (error) return res.status(400).json({ error: error.message });
     _aiModelCache = null;
     res.json({ success: true, config: data });
@@ -3334,11 +3334,8 @@ app.get('/api/vk/admin/bot-config/:slug', async (req, res) => {
 
 app.put('/api/vk/admin/bot-config/:slug', async (req, res) => {
   try {
-    const { data: current } = await supabase.from('vk_landingpages')
-      .select('settings_json').eq('slug', req.params.slug).single();
-    const settings = current?.settings_json || {};
-    settings.bot_config = req.body;
-    const { error } = await supabase.from('vk_landingpages')
+   const { error } = await supabase.from('vk_landingpages')
+  .update({ bot_config: req.body })
       .update({ settings_json: settings }).eq('slug', req.params.slug);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
