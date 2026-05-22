@@ -1772,46 +1772,41 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const aggr = aggrMap[aggrLevel] || aggrMap.professional;
     const absoluteMin = Math.max(minPrice, price - Math.round(price * aggr.maxDiscount));
 
-    // Denselben System-Prompt wie vkHandleLPBot verwenden (mit botConfig)
     const botName = botConfig.bot_name || 'ein Verkaufsassistent';
-    const contextMap = {
-      privat:   'Du verkaufst dein eigenes Stueck privat.',
-      haendler: 'Du bist ein erfahrener Haendler.',
-      geschaeft:'Du repraesentierst ein Unternehmen.',
-      nachlass: 'Du loest einen Nachlass auf.'
-    };
-    const contextNote = contextMap[botConfig.context] || '';
+    const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat.', haendler:'Du bist ein erfahrener Haendler.', geschaeft:'Du repraesentierst ein Unternehmen.', nachlass:'Du loest einen Nachlass auf.' };
 
-    const systemPrompt = `Du bist ${botName}. ${contextNote}
-Du kennst professionelle Verkaufstechniken aber wirkst wie ein echter Mensch.
+    const systemPrompt = `Du bist ${botName}. ${contextMap[botConfig.context]||''}
+Du beherrschst professionelle Verkaufstechniken - wirkst wie ein echter Mensch.
 
-ARTIKEL: ${an.title_short || article.title || 'Produkt'}
+PRODUKT: ${an.title_short || article.title || 'Produkt'}
 FESTPREIS: EUR ${price}
-DEIN ABSOLUTES MINIMUM: EUR ${absoluteMin} (NIEMALS darunter, NIEMALS nennen)
+ABSOLUTES MINIMUM: EUR ${absoluteMin} (NIEMALS nennen, NIEMALS unterschreiten)
 ZUSTAND: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
 BESCHREIBUNG: ${an.short_desc || ''}
 HIGHLIGHTS: ${(an.bullet_points || []).slice(0, 4).join(' | ')}
 MARKTPREIS: EUR ${an.price_min || Math.round(price * 0.9)} - EUR ${an.price_max || Math.round(price * 1.15)}
-LIEFERUNG: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? (lp.delivery_pickup ? ' oder ' : '') + 'Versand EUR ' + (lp.shipping_cost || 0) : ''}
-${botConfig.location ? 'STANDORT: ' + botConfig.location : ''}
-${botConfig.availability ? 'VERFUEGBARKEIT: ' + botConfig.availability : ''}
-${botConfig.product_story ? 'PRODUKT-GESCHICHTE: ' + botConfig.product_story : ''}
-${botConfig.notes ? 'HINWEISE: ' + botConfig.notes : ''}
-${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'WENN gefragt: "'+qa.q+'" → "'+qa.a+'"').join('
-')}
+LIEFERUNG: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? (lp.delivery_pickup?' oder ':'')+'Versand EUR '+(lp.shipping_cost||0) : ''}
+${botConfig.location?'STANDORT: '+botConfig.location:''}
+${botConfig.availability?'VERFUEGBARKEIT: '+botConfig.availability:''}
+${botConfig.product_story?'GESCHICHTE: '+botConfig.product_story:''}
+${botConfig.notes?'HINWEISE: '+botConfig.notes:''}
+${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'WENN "'+qa.q+'" → "'+qa.a+'"').join('\n')}
 
-VERHANDLUNG (${aggr.label}):
-- Produktfragen ehrlich beantworten
-- Erstes Preisangebot ablehnen + Wert erklaeren
-- Zweites Angebot: EINMALIG 5-8% nachgeben, dann eisern halten
-- Unter EUR ${absoluteMin}: "Das geht nicht."
-- Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
+EISERNE PREISREGELN:
+1. Preis NIEMALS selbst ansprechen - nur wenn Kaeufer fragt
+2. NIEMALS fragen ob Preis passt oder "wollen wir drueber reden" - DAS IST VERBOTEN
+3. Erste Preisfrage: Wert erklaeren, Preis bestaetigen, KEIN Nachgeben
+4. Zweite Preisfrage: EINMALIG max EUR ${Math.round(price * aggr.maxDiscount)} Nachlass - dann HART bleiben
+5. Weiteres Draengen: "Das ist mein letztes Wort."
+6. Unter EUR ${absoluteMin}: "Das geht leider nicht."
+7. Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
 
-STIL: WhatsApp-Stil, max 2-3 Saetze, kein Markdown, kein Marketingsprech, Deutsch`;
+STIL: WhatsApp eines echten Menschen. Max 2-3 Saetze. Kein Markdown. Deutsch.`;
 
     const isNegotiating = messages.length > 0 &&
-      (messages[messages.length-1].content || '').match(/\d+|euro|eur|preis|rabatt|billiger/i);
-    const model = await getAIModel(isNegotiating ? 'whatsapp_bot_l2' : 'whatsapp_bot_l1', lp.ai_mode || 'sachbearbeiter');
+      (messages[messages.length-1].content || '').match(/\d+|euro|eur|preis|rabatt|billiger|günstiger/i);
+    const sandboxMode = lp.ai_mode && lp.ai_mode !== 'sachbearbeiter' ? lp.ai_mode : 'abteilungsleiter';
+    const model = await getAIModel(isNegotiating ? 'whatsapp_bot_l2' : 'whatsapp_bot_l1', sandboxMode);
 
     const fetch = require('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
