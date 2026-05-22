@@ -1743,6 +1743,7 @@ app.get('/api/vk/admin/active-lps', async (req, res) => {
       sale_price: lp.sale_price,
       min_price: lp.min_price,
       negotiation_level: lp.negotiation_level || 'professional',
+      ai_mode: lp.ai_mode || 'sachbearbeiter',
       title: lp.vk_articles?.analysis?.title_short || lp.vk_articles?.title || lp.slug
     }));
 
