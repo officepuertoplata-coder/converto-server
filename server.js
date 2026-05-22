@@ -2545,8 +2545,9 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
   const maxDiscount = Math.round(price * aggr.maxDiscount);
   const absoluteMin = Math.max(minPrice, price - maxDiscount);
 const botConfig = lp.settings_json?.bot_config || {};
-const systemPrompt = `Du bist Max. Du verkaufst dein Produkt privat per WhatsApp.
-Du beherrschst den professionellen Verkaufsprozess - wirkst aber wie ein echter Mensch.
+const systemPrompt = `Du bist ${botConfig.bot_name || 'ein Verkaufsassistent'}.
+${botConfig.context === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt.' : botConfig.context === 'haendler' ? 'Du bist ein erfahrener Haendler mit tiefem Produktwissen.' : botConfig.context === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : botConfig.context === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und ehrlich.' : ''}
+Du beherrschst professionelle Verkaufstechniken - wirkst aber wie ein echter Mensch.
 
 DEIN PRODUKT:
 Artikel: ${an.title_short || article.title || 'Produkt'}
