@@ -753,13 +753,18 @@ app.post('/api/vk/business-free', async (req, res) => {
     }
 
     const now = new Date();
-    const effectiveMode1 = getHighestMode(req.body.ai_mode || session.ai_mode, req.body.article_modes);
+    const articleModes1 = req.body.article_modes || {};
+    const effectiveMode1 = getHighestMode(req.body.ai_mode || session.ai_mode, articleModes1);
     await supabase.from('vk_sessions').update({
       status: 'analyzing',
       paid_at: now.toISOString(),
       total_price: 0,
       ai_mode: effectiveMode1
     }).eq('id', session.id);
+    // Artikel-Modus pro Artikel speichern
+    for (const [artId, artMode] of Object.entries(articleModes1)) {
+      await supabase.from('vk_articles').update({ ai_mode: artMode }).eq('id', artId);
+    }
 
     // Nutzungszähler des Business-Rabatts erhöhen
     if (session.business_discount_id) {
@@ -1192,7 +1197,7 @@ app.post('/api/vk/landingpage', async (req, res) => {
       if (!bd || !bd.landingpage_enabled) return res.status(403).json({ error: 'Landingpage für diesen Account nicht freigeschaltet' });
     }
 
-    const { data: article } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('id', article_id).single();
+    const { data: article } = await supabase.from('vk_articles').select('*, vk_photos(*), ai_mode').eq('id', article_id).single();
     if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
 
     const slug = vkGenerateSlug(article.title || (article.analysis?.title_short) || 'produkt');
@@ -1212,7 +1217,7 @@ const showBadge = !!show_score_badge && authScore !== null && authScore >= 60;
 show_score_badge: showBadge,
 stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
         stock_sold: 0,
-        ai_mode: session?.ai_mode || 'sachbearbeiter',
+        ai_mode: article?.ai_mode || session?.ai_mode || 'sachbearbeiter',
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
@@ -2326,8 +2331,13 @@ app.post('/api/vk/checkout', async (req, res) => {
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
     // Höchsten ai_mode aus Artikel-Modi speichern
-    const effectiveMode2 = getHighestMode(req.body.ai_mode, req.body.article_modes);
+    const articleModes2 = req.body.article_modes || {};
+    const effectiveMode2 = getHighestMode(req.body.ai_mode, articleModes2);
     await supabase.from('vk_sessions').update({ ai_mode: effectiveMode2 }).eq('id', session.id);
+    // Artikel-Modus pro Artikel speichern
+    for (const [artId, artMode] of Object.entries(articleModes2)) {
+      await supabase.from('vk_articles').update({ ai_mode: artMode }).eq('id', artId);
+    }
     const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(id)').eq('session_id', session.id);
     const enriched = (articles || []).map(a => ({ ...a, photo_count: (a.vk_photos || []).length }));
     if (!enriched.length) return res.status(400).json({ error: 'Keine Artikel vorhanden' });
