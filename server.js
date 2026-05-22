@@ -753,11 +753,12 @@ app.post('/api/vk/business-free', async (req, res) => {
     }
 
     const now = new Date();
+    const effectiveMode1 = getHighestMode(req.body.ai_mode || session.ai_mode, req.body.article_modes);
     await supabase.from('vk_sessions').update({
       status: 'analyzing',
       paid_at: now.toISOString(),
       total_price: 0,
-      ai_mode: req.body.ai_mode || session.ai_mode || 'sachbearbeiter'
+      ai_mode: effectiveMode1
     }).eq('id', session.id);
 
     // Nutzungszähler des Business-Rabatts erhöhen
@@ -2039,6 +2040,16 @@ app.listen(PORT, () => {
 // VERKAUFSREPORT (VK) – Bildanalyse & Verkaufstexte
 // ═══════════════════════════════════════════════════════════
 
+
+// Höchsten AI-Modus aus Artikel-Modi ermitteln
+function getHighestMode(sessionMode, articleModes) {
+  const order = { sachbearbeiter: 1, abteilungsleiter: 2, experte: 3 };
+  let highest = sessionMode || 'sachbearbeiter';
+  Object.values(articleModes || {}).forEach(function(m) {
+    if ((order[m] || 0) > (order[highest] || 0)) highest = m;
+  });
+  return highest;
+}
 function vkCalcPrice(articles) {
   let total = 1.00; // Grundpreis pro Auftrag
   for (const a of articles) {
@@ -2311,10 +2322,9 @@ app.post('/api/vk/checkout', async (req, res) => {
     const { token } = req.body;
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
-    // ai_mode speichern
-    if (req.body.ai_mode) {
-      await supabase.from('vk_sessions').update({ ai_mode: req.body.ai_mode }).eq('id', session.id);
-    }
+    // Höchsten ai_mode aus Artikel-Modi speichern
+    const effectiveMode2 = getHighestMode(req.body.ai_mode, req.body.article_modes);
+    await supabase.from('vk_sessions').update({ ai_mode: effectiveMode2 }).eq('id', session.id);
     const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(id)').eq('session_id', session.id);
     const enriched = (articles || []).map(a => ({ ...a, photo_count: (a.vk_photos || []).length }));
     if (!enriched.length) return res.status(400).json({ error: 'Keine Artikel vorhanden' });
