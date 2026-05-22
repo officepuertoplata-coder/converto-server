@@ -1807,12 +1807,18 @@ EISERNE PREISREGELN:
 6. Unter EUR ${absoluteMin}: "Das geht leider nicht."
 7. Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
 
-STIL: WhatsApp eines echten Menschen. Max 2-3 Saetze. Kein Markdown. Deutsch.`;
+STIL: WhatsApp eines echten Menschen. Max 2-3 Saetze. Kein Markdown. Deutsch.
 
+ABSOLUT VERBOTEN nach Preisnennung:
+- "Passt die Uhr/Preis zu dir?" oder aehnliche Abschlussformulierungen
+- Jede Einladung den Preis zu diskutieren ohne dass Kaeufer fragt
+- Preis selbst ansprechen wenn Kaeufer nicht fragt`;
+
+    const lastContent = (messages[messages.length-1]?.content || '').toLowerCase();
     const isNegotiating = messages.length > 0 &&
-      (messages[messages.length-1].content || '').match(/\d+|euro|eur|preis|rabatt|billiger|günstiger/i);
-    const sandboxMode = lp.ai_mode && lp.ai_mode !== 'sachbearbeiter' ? lp.ai_mode : 'abteilungsleiter';
-    const model = await getAIModel(isNegotiating ? 'whatsapp_bot_l2' : 'whatsapp_bot_l1', sandboxMode);
+      /\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger|kostet|kosten|teuer|nachlass/.test(lastContent);
+    // Hardcoded: kein Cache-Problem, Sonnet für Verhandlung garantiert
+    const model = isNegotiating ? 'claude-sonnet-4-5-20251001' : 'claude-haiku-4-5';
 
     const fetch = require('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2716,7 +2722,7 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
   session.messages.push({ role: 'user', content: text });
 
   // Opus für Preisverhandlung, Haiku für normale Fragen
-  const isNegotiating = text.match(/\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger/i);
+  const isNegotiating = /\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger|kostet|kosten|teuer|nachlass/.test(text.toLowerCase());
   const model = await getAIModel(
     isNegotiating ? 'whatsapp_bot_l2' : 'whatsapp_bot_l1',
     session.lp?.ai_mode || 'sachbearbeiter'
