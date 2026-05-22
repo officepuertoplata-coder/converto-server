@@ -1211,7 +1211,8 @@ const showBadge = !!show_score_badge && authScore !== null && authScore >= 60;
       status: 'active', views: 0,
 show_score_badge: showBadge,
 stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
-stock_sold: 0,
+        stock_sold: 0,
+        ai_mode: session?.ai_mode || 'sachbearbeiter',
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
