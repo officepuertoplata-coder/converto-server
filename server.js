@@ -2694,7 +2694,10 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
 
   // Opus für Preisverhandlung, Haiku für normale Fragen
   const isNegotiating = text.match(/\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger/i);
-  const model = await getAIModel('whatsapp_bot_l1', session.lp?.ai_mode || 'sachbearbeiter');
+  const model = await getAIModel(
+    isNegotiating ? 'whatsapp_bot_l2' : 'whatsapp_bot_l1',
+    session.lp?.ai_mode || 'sachbearbeiter'
+  );
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
