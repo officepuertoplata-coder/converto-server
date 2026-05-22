@@ -3442,3 +3442,52 @@ Erstelle mindestens 4 feature_benefits Einträge. Antworte auf Deutsch.`;
     res.status(500).json({ error: e.message });
   }
 });
+// ── BOT AI REFINE ─────────────────────────────────────────────
+app.post('/api/vk/admin/bot-ai-refine', async (req, res) => {
+  try {
+    const fetch = require('node-fetch');
+    const { field, current_value, instruction, product_context } = req.body;
+
+    const fieldLabels = {
+      emotion:       'Emotionaler Verkaufspitch (wofür steht das Produkt)',
+      fomo:          'FOMO / Dringlichkeitsargument (warum jetzt kaufen)',
+      persona:       'Zielgruppe (wer kauft das typischerweise)',
+      product_story: 'Produktgeschichte und Zustand',
+      notes:         'Hinweise für den Verkaufsbot'
+    };
+
+    const label = fieldLabels[field] || field;
+
+    const prompt = `Du bist Experte für Verkaufspsychologie.
+Verbessere diesen Text für ein Bot-Training-Feld: "${label}"
+
+AKTUELLER TEXT:
+"${current_value || '(leer)'}"
+
+ANWEISUNG:
+${instruction}
+
+Schreibe NUR den verbesserten Text, ohne Anführungszeichen, ohne Erklärung, ohne Präambel.
+Sprache: Deutsch. Max 3 Sätze. Natürlich, nicht marketingmäßig.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const result = data.content?.[0]?.text?.trim() || '';
+    res.json({ result });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
