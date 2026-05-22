@@ -3491,3 +3491,70 @@ Sprache: Deutsch. Max 3 Sätze. Natürlich, nicht marketingmäßig.`;
     res.status(500).json({ error: e.message });
   }
 });
+// ── BOT KI LIST GENERATOR ─────────────────────────────────────
+app.post('/api/vk/admin/bot-ai-list', async (req, res) => {
+  try {
+    const fetch = require('node-fetch');
+    const { type, hint, slug } = req.body;
+
+    // Load product info if slug provided
+    let productInfo = '';
+    if (slug) {
+      const { data: lp } = await supabase
+        .from('vk_landingpages')
+        .select('*, vk_articles(title, analysis)')
+        .eq('slug', slug).maybeSingle();
+      if (lp?.vk_articles?.analysis) {
+        const an = lp.vk_articles.analysis;
+        productInfo = [
+          an.title_short && `Produkt: ${an.title_short}`,
+          an.short_desc && `Beschreibung: ${an.short_desc}`,
+          (an.bullet_points||[]).length && `Highlights: ${(an.bullet_points||[]).join(', ')}`,
+        ].filter(Boolean).join('\n');
+      }
+    }
+
+    let prompt;
+    if (type === 'fn') {
+      prompt = `Du bist Verkaufsexperte. Erstelle Feature→Nutzen Paare für einen WhatsApp-Verkaufsbot.
+${productInfo ? `\nProduktinfo:\n${productInfo}` : ''}
+${hint ? `\nHinweis: ${hint}` : ''}
+
+Erstelle 5-7 Paare. Nutzen = konkreter Alltagsvorteil, keine Marketing-Sprache.
+
+Antworte NUR mit JSON, kein Markdown:
+{"items":[{"feature":"Technisches Merkmal","benefit":"Konkreter Nutzen in Alltagssprache"}]}`;
+    } else {
+      prompt = `Du bist Verkaufsexperte. Erstelle typische Käufer-FAQ für einen WhatsApp-Verkaufsbot.
+${productInfo ? `\nProduktinfo:\n${productInfo}` : ''}
+${hint ? `\nHinweis: ${hint}` : ''}
+
+Erstelle 5-7 realistische Fragen die Käufer stellen + präzise kurze Antworten.
+
+Antworte NUR mit JSON, kein Markdown:
+{"items":[{"q":"Frage des Käufers","a":"Antwort des Bots (1-2 Sätze, natürlich)"}]}`;
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '{"items":[]}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(clean);
+    res.json(result);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
