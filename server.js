@@ -2544,7 +2544,7 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
   const aggr = aggrMap[aggrLevel] || aggrMap.professional;
   const maxDiscount = Math.round(price * aggr.maxDiscount);
   const absoluteMin = Math.max(minPrice, price - maxDiscount);
-const botConfig = lp.settings_json?.bot_config || {};
+const botConfig = lp.bot_config || {};
 const systemPrompt = `Du bist ${botConfig.bot_name || 'ein Verkaufsassistent'}.
 ${botConfig.context === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt.' : botConfig.context === 'haendler' ? 'Du bist ein erfahrener Haendler mit tiefem Produktwissen.' : botConfig.context === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : botConfig.context === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und ehrlich.' : ''}
 Du beherrschst professionelle Verkaufstechniken - wirkst aber wie ein echter Mensch.
