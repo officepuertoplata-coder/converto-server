@@ -3367,3 +3367,78 @@ app.delete('/api/vk/admin/bot-templates/:id', async (req, res) => {
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── BOT KI ANALYSE ────────────────────────────────────────────
+app.post('/api/vk/admin/bot-ai-analyze/:slug', async (req, res) => {
+  try {
+    const fetch = require('node-fetch');
+
+    // LP + Artikelanalyse laden
+    const { data: lp } = await supabase
+      .from('vk_landingpages')
+      .select('*, vk_articles(title, analysis)')
+      .eq('slug', req.params.slug)
+      .maybeSingle();
+
+    if (!lp) return res.status(404).json({ error: 'LP nicht gefunden' });
+
+    const article = lp.vk_articles || {};
+    const an = article.analysis || {};
+
+    const productInfo = [
+      an.title_short && `Produkt: ${an.title_short}`,
+      an.short_desc && `Beschreibung: ${an.short_desc}`,
+      an.condition && `Zustand: ${an.condition}`,
+      (an.bullet_points||[]).length && `Highlights: ${(an.bullet_points||[]).join(' | ')}`,
+      lp.sale_price && `Verkaufspreis: EUR ${lp.sale_price}`,
+      an.price_min && `Marktpreis: EUR ${an.price_min} - EUR ${an.price_max || ''}`,
+    ].filter(Boolean).join('\n');
+
+    const prompt = `Du bist Experte für Verkaufspsychologie und Premium-Produkte.
+Analysiere dieses Produkt und erstelle Bot-Training-Daten für einen WhatsApp-Verkaufsbot.
+
+${productInfo}
+
+Antworte NUR mit einem JSON-Objekt, kein Markdown, kein Text davor oder danach:
+{
+  "product_story": "Geschichte und Zustand des Produkts in 2-3 authentischen Sätzen für den Bot",
+  "emotion": "Wofür steht dieses Produkt emotional? Was fühlt und erlebt man als Besitzer? (2-3 Sätze, konkret und bildreich)",
+  "fomo": "Ein konkretes Knappheits- oder Dringlichkeitsargument warum man jetzt kaufen sollte",
+  "persona": "Wer kauft das typischerweise? Alter, Lifestyle, Motivation - konkret beschrieben",
+  "feature_benefits": [
+    {"feature": "Technisches Feature oder Eigenschaft", "benefit": "Konkreter Nutzen/Vorteil für den Käufer in Alltagssprache"}
+  ],
+  "notes": "Wichtige Hinweise die der Bot kennen sollte (max 1-2 Sätze)"
+}
+
+Erstelle mindestens 4 feature_benefits Einträge. Antworte auf Deutsch.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '{}';
+
+    let result;
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      result = JSON.parse(clean);
+    } catch(e) {
+      return res.status(500).json({ error: 'KI Antwort konnte nicht verarbeitet werden' });
+    }
+
+    res.json(result);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
