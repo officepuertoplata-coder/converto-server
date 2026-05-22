@@ -3327,16 +3327,16 @@ app.put('/api/vk/photo/:id/lp', async (req, res) => {
 app.get('/api/vk/admin/bot-config/:slug', async (req, res) => {
   try {
     const { data } = await supabase.from('vk_landingpages')
-      .select('settings_json').eq('slug', req.params.slug).single();
+      .select('bot_config').eq('slug'', req.params.slug).single();
     res.json(data?.settings_json?.bot_config || {});
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/vk/admin/bot-config/:slug', async (req, res) => {
   try {
-   const { error } = await supabase.from('vk_landingpages')
-  .update({ bot_config: req.body })
-      .update({ settings_json: settings }).eq('slug', req.params.slug);
+    const { error } = await supabase.from('vk_landingpages')
+      .update({ bot_config: req.body })
+      .eq('slug', req.params.slug);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
