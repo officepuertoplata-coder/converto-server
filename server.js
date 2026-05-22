@@ -1186,7 +1186,7 @@ app.post('/api/vk/landingpage', async (req, res) => {
     if (!article_id || !session_id || !days) return res.status(400).json({ error: 'article_id, session_id und days erforderlich' });
 
     // Business-Check: Landingpage aktiviert?
-    const { data: session } = await supabase.from('vk_sessions').select('business_discount_id, phone').eq('id', session_id).single();
+    const { data: session } = await supabase.from('vk_sessions').select('business_discount_id, phone, ai_mode').eq('id', session_id).single();
     if (session && session.business_discount_id) {
       const { data: bd } = await supabase.from('vk_business_discounts').select('landingpage_enabled').eq('id', session.business_discount_id).single();
       if (!bd || !bd.landingpage_enabled) return res.status(403).json({ error: 'Landingpage für diesen Account nicht freigeschaltet' });
@@ -2654,7 +2654,7 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     method: 'POST',
     headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5',
+      model: await getAIModel('whatsapp_bot_l1', lp.ai_mode || 'sachbearbeiter'),
       max_tokens: 300,
       system: systemPrompt,
       messages: session.messages
@@ -2694,7 +2694,7 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
 
   // Opus für Preisverhandlung, Haiku für normale Fragen
   const isNegotiating = text.match(/\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger/i);
-  const model = isNegotiating ? 'claude-haiku-4-5' : 'claude-haiku-4-5';
+  const model = await getAIModel('whatsapp_bot_l1', session.lp?.ai_mode || 'sachbearbeiter');
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
