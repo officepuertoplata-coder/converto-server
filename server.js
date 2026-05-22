@@ -1752,7 +1752,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     if (!lp_slug || !messages) return res.status(400).json({ error: 'lp_slug und messages erforderlich' });
 
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(title, analysis)')
+      .select('*, vk_articles(title, analysis), bot_config')
       .eq('slug', lp_slug).maybeSingle();
 
     if (!lp) return res.status(404).json({ error: 'LP nicht gefunden' });
@@ -1761,6 +1761,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const an = article.analysis || {};
     const price = parseFloat(lp.sale_price || an.price_recommended || 0);
     const minPrice = parseFloat(lp.min_price || price * 0.8);
+    const botConfig = lp.bot_config || {};
 
     const aggrLevel = lp.negotiation_level || 'professional';
     const aggrMap = {
@@ -1771,7 +1772,18 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const aggr = aggrMap[aggrLevel] || aggrMap.professional;
     const absoluteMin = Math.max(minPrice, price - Math.round(price * aggr.maxDiscount));
 
-    const systemPrompt = `Du bist Max, erfahrener Verkaufsprofi bei Converdino. Du verkaufst diesen Artikel.
+    // Denselben System-Prompt wie vkHandleLPBot verwenden (mit botConfig)
+    const botName = botConfig.bot_name || 'ein Verkaufsassistent';
+    const contextMap = {
+      privat:   'Du verkaufst dein eigenes Stueck privat.',
+      haendler: 'Du bist ein erfahrener Haendler.',
+      geschaeft:'Du repraesentierst ein Unternehmen.',
+      nachlass: 'Du loest einen Nachlass auf.'
+    };
+    const contextNote = contextMap[botConfig.context] || '';
+
+    const systemPrompt = `Du bist ${botName}. ${contextNote}
+Du kennst professionelle Verkaufstechniken aber wirkst wie ein echter Mensch.
 
 ARTIKEL: ${an.title_short || article.title || 'Produkt'}
 FESTPREIS: EUR ${price}
@@ -1780,30 +1792,26 @@ ZUSTAND: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
 BESCHREIBUNG: ${an.short_desc || ''}
 HIGHLIGHTS: ${(an.bullet_points || []).slice(0, 4).join(' | ')}
 MARKTPREIS: EUR ${an.price_min || Math.round(price * 0.9)} - EUR ${an.price_max || Math.round(price * 1.15)}
-LIEFERUNG: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? ' oder Versand EUR ' + (lp.shipping_cost || 0) : ''}
+LIEFERUNG: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? (lp.delivery_pickup ? ' oder ' : '') + 'Versand EUR ' + (lp.shipping_cost || 0) : ''}
+${botConfig.location ? 'STANDORT: ' + botConfig.location : ''}
+${botConfig.availability ? 'VERFUEGBARKEIT: ' + botConfig.availability : ''}
+${botConfig.product_story ? 'PRODUKT-GESCHICHTE: ' + botConfig.product_story : ''}
+${botConfig.notes ? 'HINWEISE: ' + botConfig.notes : ''}
+${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'WENN gefragt: "'+qa.q+'" → "'+qa.a+'"').join('
+')}
 
-VERHANDLUNGSSTRATEGIE (${aggr.label}):
-1. Produktfragen: ehrlich und kompetent beantworten
-2. Erstes Preisangebot: ablehnen, kurz erklaeren warum der Preis fair ist
-3. Zweites Angebot: EINMALIG grosszuegig nachgeben (5-8%), dann fest bleiben
-4. Weiteres Draengen: "Das ist wirklich mein letztes Angebot."
-5. Unter EUR ${absoluteMin}: "Das geht leider nicht."
-WICHTIG: Keine kleinen Schritte (1-2%) - das wirkt kleinlich und unrealistisch.
+VERHANDLUNG (${aggr.label}):
+- Produktfragen ehrlich beantworten
+- Erstes Preisangebot ablehnen + Wert erklaeren
+- Zweites Angebot: EINMALIG 5-8% nachgeben, dann eisern halten
+- Unter EUR ${absoluteMin}: "Das geht nicht."
+- Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
 
-STIL - SEHR WICHTIG:
-- Schreibe wie ein echter Mensch per WhatsApp - locker, direkt
-- Keine Markdown Formatierung (**bold** etc.)
-- Max 2-3 kurze Saetze pro Nachricht
-- Keine uebertriebenen Emojis, keine Marketingsprache
-
-WICHTIGE REGELN:
-- Antworte IMMER auf Deutsch
-- Nie Mindestpreis nennen
-- Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]" senden`;
+STIL: WhatsApp-Stil, max 2-3 Saetze, kein Markdown, kein Marketingsprech, Deutsch`;
 
     const isNegotiating = messages.length > 0 &&
       (messages[messages.length-1].content || '').match(/\d+|euro|eur|preis|rabatt|billiger/i);
-    const model = isNegotiating ? 'claude-haiku-4-5' : 'claude-haiku-4-5';
+    const model = await getAIModel(isNegotiating ? 'whatsapp_bot_l2' : 'whatsapp_bot_l1', lp.ai_mode || 'sachbearbeiter');
 
     const fetch = require('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
