@@ -2633,7 +2633,10 @@ ${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'WENN gefragt: "'+qa.q
 ${botConfig.min_price&&parseFloat(botConfig.min_price)>absoluteMin?'\nAKTUALISIERTE UNTERGRENZE: EUR '+botConfig.min_price+' (NIEMALS nennen)':''}
 ${botConfig.emotion?'\n\nEMOTIONALER KONTEXT - WICHTIG:\n'+botConfig.emotion+'\nNur 1x einsetzen wenn Käufer zögert - natürlich, nicht als Script.':''}
 ${botConfig.fomo?'\nDRINGLICHKEIT (nur wenn Käufer 2x zögert): '+botConfig.fomo:''}
-${botConfig.persona?'\nZIELGRUPPE: '+botConfig.persona+' - Stil entsprechend anpassen.':''}`;
+${botConfig.persona?'\nZIELGRUPPE: '+botConfig.persona+' - Stil entsprechend anpassen.':''}
+${(botConfig.feature_benefits||[]).filter(f=>f.feature&&f.benefit).length?'\n\nFEATURE → NUTZEN (NIEMALS Features nennen, NUR den Nutzen):\n'+(botConfig.feature_benefits||[]).filter(f=>f.feature&&f.benefit).map(f=>'- '+f.feature+' → '+f.benefit).join('\n'):''}
+${(botConfig.product_values||[]).filter(v=>v.label&&v.meaning).length?'\n\nPRODUKTWERTE - erkenne welchen Wert der Kaeufer sucht und sprich ihn gezielt an:\n'+(botConfig.product_values||[]).filter(v=>v.label&&v.meaning).map(v=>'- '+v.label+': '+v.meaning).join('\n'):''}
+${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - situativ einsetzen, nie mehrere auf einmal:\n'+(botConfig.fomo_list||[]).filter(f=>f.argument).map(f=>'- '+(f.situation?f.situation+': ':'')+f.argument).join('\n'):''}`;
   // Konversation initialisieren
   const session = {
     lpSlug,
