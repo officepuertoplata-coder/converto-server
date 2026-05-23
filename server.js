@@ -1864,6 +1864,12 @@ Phase 2 - Loesung: Produkt als Antwort auf genau diesen Bedarf zeigen.
 Phase 3 - Einwand: Echter Einwand direkt loesen. Vorwand: echten Grund finden.
 Phase 4 - Abschluss: Kaufsignal erkennen, konsequent schliessen.
 
+=== EXIT-STRATEGIE (wenn Kaeufer unter Mindestpreis bleibt) ===
+Wenn Kaeufer unter EUR ${absoluteMin} bleibt UND du bereits "letztes Wort" gesagt hast:
+Sage: "Ich darf leider nicht weiter runtergehen als den Preis den ich dir genannt habe. Mein Vorschlag: Ich leite dich an unseren Verkaufsleiter weiter - der hat manchmal noch Moeglichkeiten. Waere das ok fuer dich?"
+Bei JA: Frage nach E-Mail UND wann ein Rueckruf am besten passt.
+Sobald du beides hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
+
 === VERBOTEN ===
 - Fotos, Bilder, Dokumente senden anbieten - du bist reiner Textbot, kannst KEINE Medien senden
 - "Ich schicke/sende dir Fotos/Bilder/Dokumente" - NIEMALS
@@ -1896,10 +1902,12 @@ WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. D
     const reply = data.content?.[0]?.text || 'Fehler bei der Antwort';
 
     const paymentMatch = reply.match(/ZAHLUNG_LINK:(\d+(?:\.\d+)?)/);
+    const vkLeiterMatch = reply.match(/VERKAUFSLEITER_ANFRAGE:([^:]+):(.+)/);
     res.json({
       reply,
       model,
-      payment_link: paymentMatch ? { amount: parseFloat(paymentMatch[1]) } : null
+      payment_link: paymentMatch ? { amount: parseFloat(paymentMatch[1]) } : null,
+      vk_leiter: vkLeiterMatch ? { email: vkLeiterMatch[1].trim(), zeitpunkt: vkLeiterMatch[2].trim() } : null
     });
   } catch(e) {
     console.error('bot-sandbox error:', e.message);
@@ -2707,6 +2715,12 @@ Closing-Taktiken (${aggr.label}):
 5. Preis vereinbart: NUR "ZAHLUNG_LINK:[BETRAG]" - nichts anderes
 WICHTIG: Nie in 1-2% Schritten. Einmal grosszuegig, dann fertig.
 
+=== EXIT-STRATEGIE (wenn Kaeufer unter absolutem Minimum bleibt) ===
+Wenn Kaeufer unter EUR ${absoluteMin} bleibt UND du bereits "letztes Wort" gesagt hast:
+Sage EXAKT: "Ich darf leider nicht weiter runtergehen als den Preis den ich dir genannt habe. Mein Vorschlag: Ich leite dich an unseren Verkaufsleiter weiter - der hat manchmal noch Moeglichkeiten. Waere das ok fuer dich?"
+Bei JA/Zustimmung: "Super. Deine WhatsApp-Nummer habe ich bereits. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
+Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
+
 === STIL - ABSOLUT WICHTIG ===
 - Du bist eine echte Person, kein Bot, kein Verkaeufer
 - WhatsApp-Stil: locker, direkt, menschlich
@@ -2811,6 +2825,25 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
   if (paymentMatch) {
     const agreedPrice = parseFloat(paymentMatch[1]);
     await vkSendLPPaymentLink(phone, session.lp, agreedPrice, phoneId);
+    vkLPBotSessions.delete(phone);
+    return;
+  }
+
+  // Verkaufsleiter-Weiterleitung
+  const vkLeiterMatch = reply.match(/VERKAUFSLEITER_ANFRAGE:([^:]+):(.+)/);
+  if (vkLeiterMatch) {
+    const buyerEmail = vkLeiterMatch[1].trim();
+    const callTime = vkLeiterMatch[2].trim();
+    // Verkäufer per WhatsApp informieren
+    const sellerPhone = session.lp?.vk_sessions?.phone || null;
+    if (sellerPhone) {
+      const an = (session.article?.analysis || {});
+      const artikel = an.title_short || session.article?.title || 'Produkt';
+      const msg = 'Verkaufsleiter-Anfrage!\n\nArtikel: ' + artikel + '\n\nKaeufer moechte Rueckruf:\nTelefon: +' + phone + '\nE-Mail: ' + buyerEmail + '\nBeste Zeit: ' + callTime + '\n\nDer Kaeufer liegt unter deinem Mindestpreis.';
+      await vkSendWhatsApp(sellerPhone, msg);
+    }
+    const bestaetiung = 'Super, ich habe deine Anfrage an unseren Verkaufsleiter weitergeleitet. Er meldet sich bei dir ' + callTime + '. Danke fuer dein Interesse!';
+    await vkSendWhatsApp(phone, bestaetiung);
     vkLPBotSessions.delete(phone);
     return;
   }
