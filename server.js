@@ -2926,18 +2926,86 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
   // Verkaufsleiter-Weiterleitung
   const vkLeiterMatch = reply.match(/VERKAUFSLEITER_ANFRAGE:([^:]+):(.+)/);
   if (vkLeiterMatch) {
-    const buyerEmail = vkLeiterMatch[1].trim();
+    const buyerContact = vkLeiterMatch[1].trim();
+    const contactType = buyerContact.includes('@') ? 'E-Mail' : 'Telefon';
     const callTime = vkLeiterMatch[2].trim();
-    // Verkäufer per WhatsApp informieren
-    const sellerPhone = session.lp?.vk_sessions?.phone || null;
-    if (sellerPhone) {
-      const an = (session.article?.analysis || {});
-      const artikel = an.title_short || session.article?.title || 'Produkt';
-      const msg = 'Verkaufsleiter-Anfrage!\n\nArtikel: ' + artikel + '\n\nKaeufer moechte Rueckruf:\nTelefon: +' + phone + '\nE-Mail: ' + buyerEmail + '\nBeste Zeit: ' + callTime + '\n\nDer Kaeufer liegt unter deinem Mindestpreis.';
-      await vkSendWhatsApp(sellerPhone, msg);
-    }
-    const bestaetiung = 'Super, ich habe deine Anfrage an unseren Verkaufsleiter weitergeleitet. Er meldet sich bei dir ' + callTime + '. Danke fuer dein Interesse!';
-    await vkSendWhatsApp(phone, bestaetiung);
+    const an = (session.article?.analysis || session.lp?.vk_articles?.analysis || {});
+    const artikel = an.title_short || session.lp?.vk_articles?.title || 'Produkt';
+    const lpSlug = session.lpSlug || session.lp?.slug || '';
+
+    // Eskalation in DB speichern
+    try {
+      const escData = {
+        lp_slug: lpSlug,
+        buyer_phone: phone,
+        buyer_contact_type: contactType,
+        buyer_contact: buyerContact,
+        buyer_availability: callTime,
+        article_title: artikel,
+        status: 'new'
+      };
+      if (session.lp?.id) escData.lp_id = session.lp.id;
+      if (session.lp?.article_id) escData.article_id = session.lp.article_id;
+      await supabase.from('vk_escalations').insert(escData);
+      console.log('Eskalation gespeichert:', JSON.stringify(escData));
+    } catch(escErr) { console.error('Eskalation DB error:', escErr.message); }
+
+    // E-Mail an Verkäufer via Resend
+    try {
+      let sellerEmail = null;
+      // seller_email aus business_discount laden
+      if (session.lp?.session_id) {
+        const { data: sess } = await supabase.from('vk_sessions')
+          .select('business_discount_id').eq('id', session.lp.session_id).maybeSingle();
+        if (sess?.business_discount_id) {
+          const { data: bd } = await supabase.from('vk_business_discounts')
+            .select('seller_email, company_name').eq('id', sess.business_discount_id).maybeSingle();
+          if (bd?.seller_email) sellerEmail = bd.seller_email;
+        }
+      }
+      if (sellerEmail) {
+        const fetch = require('node-fetch');
+        const emailHtml = '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:20px;">'
+          + '<div style="background:#1b4332;color:#fff;padding:20px;border-radius:10px 10px 0 0;">'
+          + '<div style="font-size:1.1rem;font-weight:800;">📞 Kaufinteressent wartet auf Kontakt</div>'
+          + '</div>'
+          + '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:0 0 10px 10px;padding:20px;">'
+          + '<p style="margin-bottom:16px;">Ein Interessent für Ihren Artikel möchte kontaktiert werden:</p>'
+          + '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">'
+          + '<tr><td style="padding:8px;background:#f9fafb;font-weight:700;width:40%;">Artikel</td><td style="padding:8px;background:#f9fafb;">' + artikel + '</td></tr>'
+          + '<tr><td style="padding:8px;font-weight:700;">Kontaktweg</td><td style="padding:8px;">' + contactType + '</td></tr>'
+          + '<tr><td style="padding:8px;background:#f9fafb;font-weight:700;">Kontakt</td><td style="padding:8px;background:#f9fafb;font-weight:700;color:#1b4332;font-size:1.1rem;">' + buyerContact + '</td></tr>'
+          + '<tr><td style="padding:8px;font-weight:700;">Erreichbar</td><td style="padding:8px;">' + callTime + '</td></tr>'
+          + '</table>'
+          + '<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px;margin-bottom:16px;font-size:.88rem;">'
+          + '⏰ Bitte melden Sie sich zeitnah beim Interessenten. Je schneller die Reaktion, desto höher die Abschlusswahrscheinlichkeit.'
+          + '</div>'
+          + '<p style="font-size:.82rem;color:#6b7280;">Diese Anfrage wurde automatisch von Ihrem Converdino Verkaufsberater weitergeleitet.</p>'
+          + '<p style="font-size:.82rem;color:#6b7280;">Artikel-Link: <a href="https://p.converdino.com/p/' + lpSlug + '">https://p.converdino.com/p/' + lpSlug + '</a></p>'
+          + '</div></div>';
+
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY },
+          body: JSON.stringify({
+            from: 'Converdino Berater <noreply@converdino.com>',
+            to: sellerEmail,
+            subject: '📞 Kaufinteressent wartet auf Kontakt – ' + artikel,
+            html: emailHtml
+          })
+        });
+        console.log('Eskalation E-Mail gesendet an:', sellerEmail);
+      } else {
+        console.warn('Keine seller_email fuer Eskalation, LP:', lpSlug);
+      }
+    } catch(emailErr) { console.error('Eskalation E-Mail error:', emailErr.message); }
+
+    // Bestätigung an Käufer
+    const anrede = session.lp?.anrede || 'Sie';
+    const bestaetigung = anrede === 'du'
+      ? 'Super, ich habe deine Kontaktdaten weitergeleitet. Unser Verkaufsexperte meldet sich ' + callTime + ' bei dir. Danke fuer dein Interesse!'
+      : 'Sehr gut, ich habe Ihre Kontaktdaten weitergeleitet. Unser Verkaufsexperte meldet sich ' + callTime + ' bei Ihnen. Vielen Dank fuer Ihr Interesse!';
+    await vkSendWhatsApp(phone, bestaetigung);
     vkLPBotSessions.delete(phone);
     return;
   }
@@ -3426,6 +3494,26 @@ app.post('/api/vk/coupon/redeem', async (req, res) => {
       return res.json({ success: true, is_free: true, redirect: `/bericht.html?s=${token}&paid=1` });
     }
     res.json({ success: true, is_free: false, final_price: finalPrice, discount: price - finalPrice });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ESKALATIONEN ──────────────────────────────────────────────────────────
+app.get('/api/vk/admin/escalations', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_escalations')
+      .select('*').order('created_at', { ascending: false }).limit(200);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/vk/admin/escalations/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { error } = await supabase.from('vk_escalations')
+      .update({ status, updated_at: new Date().toISOString() }).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
