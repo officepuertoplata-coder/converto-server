@@ -1218,6 +1218,7 @@ show_score_badge: showBadge,
 stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
         stock_sold: 0,
         ai_mode: article?.ai_mode || session?.ai_mode || 'sachbearbeiter',
+        anrede: req.body.anrede || 'Sie',
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
@@ -1779,6 +1780,7 @@ app.get('/api/vk/admin/active-lps', async (req, res) => {
       min_price: lp.min_price,
       negotiation_level: lp.negotiation_level || 'professional',
       ai_mode: lp.ai_mode || 'sachbearbeiter',
+      anrede: lp.anrede || 'Sie',
       title: lp.vk_articles?.analysis?.title_short || lp.vk_articles?.title || lp.slug
     }));
 
@@ -1819,6 +1821,9 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const systemPrompt = `=== DEIN CHARAKTER ===
 Du bist ${botName}. ${contextMap[botConfig.context]||'Du bist ein erfahrener Verkaeufer.'}
 Du wirkst wie ein echter Mensch - kein Bot, kein Assistent.
+
+ANREDE: Spreche den Kaeufer ausschliesslich mit "${lp.anrede === 'du' ? 'du/dein/dir' : 'Sie/Ihr/Ihnen'}" an.
+${lp.anrede === 'du' ? 'Niemals "Sie" verwenden.' : 'Niemals "du", "dein", "dir" verwenden. Immer "Sie", "Ihr", "Ihnen".'} Diese Regel gilt absolut fuer JEDE Nachricht.
 
 === PRODUKT-DNA ===
 ${botConfig.product_story ? 'DEINE GESCHICHTE MIT DEM PRODUKT:\n' + botConfig.product_story : ''}
@@ -2127,6 +2132,64 @@ const analysis = await vkAnalyzeArticle(article, freshPhotos || [], phone);
     })();
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ── ADMIN: Alle VK-Daten löschen (Nuclear Reset) ─────────────────────────
+app.post('/api/vk/admin/nuke-all', async (req, res) => {
+  const { password } = req.body;
+  if (password !== process.env.ADMIN_PASSWORD && password !== process.env.SUPERADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Falsches Passwort' });
+  }
+  try {
+    const log = [];
+
+    // 1. Storage leeren
+    try {
+      const { data: files } = await supabase.storage.from('vk-photos').list('', { limit: 1000 });
+      if (files && files.length) {
+        // Alle Unterordner auflisten und leeren
+        for (const folder of files) {
+          if (folder.id === null) { // ist ein Ordner
+            const { data: subFiles } = await supabase.storage.from('vk-photos').list(folder.name, { limit: 1000 });
+            if (subFiles && subFiles.length) {
+              for (const subFolder of subFiles) {
+                const { data: photos } = await supabase.storage.from('vk-photos').list(folder.name + '/' + subFolder.name, { limit: 1000 });
+                if (photos && photos.length) {
+                  const paths = photos.map(p => folder.name + '/' + subFolder.name + '/' + p.name);
+                  await supabase.storage.from('vk-photos').remove(paths);
+                }
+              }
+            }
+          }
+        }
+        log.push('Storage: Fotos gelöscht');
+      }
+    } catch(storageErr) { log.push('Storage Fehler: ' + storageErr.message); }
+
+    // 2. DB löschen (Reihenfolge: Foreign Keys beachten)
+    const tables = [
+      'vk_compliance_log',
+      'vk_coupon_uses',
+      'vk_landingpages',
+      'vk_photos',
+      'vk_articles',
+      'vk_sessions'
+    ];
+    for (const table of tables) {
+      const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) log.push(table + ' Fehler: ' + error.message);
+      else log.push(table + ': gelöscht');
+    }
+
+    // QR Codes ohne merchant (LP-Käufe)
+    await supabase.from('qr_codes').delete().is('merchant_id', null);
+    log.push('qr_codes (LP): gelöscht');
+
+    console.log('NUKE-ALL executed:', log.join(', '));
+    res.json({ success: true, log });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
 });
@@ -2658,6 +2721,9 @@ const botConfig = lp.bot_config || {};
 const systemPrompt = `Du bist ${botConfig.bot_name || 'ein Verkaufsassistent'}.
 ${botConfig.context === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt.' : botConfig.context === 'haendler' ? 'Du bist ein erfahrener Haendler mit tiefem Produktwissen.' : botConfig.context === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : botConfig.context === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und ehrlich.' : ''}
 Du beherrschst professionelle Verkaufstechniken - wirkst aber wie ein echter Mensch.
+
+ANREDE: Spreche den Kaeufer ausschliesslich mit "${lp.anrede === 'du' ? 'du/dein/dir' : 'Sie/Ihr/Ihnen'}" an.
+${lp.anrede === 'du' ? 'Niemals "Sie" verwenden.' : 'Niemals "du/dein/dir" verwenden. Immer "Sie/Ihr/Ihnen".'} Diese Regel gilt absolut.
 
 DEIN PRODUKT:
 Artikel: ${an.title_short || article.title || 'Produkt'}
