@@ -3620,12 +3620,17 @@ app.post('/api/vk/admin/bot-ai-analyze/:slug', async (req, res) => {
       an.price_min && `Marktpreis: EUR ${an.price_min} - EUR ${an.price_max || ''}`,
     ].filter(Boolean).join('\n');
 
-    const prompt = `Du bist Experte für Verkaufspsychologie und Premium-Produkte.
-Analysiere dieses Produkt und erstelle Bot-Training-Daten für einen WhatsApp-Verkaufsbot.
+    // Prüfen ob Artikelanalyse vorhanden
+    if (!productInfo || productInfo.length < 20) {
+      console.warn('bot-ai-analyze: productInfo zu kurz:', productInfo);
+      return res.status(400).json({ error: 'Artikelanalyse fehlt oder unvollständig. Bitte erst Analyse starten.' });
+    }
+
+    const prompt = `Du bist Experte fuer Verkaufspsychologie. Erstelle Bot-Training-Daten fuer dieses Produkt.
 
 ${productInfo}
 
-Antworte NUR mit einem JSON-Objekt, kein Markdown, kein Text davor oder danach:
+Antworte NUR mit einem JSON-Objekt, kein Markdown, kein Text:
 {
   "product_story": "Geschichte und Zustand des Produkts in 2-3 authentischen Sätzen für den Bot",
   "emotion": "Wofür steht dieses Produkt emotional? Was fühlt und erlebt man als Besitzer? (2-3 Sätze, konkret und bildreich)",
@@ -3648,25 +3653,51 @@ Erstelle mindestens 4 feature_benefits, 3 exit_strategy_args Einträge. Antworte
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 1000,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }]
       })
     });
 
     const data = await response.json();
-    const text = data.content?.[0]?.text || '{}';
+
+    // API-Fehler abfangen
+    if (data.error) {
+      console.error('bot-ai-analyze API error:', JSON.stringify(data.error));
+      return res.status(500).json({ error: 'API Fehler: ' + data.error.message });
+    }
+
+    const text = data.content?.[0]?.text || '';
+    console.log('bot-ai-analyze raw response (first 300):', text.substring(0, 300));
+
+    if (!text) {
+      return res.status(500).json({ error: 'Leere KI-Antwort. Keine Artikelanalyse vorhanden?' });
+    }
 
     let result;
     try {
-      const clean = text.replace(/```json|```/g, '').trim();
+      // Robustes JSON-Parsing: alles vor { und nach } abschneiden
+      let clean = text.replace(/```json|```/g, '').trim();
+      const jsonStart = clean.indexOf('{');
+      const jsonEnd = clean.lastIndexOf('}');
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error('Kein JSON-Block gefunden');
+      clean = clean.substring(jsonStart, jsonEnd + 1);
       result = JSON.parse(clean);
     } catch(e) {
-      return res.status(500).json({ error: 'KI Antwort konnte nicht verarbeitet werden' });
+      console.error('bot-ai-analyze JSON parse error:', e.message, 'Raw:', text.substring(0, 500));
+      return res.status(500).json({ error: 'JSON Parse Fehler: ' + e.message, raw: text.substring(0, 200) });
     }
+
+    // Fehlende Felder mit Defaults befüllen
+    result.feature_benefits = result.feature_benefits || [];
+    result.product_values = result.product_values || [];
+    result.fomo_list = result.fomo_list || [];
+    result.qa_pairs = result.qa_pairs || [];
+    result.exit_strategy_args = result.exit_strategy_args || [];
 
     res.json(result);
   } catch(e) {
+    console.error('bot-ai-analyze error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
