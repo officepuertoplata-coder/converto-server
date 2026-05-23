@@ -1818,7 +1818,7 @@ ABSOLUT VERBOTEN nach Preisnennung:
     const isNegotiating = messages.length > 0 &&
       /\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger|kostet|kosten|teuer|nachlass/.test(lastContent);
     // Hardcoded: kein Cache-Problem, Sonnet für Verhandlung garantiert
-    const model = isNegotiating ? 'claude-sonnet-4-5-20251001' : 'claude-haiku-4-5';
+    const model = isNegotiating ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
 
     const fetch = require('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
