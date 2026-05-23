@@ -1237,28 +1237,9 @@ stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
           (an.bullet_points||[]).length && 'Highlights: ' + (an.bullet_points||[]).join(' | '),
           sale_price && 'Verkaufspreis: EUR ' + sale_price,
           an.price_min && 'Marktpreis: EUR ' + an.price_min + ' - EUR ' + (an.price_max || ''),
-        ].filter(Boolean).join('
-');
+        ].filter(Boolean).join('\n');
 
-        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie und Premium-Produkte.
-Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.
-
-' + productInfo + '
-
-Antworte NUR mit einem JSON-Objekt, kein Markdown, kein Text davor oder danach:
-{
-  "bot_name": "Max",
-  "product_story": "Geschichte und Zustand in 2-3 authentischen Saetzen",
-  "emotion": "Was fühlt man als Besitzer? Konkret und bildreich (2-3 Saetze)",
-  "fomo": "Ein konkretes Knappheits- oder Dringlichkeitsargument",
-  "persona": "Wer kauft das? Alter, Lifestyle, Motivation - konkret",
-  "feature_benefits": [{"feature": "Merkmal", "benefit": "Konkreter Nutzen fuer Kaeufer"}],
-  "product_values": [{"label": "Wert", "meaning": "Bedeutung fuer dieses Produkt"}],
-  "fomo_list": [{"situation": "Wann einsetzen", "argument": "Konkretes Argument"}],
-  "qa_pairs": [{"q": "Typische Kaeufer-Frage", "a": "Bot-Antwort"}],
-  "notes": "Wichtige Hinweise max 2 Saetze"
-}
-Min. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs. Deutsch.';
+        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie. Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.\n\n' + productInfo + '\n\nAntworte NUR mit JSON, kein Markdown:\n{\n  "bot_name": "Max",\n  "product_story": "Geschichte in 2-3 Saetzen",\n  "emotion": "Emotionaler Kern (2-3 Saetze)",\n  "fomo": "Knappheitsargument",\n  "persona": "Zielgruppe konkret",\n  "feature_benefits": [{"feature": "Merkmal", "benefit": "Nutzen"}],\n  "product_values": [{"label": "Wert", "meaning": "Bedeutung"}],\n  "fomo_list": [{"situation": "Wann", "argument": "Argument"}],\n  "qa_pairs": [{"q": "Frage", "a": "Antwort"}],\n  "notes": "Hinweise max 2 Saetze"\n}\nMin. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs. Deutsch.';
 
         const dnaRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -1893,9 +1874,9 @@ Phase 4 - Abschluss: Kaufsignal erkennen, konsequent schliessen.
 - Marketingfloskeln: "Top-Deal", "Gerne", "Natuerlich", "Absolut"
 
 === STIL ===
-WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. Deutsch.\`;
+WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. Deutsch.`;
 
-    // Modell = LP ai_mode – durchgehend konsistent, kein Split
+     // Modell = LP ai_mode – durchgehend konsistent, kein Split
     const aiModeMap = { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
     const model = aiModeMap[lp.ai_mode] || 'claude-sonnet-4-6';
 
