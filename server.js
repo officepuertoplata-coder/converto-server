@@ -1811,6 +1811,7 @@ ${botConfig.persona ? 'DEIN IDEALER KAEUFER:\n' + botConfig.persona : ''}
 
 === DAS PRODUKT ===
 Artikel: ${an.title_short || article.title || 'Produkt'}
+${lp._docs && lp._docs.length ? '\nVERFUEGBARE DOKUMENTE (auf Anfrage Link senden):\n' + lp._docs.map(function(d){return '- ' + d.label + ': ' + d.public_url;}).join('\n') : ''}
 Zustand: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
 Beschreibung: ${an.short_desc || ''}
 Highlights: ${(an.bullet_points || []).slice(0, 5).join(' | ')}
@@ -2253,6 +2254,66 @@ async function vkSaveWhatsAppImage(mediaId, sessionId, articleId, sortOrder) {
 
 
 // ── MARKTVERGLEICH: Regionale Plattformen ────────────────────
+// ── MARKTSUCHE V2: Kategoriespezifisch + Stufensuche ───────────────────
+async function vkRunMarketSearchV2(articleId, title, category, answers) {
+  try {
+    const platMap = {
+      industrial: 'maschinensucher.de, surplex.com, machineseeker.com, wotol.com',
+      vehicle: 'autoscout24.at, willhaben.at/autos, mobile.de',
+      luxury_watch: 'chrono24.com, watchfinder.co.uk, chrono24.de',
+      electronics: 'willhaben.at, ebay.at, rebuy.de',
+      jewelry: 'chrono24.com, dorotheum.at, ebay.at',
+      art: 'dorotheum.at, ebay.at, artprice.com',
+      standard: 'willhaben.at, ebay.at, kleinanzeigen.de'
+    };
+    const platforms = platMap[category] || platMap.standard;
+    const ans = answers || {};
+
+    // Suchanfrage mit bekannten Fakten anreichern
+    const extras = [
+      ans.q2 && 'Baujahr ' + ans.q2,
+      ans.q1 && ans.q1 + ' Betriebsstunden',
+      ans.km && ans.km + ' km',
+    ].filter(Boolean).join(' ');
+
+    const market = await vkMarketSearchV2Call(title, extras, platforms, category);
+    const { data: current } = await supabase.from('vk_articles').select('analysis').eq('id', articleId).single();
+    if (current?.analysis) {
+      await supabase.from('vk_articles').update({ analysis: { ...current.analysis, market_comparison: market } }).eq('id', articleId);
+    }
+  } catch(e) { console.error('MarketV2 error:', e.message); }
+}
+
+async function vkMarketSearchV2Call(title, extras, platforms, category) {
+  try {
+    const fetch = require('node-fetch');
+    const searchQ = (title + ' ' + (extras || '') + ' gebraucht kaufen').trim();
+    const prompt = 'Suche auf ' + platforms + ' nach aktuellen Angeboten fuer: ' + searchQ + '.\n\nWICHTIG: Nur echte gefundene Angebote. Wenn nichts gefunden → found:false. KEINE Schaetzungen.\n\nJSON: {"found":true,"platform":"Name","listings_count":3,"price_range_min":2500,"price_range_max":4200,"price_avg":3200,"assessment":"Einschaetzung","search_query":"' + searchQ + '"} ODER {"found":false,"platform":"","listings_count":0,"price_range_min":0,"price_range_max":0,"price_avg":0,"assessment":"","note":"Keine Angebote gefunden"}';
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        system: 'Marktanalyst. Suche aktiv nach echten Angeboten. Antworte IMMER mit validem JSON. NIEMALS Preise schaetzen wenn nichts gefunden.',
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const d = await r.json();
+    const textBlock = (d.content || []).find(b => b.type === 'text');
+    if (!textBlock?.text) return { found: false, note: 'Suche nicht verfuegbar' };
+    const clean = textBlock.text.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(clean.substring(clean.indexOf('{'), clean.lastIndexOf('}')+1));
+    console.log('MarketV2 result:', JSON.stringify(result));
+    return result;
+  } catch(e) {
+    console.error('MarketV2Call error:', e.message);
+    return { found: false, note: 'Marktvergleich temporaer nicht verfuegbar' };
+  }
+}
+
 async function vkMarketSearch(productTitle, phone) {
   try {
     const fetch = require('node-fetch');
@@ -2336,7 +2397,8 @@ async function vkAnalyzeArticle(article, photos, phone, aiMode) {
   "price_min": 0,
   "price_max": 0,
   "price_recommended": 0,
-  "price_reasoning": "Begruendung",
+  "price_unknown": false,
+  "price_reasoning": "Begruendung (NUR auf echten Fakten basieren, nie erfinden)",
   "condition": "Zustandsbeschreibung",
   "keywords": ["keyword1", "keyword2"],
   "tips": ["Verkaufstipp 1", "Verkaufstipp 2"],
@@ -2355,7 +2417,7 @@ ${authBlock}
       body: JSON.stringify({
         model: analysisModel,
         max_tokens: 2000,
-system: 'Du bist ein Experte fuer Online-Verkauf (eBay, Willhaben, Kleinanzeigen, Facebook Marketplace). Analysiere die Produktfotos und erstelle einen professionellen Verkaufsbericht.\n\nPREISREGELN (PFLICHT):\n- NEU, aktuelles Modell (OVP, ungetragen): 90-100% vom Neupreis. Wir verkaufen auch neue Artikel!\n- NEU/OVP aber altes Modell: 60-85% je nach Alter\n- Neuwertig (kaum getragen): 75-85% vom Neupreis\n- Sehr gut (wenig Spuren): 60-75% vom Neupreis\n- Gut (normale Spuren): 45-60% vom Neupreis\n- Gebraucht (sichtbare Maengel): 30-45% vom Neupreis\n- Zusatzinfos vom Verkaeufer haben HOECHSTE Prioritaet fuer Modell, Zustand und Neupreis\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
+system: 'Du bist ein erfahrener Verkaufstexter fuer Online-Marktplaetze (Willhaben, eBay, Kleinanzeigen, Maschinensucher).\nAufgabe: Artikel verkaufsorientiert beschreiben - positiv, ueberzeugend, OHNE zu luegen.\n\nSCHREIBREGELN:\n- Staerken in den Vordergrund, Schwaechen konstruktiv formulieren\n- NICHT: zeigt Rostspuren → SO: gebrauchter Zustand mit Gebrauchsspuren, voll funktionsfaehig\n- NICHT: stark verschlissen → SO: intensiv eingesetzt, betriebsbereit\n- Zustand immer aus Verkaeufer-Perspektive formulieren\n\nPREISREGELN (ZWINGEND - keine Ausnahmen):\n- Neupreis AUSSCHLIESSLICH aus Verkaeufer-Notizen - NIEMALS schaetzen oder erfinden\n- Fehlt Neupreis: price_min=0, price_max=0, price_recommended=0, price_unknown=true\n- Preisbegruendung nur auf SICHTBAREN Fakten und Verkaeufer-Angaben\n- Lieber zu konservativ als falsch\n- Zusatzinfos vom Verkaeufer haben HOECHSTE Prioritaet\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
       messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
     })
   });
@@ -2430,6 +2492,194 @@ async function vkRunMarketSearch(articleId, title, phone) {
 }
 
 // ── VK ENDPOINTS ───────────────────────────────────────────
+
+
+// ── FRAGEKATALOG: Schritt 1 nach Erstanalyse ────────────────────────────
+app.get('/api/vk/article/:id/questions', async (req, res) => {
+  try {
+    const { data: article } = await supabase.from('vk_articles')
+      .select('id, title, analysis, article_category, questions').eq('id', req.params.id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+    // Bereits generierte Fragen zurückgeben
+    if (article.questions) return res.json({ questions: article.questions });
+
+    const an = article.analysis || {};
+    const cat = article.article_category || an.article_category || 'standard';
+    const fetch = require('node-fetch');
+
+    // Kategorie-spezifische Basis-Fragen
+    const catPrompts = {
+      vehicle:    'Fahrzeug/Kfz: KM-Stand, Baujahr, TÜV bis, Vorbesitzer, Serviceheft, Unfallschäden, Motor/Getriebe Zustand',
+      industrial: 'Industriemaschine: Tragkraft, Hubhöhe, Baujahr, Betriebsstunden, letzte Wartung, Wartungsbuch, Neuanschaffungspreis, Verkaufsgrund',
+      luxury_watch:'Luxusuhr: Referenznummer, Baujahr/Kaufdatum, Box & Papers vorhanden, Servicehistorie, Laufzeit/Ganggenauigkeit, Neupreis',
+      electronics:'Elektronik: Modellnummer/Seriennummer, Kaufjahr, Zustand Display/Gehäuse, originales Zubehör, Garantie noch aktiv, Neupreis',
+      jewelry:    'Schmuck: Material/Legierung, Zertifikate vorhanden, Herkunft, Schätzwert, Zustand Fassung/Steine',
+      art:        'Kunst/Antiquität: Künstler/Hersteller, Entstehungsjahr, Provenienz, Zertifikate/Gutachten, Schätzwert',
+      standard:   'Allgemein: Baujahr/Kaufjahr, Neupreis, Zustand Details, Zubehör, Verwendung, Verkaufsgrund'
+    };
+    const catHint = catPrompts[cat] || catPrompts.standard;
+
+    const prompt = 'Du bist ein Verkaufsexperte. Erstelle einen Fragekatalog fuer: ' + (an.title_short || article.title || 'Artikel') + ' (Kategorie: ' + cat + ').\nTypische fehlende Infos: ' + catHint + '\nMax 10 Fragen die auf Fotos NICHT sichtbar sind. Helfen Preis zu optimieren.\nJSON: {"questions":[{"id":"q1","label":"Frage","placeholder":"z.B. EUR 95.000","type":"text","important":true}]}\ntype: text|number|yesno. important:true fuer 3 wichtigste Fragen.';
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] })
+    });
+    const d = await r.json();
+    const text = d.content?.[0]?.text || '{"questions":[]}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean.substring(clean.indexOf('{'), clean.lastIndexOf('}')+1));
+    const questions = parsed.questions || [];
+
+    await supabase.from('vk_articles').update({ questions }).eq('id', req.params.id);
+    res.json({ questions });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ANTWORTEN SPEICHERN ──────────────────────────────────────────────────
+app.post('/api/vk/article/:id/answers', async (req, res) => {
+  try {
+    const { answers } = req.body;
+    await supabase.from('vk_articles').update({ answers }).eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ANALYSE SCHRITT 2: Mit Antworten optimieren ──────────────────────────
+app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
+  try {
+    const { data: article } = await supabase.from('vk_articles')
+      .select('*, vk_photos(*), analysis, questions, answers').eq('id', req.params.id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+    const fetch = require('node-fetch');
+    const an = article.analysis || {};
+    const answers = article.answers || {};
+    const questions = article.questions || [];
+
+    // Antworten als Text aufbereiten
+    const answersText = questions
+      .filter(q => answers[q.id] && answers[q.id] !== '')
+      .map(q => q.label + ': ' + answers[q.id])
+      .join('\n');
+
+    // Fotos laden
+    const imageBlocks = [];
+    for (const p of (article.vk_photos || [])) {
+      try {
+        const imgRes = await fetch(p.public_url);
+        const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+        const ct = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0];
+        imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: ct, data: imgBuf.toString('base64') } });
+      } catch(e) { console.error('img load:', e.message); }
+    }
+
+    const prompt = 'Optimierter Verkaufsbericht. VERKAEUFER-ANGABEN (Prioritaet):\n' + (answersText || 'keine') + '\n\nBASIS: ' + (an.title_short||'') + ', ' + (an.condition||'') + '\n\nJSON mit allen Feldern. Preise NUR wenn Neupreis bekannt. Verkaeufer-Angaben als Fakten nutzen.\n'
+      + JSON.stringify({
+          title_short: 'SEO-Titel max 60 Zeichen',
+          title_long: 'Ausfuehrlicher Titel mit Specs aus Verkaeufer-Angaben',
+          short_desc: '2-3 Saetze verkaufsorientiert',
+          long_desc: 'Ausfuehrliche Beschreibung mit allen bekannten Specs',
+          bullet_points: ['Highlight 1', 'Highlight 2'],
+          price_min: 0, price_max: 0, price_recommended: 0,
+          price_unknown: false,
+          price_reasoning: 'Begruendung mit echten Fakten',
+          condition: 'Zustand verkaufsorientiert',
+          keywords: ['keyword1'],
+          tips: ['Tipp 1']
+        });
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: await getAIModel('sales_analysis_basic', article.ai_mode || 'abteilungsleiter'),
+        max_tokens: 2000,
+        system: 'Du bist Verkaufstexter. Erstelle verkaufsoptimierte Texte basierend auf echten Verkaeufer-Angaben. Keine Halluzinationen. Antworte NUR mit JSON.',
+        messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
+      })
+    });
+    const data = await response.json();
+    if (data.error) return res.status(500).json({ error: data.error.message });
+    const text = data.content?.[0]?.text || '{}';
+    let analysis;
+    try { 
+      const clean = text.replace(/```json|```/g, '').trim();
+      analysis = JSON.parse(clean.substring(clean.indexOf('{'), clean.lastIndexOf('}')+1));
+    } catch(e) { return res.status(500).json({ error: 'JSON Parse Fehler: ' + e.message }); }
+
+    // Marktsuche mit echten Daten starten
+    const searchTitle = analysis.title_short || an.title_short || article.title;
+    await supabase.from('vk_articles').update({
+      analysis: { ...an, ...analysis },
+      status: 'analyzed'
+    }).eq('id', req.params.id);
+
+    if (searchTitle) vkRunMarketSearchV2(req.params.id, searchTitle, article.article_category, answers).catch(e => console.error('Market v2:', e.message));
+
+    res.json({ success: true, analysis });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ── ARTIKEL DOKUMENTE (PDFs + Links) ─────────────────────────────────────
+app.get('/api/vk/article/:id/docs', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('vk_article_docs')
+      .select('*').eq('article_id', req.params.id).order('created_at');
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/vk/article/:id/doc', async (req, res) => {
+  try {
+    const { type, label, url, file_base64, file_name, content_type, session_id } = req.body;
+    if (!type || !label) return res.status(400).json({ error: 'type und label erforderlich' });
+
+    let publicUrl = url || null;
+    let storagePath = null;
+
+    // PDF hochladen
+    if (type === 'pdf' && file_base64) {
+      const buffer = Buffer.from(file_base64, 'base64');
+      const ext = (file_name || 'doc.pdf').split('.').pop() || 'pdf';
+      const path = req.params.id + '/' + Date.now() + '.' + ext;
+      const { error: upErr } = await supabase.storage.from('vk-docs')
+        .upload(path, buffer, { contentType: content_type || 'application/pdf', upsert: false });
+      if (upErr) return res.status(400).json({ error: upErr.message });
+      const { data: urlData } = supabase.storage.from('vk-docs').getPublicUrl(path);
+      publicUrl = urlData.publicUrl;
+      storagePath = path;
+    }
+
+    const { data, error } = await supabase.from('vk_article_docs').insert({
+      article_id: req.params.id,
+      session_id: session_id || null,
+      type, label,
+      public_url: publicUrl,
+      storage_path: storagePath,
+      file_name: file_name || null
+    }).select().single();
+
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, doc: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/vk/doc/:id', async (req, res) => {
+  try {
+    const { data: doc } = await supabase.from('vk_article_docs')
+      .select('storage_path').eq('id', req.params.id).single();
+    if (doc?.storage_path) {
+      await supabase.storage.from('vk-docs').remove([doc.storage_path]);
+    }
+    await supabase.from('vk_article_docs').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 app.post('/api/vk/session', async (req, res) => {
   try {
@@ -2769,6 +3019,7 @@ ${lp.anrede === 'du' ? 'Niemals "Sie" verwenden.' : 'Niemals "du/dein/dir" verwe
 
 DEIN PRODUKT:
 Artikel: ${an.title_short || article.title || 'Produkt'}
+${lp._docs && lp._docs.length ? 'DOKUMENTE (auf Anfrage Link senden):\n' + lp._docs.map(function(d){return '- ' + d.label + ': ' + d.public_url;}).join('\n') : ''}
 Festpreis: EUR ${price}
 Dein absolutes Minimum: EUR ${absoluteMin} (NIEMALS nennen, NIEMALS unterschreiten)
 Zustand: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
@@ -2876,6 +3127,13 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     price,
     messages: [{ role: 'user', content: text }]
   };
+  // Dokumente laden
+  try {
+    const { data: _docs } = await supabase.from('vk_article_docs')
+      .select('label, public_url, type').eq('article_id', lp.article_id || '');
+    if (_docs && _docs.length) lp._docs = _docs;
+  } catch(e) {}
+
   // Eskalations-Titel aus Business nachladen
   if (lp.session_id) {
     try {
