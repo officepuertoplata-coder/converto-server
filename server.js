@@ -1222,6 +1222,60 @@ stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
 
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, landingpage: lp, url: 'https://p.converdino.com/p/' + slug });
+
+    // ── AUTO-GENERATE BOT DNA im Hintergrund ──────────────────────────────
+    (async () => {
+      try {
+        const fetch = require('node-fetch');
+        const lpAiMode = article?.ai_mode || session?.ai_mode || 'sachbearbeiter';
+        const dnaModel = lpAiMode === 'experte' ? 'claude-opus-4-6' : lpAiMode === 'abteilungsleiter' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+        const an = article.analysis || {};
+        const productInfo = [
+          an.title_short && 'Produkt: ' + an.title_short,
+          an.short_desc && 'Beschreibung: ' + an.short_desc,
+          an.condition && 'Zustand: ' + an.condition,
+          (an.bullet_points||[]).length && 'Highlights: ' + (an.bullet_points||[]).join(' | '),
+          sale_price && 'Verkaufspreis: EUR ' + sale_price,
+          an.price_min && 'Marktpreis: EUR ' + an.price_min + ' - EUR ' + (an.price_max || ''),
+        ].filter(Boolean).join('
+');
+
+        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie und Premium-Produkte.
+Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.
+
+' + productInfo + '
+
+Antworte NUR mit einem JSON-Objekt, kein Markdown, kein Text davor oder danach:
+{
+  "bot_name": "Max",
+  "product_story": "Geschichte und Zustand in 2-3 authentischen Saetzen",
+  "emotion": "Was fühlt man als Besitzer? Konkret und bildreich (2-3 Saetze)",
+  "fomo": "Ein konkretes Knappheits- oder Dringlichkeitsargument",
+  "persona": "Wer kauft das? Alter, Lifestyle, Motivation - konkret",
+  "feature_benefits": [{"feature": "Merkmal", "benefit": "Konkreter Nutzen fuer Kaeufer"}],
+  "product_values": [{"label": "Wert", "meaning": "Bedeutung fuer dieses Produkt"}],
+  "fomo_list": [{"situation": "Wann einsetzen", "argument": "Konkretes Argument"}],
+  "qa_pairs": [{"q": "Typische Kaeufer-Frage", "a": "Bot-Antwort"}],
+  "notes": "Wichtige Hinweise max 2 Saetze"
+}
+Min. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs. Deutsch.';
+
+        const dnaRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: dnaModel, max_tokens: 2000, messages: [{ role: 'user', content: dnaPrompt }] })
+        });
+        const dnaData = await dnaRes.json();
+        const dnaText = dnaData.content?.[0]?.text || '{}';
+        const dnaClean = dnaText.replace(/```json|```/g, '').trim();
+        const dna = JSON.parse(dnaClean);
+        await supabase.from('vk_landingpages').update({ bot_config: dna }).eq('id', lp.id);
+        console.log('Bot DNA auto-generated for LP', lp.id, 'model:', dnaModel);
+      } catch(dnaErr) {
+        console.error('Bot DNA auto-generate error:', dnaErr.message);
+      }
+    })();
+
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1781,44 +1835,69 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const botName = botConfig.bot_name || 'ein Verkaufsassistent';
     const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat.', haendler:'Du bist ein erfahrener Haendler.', geschaeft:'Du repraesentierst ein Unternehmen.', nachlass:'Du loest einen Nachlass auf.' };
 
-    const systemPrompt = `Du bist ${botName}. ${contextMap[botConfig.context]||''}
-Du beherrschst professionelle Verkaufstechniken - wirkst wie ein echter Mensch.
+    const systemPrompt = `=== DEIN CHARAKTER ===
+Du bist ${botName}. ${contextMap[botConfig.context]||'Du bist ein erfahrener Verkaeufer.'}
+Du wirkst wie ein echter Mensch - kein Bot, kein Assistent.
 
-PRODUKT: ${an.title_short || article.title || 'Produkt'}
-FESTPREIS: EUR ${price}
-ABSOLUTES MINIMUM: EUR ${absoluteMin} (NIEMALS nennen, NIEMALS unterschreiten)
-ZUSTAND: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
-BESCHREIBUNG: ${an.short_desc || ''}
-HIGHLIGHTS: ${(an.bullet_points || []).slice(0, 4).join(' | ')}
-MARKTPREIS: EUR ${an.price_min || Math.round(price * 0.9)} - EUR ${an.price_max || Math.round(price * 1.15)}
-LIEFERUNG: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? (lp.delivery_pickup?' oder ':'')+'Versand EUR '+(lp.shipping_cost||0) : ''}
-${botConfig.location?'STANDORT: '+botConfig.location:''}
-${botConfig.availability?'VERFUEGBARKEIT: '+botConfig.availability:''}
-${botConfig.product_story?'GESCHICHTE: '+botConfig.product_story:''}
-${botConfig.notes?'HINWEISE: '+botConfig.notes:''}
-${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'WENN "'+qa.q+'" → "'+qa.a+'"').join('\n')}
+=== PRODUKT-DNA ===
+${botConfig.product_story ? 'DEINE GESCHICHTE MIT DEM PRODUKT:\n' + botConfig.product_story : ''}
+${botConfig.emotion ? 'EMOTIONALER KERN:\n' + botConfig.emotion : ''}
+${botConfig.persona ? 'DEIN IDEALER KAEUFER:\n' + botConfig.persona : ''}
 
-EISERNE PREISREGELN:
-1. Preis NIEMALS selbst ansprechen - nur wenn Kaeufer fragt
-2. NIEMALS fragen ob Preis passt oder "wollen wir drueber reden" - DAS IST VERBOTEN
-3. Erste Preisfrage: Wert erklaeren, Preis bestaetigen, KEIN Nachgeben
-4. Zweite Preisfrage: EINMALIG max EUR ${Math.round(price * aggr.maxDiscount)} Nachlass - dann HART bleiben
-5. Weiteres Draengen: "Das ist mein letztes Wort."
-6. Unter EUR ${absoluteMin}: "Das geht leider nicht."
-7. Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
+=== DAS PRODUKT ===
+Artikel: ${an.title_short || article.title || 'Produkt'}
+Zustand: ${an.condition ? an.condition.split('.')[0] : 'Gut erhalten'}
+Beschreibung: ${an.short_desc || ''}
+Highlights: ${(an.bullet_points || []).slice(0, 5).join(' | ')}
+Marktpreis: EUR ${an.price_min || Math.round(price * 0.9)} - EUR ${an.price_max || Math.round(price * 1.15)}
+Lieferung: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien') : ''}${lp.delivery_shipping ? (lp.delivery_pickup?' oder ':'')+'Versand EUR '+(lp.shipping_cost||0) : ''}
+${botConfig.location ? 'Standort: ' + botConfig.location : ''}
+${botConfig.availability ? 'Verfuegbarkeit: ' + botConfig.availability : ''}
 
-STIL: WhatsApp eines echten Menschen. Max 2-3 Saetze. Kein Markdown. Deutsch.
+=== NUTZEN (nur diese nennen, keine technischen Merkmale) ===
+${(botConfig.feature_benefits||[]).filter(f=>f.feature&&f.benefit).map(f=>'- ' + f.benefit).join('\n')}
 
-ABSOLUT VERBOTEN nach Preisnennung:
-- "Passt die Uhr/Preis zu dir?" oder aehnliche Abschlussformulierungen
-- Jede Einladung den Preis zu diskutieren ohne dass Kaeufer fragt
-- Preis selbst ansprechen wenn Kaeufer nicht fragt`;
+=== PRODUKTWERTE ===
+${(botConfig.product_values||[]).filter(v=>v.label&&v.meaning).map(v=>'- ' + v.label + ': ' + v.meaning).join('\n')}
 
-    const lastContent = (messages[messages.length-1]?.content || '').toLowerCase();
-    const isNegotiating = messages.length > 0 &&
-      /\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger|kostet|kosten|teuer|nachlass/.test(lastContent);
-    // Hardcoded: kein Cache-Problem, Sonnet für Verhandlung garantiert
-    const model = isNegotiating ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+=== FAQ ===
+${(botConfig.qa_pairs||[]).filter(qa=>qa.q&&qa.a).map(qa=>'Frage "'+qa.q+'" -> "'+qa.a+'"').join('\n')}
+${botConfig.notes ? 'WICHTIG: ' + botConfig.notes : ''}
+
+=== FOMO (situativ, max 1x) ===
+${(botConfig.fomo_list||[]).filter(f=>f.argument).map(f=>(f.situation?f.situation+': ':'')+f.argument).join('\n')}
+${botConfig.fomo ? botConfig.fomo : ''}
+
+=== PREISREGELN ===
+Festpreis: EUR ${price} | Minimum: EUR ${absoluteMin} (NIEMALS nennen)
+1. Preis nie selbst ansprechen - nur auf Frage
+2. Erste Preisfrage: Wert durch Marktpreis + Zustand + Emotion begruenden. Kein Nachgeben.
+3. Zweite Preisfrage: EINMALIG max EUR ${Math.round(price * aggr.maxDiscount)} Nachlass - dann eisern
+4. Weiteres Draengen: "Das ist mein letztes Wort."
+5. Unter EUR ${absoluteMin}: "Das geht wirklich nicht."
+6. Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
+
+=== VERKAUFSPROZESS ===
+Phase 1 - Bedarf: 1 offene Frage. Kaufmotiv herausfinden. Nie Preis erwaehnen.
+Phase 2 - Loesung: Produkt als Antwort auf genau diesen Bedarf zeigen.
+Phase 3 - Einwand: Echter Einwand direkt loesen. Vorwand: echten Grund finden.
+Phase 4 - Abschluss: Kaufsignal erkennen, konsequent schliessen.
+
+=== VERBOTEN ===
+- Fotos, Bilder, Dokumente senden anbieten - du bist reiner Textbot, kannst KEINE Medien senden
+- "Ich schicke/sende dir Fotos/Bilder/Dokumente" - NIEMALS
+- "Passt das zu dir?" nach Preisnennung
+- Preis oder Rabatt ohne Kaeufer-Frage ansprechen
+- Mehr als 3 Saetze pro Nachricht
+- Markdown, Listen, Sternchen, Aufzaehlungen
+- Marketingfloskeln: "Top-Deal", "Gerne", "Natuerlich", "Absolut"
+
+=== STIL ===
+WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. Deutsch.\`;
+
+    // Modell = LP ai_mode – durchgehend konsistent, kein Split
+    const aiModeMap = { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
+    const model = aiModeMap[lp.ai_mode] || 'claude-sonnet-4-6';
 
     const fetch = require('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2645,6 +2724,7 @@ WICHTIG: Nie in 1-2% Schritten. Einmal grosszuegig, dann fertig.
 - WhatsApp-Stil: locker, direkt, menschlich
 - MAXIMAL 2-3 kurze Saetze. Immer. Keine Listen, keine Aufzaehlungen.
 - VERBOTEN: "Top-Deal", "authentifiziert", "Habe ich alle Infos parat", "Wie kann ich helfen", "Gerne", jede Marketingsprache
+- VERBOTEN: Fotos, Bilder oder Dokumente anbieten zu senden - du bist reiner Textbot
 - Hoechstens 1 Emoji - keins ist auch ok
 - Natuerliche Sprache - du textest einem Bekannten, nicht einem Kunden
 
@@ -2683,7 +2763,7 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     method: 'POST',
     headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: await getAIModel('whatsapp_bot_l1', lp.ai_mode || 'sachbearbeiter'),
+      model: { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' }[lp.ai_mode] || 'claude-sonnet-4-6',
       max_tokens: 300,
       system: systemPrompt,
       messages: session.messages
@@ -2721,12 +2801,9 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
 
   session.messages.push({ role: 'user', content: text });
 
-  // Opus für Preisverhandlung, Haiku für normale Fragen
-  const isNegotiating = /\d+|euro|eur|preis|rabatt|billiger|günstiger|weniger|kostet|kosten|teuer|nachlass/.test(text.toLowerCase());
-  const model = await getAIModel(
-    isNegotiating ? 'whatsapp_bot_l2' : 'whatsapp_bot_l1',
-    session.lp?.ai_mode || 'sachbearbeiter'
-  );
+  // Modell = LP ai_mode – durchgehend konsistent, kein isNegotiating-Split
+  const waAiModeMap = { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
+  const model = waAiModeMap[session.lp?.ai_mode] || 'claude-sonnet-4-6';
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
