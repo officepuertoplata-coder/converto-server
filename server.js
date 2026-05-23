@@ -2501,8 +2501,19 @@ app.get('/api/vk/article/:id/questions', async (req, res) => {
       .select('id, title, analysis, article_category, questions').eq('id', req.params.id).single();
     if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
 
-    // Bereits generierte Fragen zurückgeben
-    if (article.questions) return res.json({ questions: article.questions });
+    // Bereits generierte Fragen zurückgeben - aber Pflichtfelder immer sicherstellen
+    if (article.questions && article.questions.length > 0) {
+      let qs = article.questions;
+      // q_model immer als erstes Feld
+      if (!qs.find(function(q){ return q.id === 'q_model'; })) {
+        qs = [{ id: 'q_model', label: 'Exakte Modellbezeichnung / Typ', placeholder: 'z.B. Jungheinrich EFG 316, Toyota 8FBE20', type: 'text', important: true }].concat(qs);
+      }
+      // q_sonstige immer als letztes Feld
+      if (!qs.find(function(q){ return q.id === 'q_sonstige'; })) {
+        qs = qs.concat([{ id: 'q_sonstige', label: 'Zusätzliche Informationen / Korrekturen', placeholder: 'z.B. Tragkraft 2,4t statt 4,5t, Farbe blau, Baujahr 1998...', type: 'text', important: false }]);
+      }
+      return res.json({ questions: qs });
+    }
 
     const an = article.analysis || {};
     const cat = article.article_category || an.article_category || 'standard';
