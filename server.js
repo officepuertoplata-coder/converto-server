@@ -3626,24 +3626,36 @@ app.post('/api/vk/admin/bot-ai-analyze/:slug', async (req, res) => {
       return res.status(400).json({ error: 'Artikelanalyse fehlt oder unvollständig. Bitte erst Analyse starten.' });
     }
 
-    const prompt = `Du bist Experte fuer Verkaufspsychologie. Erstelle Bot-Training-Daten fuer dieses Produkt.
+    const prompt = `Du bist Experte fuer Verkaufspsychologie. Erstelle vollstaendige Bot-Training-Daten fuer dieses Produkt.
 
 ${productInfo}
 
-Antworte NUR mit einem JSON-Objekt, kein Markdown, kein Text:
+Antworte NUR mit einem JSON-Objekt, kein Markdown, kein erklaerenden Text davor oder danach:
 {
-  "product_story": "Geschichte und Zustand des Produkts in 2-3 authentischen Sätzen für den Bot",
-  "emotion": "Wofür steht dieses Produkt emotional? Was fühlt und erlebt man als Besitzer? (2-3 Sätze, konkret und bildreich)",
-  "fomo": "Ein konkretes Knappheits- oder Dringlichkeitsargument warum man jetzt kaufen sollte",
-  "persona": "Wer kauft das typischerweise? Alter, Lifestyle, Motivation - konkret beschrieben",
+  "bot_name": "Max",
+  "product_story": "Geschichte und Zustand in 2-3 authentischen Saetzen",
+  "emotion": "Was steht dieses Produkt emotional? Was erlebt man als Besitzer? (2-3 Saetze)",
+  "fomo": "Ein konkretes Knappheits- oder Dringlichkeitsargument",
+  "persona": "Wer kauft das? Alter, Lifestyle, Motivation - konkret",
   "feature_benefits": [
-    {"feature": "Technisches Feature oder Eigenschaft", "benefit": "Konkreter Nutzen/Vorteil für den Käufer in Alltagssprache"}
+    {"feature": "Technisches Merkmal", "benefit": "Konkreter Alltagsnutzen fuer den Kaeufer"}
   ],
-  "exit_strategy_args": [{"label": "Bezeichnung", "argument": "Argument warum Kaeufer trotzdem kaufen sollte, auch wenn kein weiterer Rabatt moeglich"}],
-  "notes": "Wichtige Hinweise die der Bot kennen sollte (max 1-2 Sätze)"
+  "product_values": [
+    {"label": "Wertbegriff", "meaning": "Was dieser Wert fuer dieses Produkt konkret bedeutet"}
+  ],
+  "fomo_list": [
+    {"situation": "Wann einsetzen", "argument": "Konkretes Argument (1-2 Saetze natuerlich)"}
+  ],
+  "qa_pairs": [
+    {"q": "Typische Kaeufer-Frage", "a": "Praezise Bot-Antwort (1-2 Saetze)"}
+  ],
+  "exit_strategy_args": [
+    {"label": "Bezeichnung", "argument": "Argument warum Kaeufer trotzdem kaufen sollte auch wenn kein weiterer Rabatt moeglich"}
+  ],
+  "notes": "Wichtige Hinweise max 2 Saetze"
 }
 
-Erstelle mindestens 4 feature_benefits, 3 exit_strategy_args Einträge. Antworte auf Deutsch.`;
+Min: 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs, 3 exit_strategy_args. Auf Deutsch.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -3654,7 +3666,7 @@ Erstelle mindestens 4 feature_benefits, 3 exit_strategy_args Einträge. Antworte
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1500,
+        max_tokens: 2500,
         messages: [{ role: 'user', content: prompt }]
       })
     });
