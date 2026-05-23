@@ -1239,7 +1239,7 @@ stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
           an.price_min && 'Marktpreis: EUR ' + an.price_min + ' - EUR ' + (an.price_max || ''),
         ].filter(Boolean).join('\n');
 
-        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie. Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.\n\n' + productInfo + '\n\nAntworte NUR mit JSON, kein Markdown:\n{\n  "bot_name": "Max",\n  "product_story": "Geschichte in 2-3 Saetzen",\n  "emotion": "Emotionaler Kern (2-3 Saetze)",\n  "fomo": "Knappheitsargument",\n  "persona": "Zielgruppe konkret",\n  "feature_benefits": [{"feature": "Merkmal", "benefit": "Nutzen"}],\n  "product_values": [{"label": "Wert", "meaning": "Bedeutung"}],\n  "fomo_list": [{"situation": "Wann", "argument": "Argument"}],\n  "qa_pairs": [{"q": "Frage", "a": "Antwort"}],\n  "notes": "Hinweise max 2 Saetze"\n}\nMin. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs. Deutsch.';
+        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie. Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.\n\n' + productInfo + '\n\nAntworte NUR mit JSON, kein Markdown:\n{\n  "bot_name": "Max",\n  "product_story": "Geschichte in 2-3 Saetzen",\n  "emotion": "Emotionaler Kern (2-3 Saetze)",\n  "fomo": "Knappheitsargument",\n  "persona": "Zielgruppe konkret",\n  "feature_benefits": [{"feature": "Merkmal", "benefit": "Nutzen"}],\n  "product_values": [{"label": "Wert", "meaning": "Bedeutung"}],\n  "fomo_list": [{"situation": "Wann", "argument": "Argument"}],\n  "qa_pairs": [{"q": "Frage", "a": "Antwort"}],\n  "exit_strategy_args": [{"label": "Bezeichnung", "argument": "Argument warum Kaeufer trotzdem Recht hat zu kaufen, auch wenn Preis nicht weiter sinkt"}],\n  "notes": "Hinweise max 2 Saetze"\n}\nMin. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs, 3 exit_strategy_args. Deutsch.';
 
         const dnaRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -1866,9 +1866,14 @@ Phase 4 - Abschluss: Kaufsignal erkennen, konsequent schliessen.
 
 === EXIT-STRATEGIE (wenn Kaeufer unter Mindestpreis bleibt) ===
 Wenn Kaeufer unter EUR ${absoluteMin} bleibt UND du bereits "letztes Wort" gesagt hast:
+
+SCHRITT 1 - Letzte Argumente (nutze diese in dieser Reihenfolge, 1 pro Nachricht):
+${(botConfig.exit_strategy_args||[]).filter(function(a){return a.argument;}).map(function(a,i){return (i+1)+'. '+a.argument;}).join('\n')}
+
+SCHRITT 2 - Falls Kaeufer immer noch nicht kauft:
 Sage: "Ich darf leider nicht weiter runtergehen als den Preis den ich dir genannt habe. Mein Vorschlag: Ich leite dich an unseren Verkaufsleiter weiter - der hat manchmal noch Moeglichkeiten. Waere das ok fuer dich?"
-Bei JA: Frage nach E-Mail UND wann ein Rueckruf am besten passt.
-Sobald du beides hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
+Bei JA: "Super. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
+Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
 
 === VERBOTEN ===
 - Fotos, Bilder, Dokumente senden anbieten - du bist reiner Textbot, kannst KEINE Medien senden
@@ -2717,8 +2722,13 @@ WICHTIG: Nie in 1-2% Schritten. Einmal grosszuegig, dann fertig.
 
 === EXIT-STRATEGIE (wenn Kaeufer unter absolutem Minimum bleibt) ===
 Wenn Kaeufer unter EUR ${absoluteMin} bleibt UND du bereits "letztes Wort" gesagt hast:
-Sage EXAKT: "Ich darf leider nicht weiter runtergehen als den Preis den ich dir genannt habe. Mein Vorschlag: Ich leite dich an unseren Verkaufsleiter weiter - der hat manchmal noch Moeglichkeiten. Waere das ok fuer dich?"
-Bei JA/Zustimmung: "Super. Deine WhatsApp-Nummer habe ich bereits. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
+
+SCHRITT 1 - Letzte Argumente (1 pro Nachricht, in dieser Reihenfolge):
+${(botConfig.exit_strategy_args||[]).filter(function(a){return a.argument;}).map(function(a,i){return (i+1)+'. '+a.argument;}).join('\n')}
+
+SCHRITT 2 - Falls Kaeufer immer noch nicht kauft:
+Sage: "Ich darf leider nicht weiter runtergehen. Mein Vorschlag: Ich leite dich an unseren Verkaufsleiter weiter - der hat manchmal noch Moeglichkeiten. Waere das ok fuer dich?"
+Bei JA: "Super. Deine WhatsApp-Nummer habe ich bereits. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
 
 === STIL - ABSOLUT WICHTIG ===
@@ -3540,10 +3550,11 @@ Antworte NUR mit einem JSON-Objekt, kein Markdown, kein Text davor oder danach:
   "feature_benefits": [
     {"feature": "Technisches Feature oder Eigenschaft", "benefit": "Konkreter Nutzen/Vorteil für den Käufer in Alltagssprache"}
   ],
+  "exit_strategy_args": [{"label": "Bezeichnung", "argument": "Argument warum Kaeufer trotzdem kaufen sollte, auch wenn kein weiterer Rabatt moeglich"}],
   "notes": "Wichtige Hinweise die der Bot kennen sollte (max 1-2 Sätze)"
 }
 
-Erstelle mindestens 4 feature_benefits Einträge. Antworte auf Deutsch.`;
+Erstelle mindestens 4 feature_benefits, 3 exit_strategy_args Einträge. Antworte auf Deutsch.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
