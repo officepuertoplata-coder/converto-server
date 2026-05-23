@@ -1273,7 +1273,7 @@ app.get('/api/vk/landingpage/article/:articleId', async (req, res) => {
 // ── ROUTE: LP deaktivieren ─────────────────────────────────
 app.put('/api/vk/landingpage/:id', async (req, res) => {
   try {
-    const allowed = ['sale_price','min_price','delivery_pickup','delivery_shipping','shipping_cost','pickup_location','has_bot','stock_quantity','show_score_badge'];
+    const allowed = ['sale_price','min_price','delivery_pickup','delivery_shipping','shipping_cost','pickup_location','has_bot','stock_quantity','show_score_badge','ai_mode','badge_type'];
     const updates = {};
     allowed.forEach(function(k){ if(req.body[k]!==undefined) updates[k]=req.body[k]; });
     const { data, error } = await supabase.from('vk_landingpages').update(updates).eq('id', req.params.id).select().single();
@@ -1793,7 +1793,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     if (!lp_slug || !messages) return res.status(400).json({ error: 'lp_slug und messages erforderlich' });
 
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(title, analysis), bot_config')
+      .select('*, vk_articles(title, analysis, ai_mode), bot_config, ai_mode')
       .eq('slug', lp_slug).maybeSingle();
 
     if (!lp) return res.status(404).json({ error: 'LP nicht gefunden' });
@@ -1876,9 +1876,11 @@ Phase 4 - Abschluss: Kaufsignal erkennen, konsequent schliessen.
 === STIL ===
 WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. Deutsch.`;
 
-     // Modell = LP ai_mode – durchgehend konsistent, kein Split
+     // Modell = LP ai_mode – wenn nicht gesetzt, aus Artikel lesen
+    const lpAiMode = lp.ai_mode || lp.vk_articles?.ai_mode || 'abteilungsleiter';
     const aiModeMap = { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
-    const model = aiModeMap[lp.ai_mode] || 'claude-sonnet-4-6';
+    const model = aiModeMap[lpAiMode] || 'claude-sonnet-4-6';
+    console.log('bot-sandbox: lp.ai_mode=', lp.ai_mode, '→ lpAiMode=', lpAiMode, '→ model=', model);
 
     const fetch = require('node-fetch');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1887,6 +1889,10 @@ WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. D
       body: JSON.stringify({ model, max_tokens: 400, system: systemPrompt, messages })
     });
     const data = await response.json();
+    if (data.error) {
+      console.error('Anthropic API error in sandbox:', JSON.stringify(data.error));
+      return res.status(500).json({ error: 'API Fehler: ' + data.error.message + ' (Modell: ' + model + ')' });
+    }
     const reply = data.content?.[0]?.text || 'Fehler bei der Antwort';
 
     const paymentMatch = reply.match(/ZAHLUNG_LINK:(\d+(?:\.\d+)?)/);
@@ -1896,6 +1902,7 @@ WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. D
       payment_link: paymentMatch ? { amount: parseFloat(paymentMatch[1]) } : null
     });
   } catch(e) {
+    console.error('bot-sandbox error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
