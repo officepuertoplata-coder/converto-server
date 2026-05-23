@@ -689,8 +689,15 @@ app.post('/api/vk/admin/business-discounts', async (req, res) => {
 
 app.put('/api/vk/admin/business-discounts/:id', async (req, res) => {
   try {
+    // Nur erlaubte Felder updaten
+    const allowed = ['company_name','phone','discount_percent','valid_until','max_uses','notes',
+      'sales_commission_percent','landingpage_enabled','wise_email','seller_email',
+      'seller_address','seller_zip','seller_city','seller_uid','upload_mode','active',
+      'escalation_title','escalation_availability'];
+    const updates = {};
+    allowed.forEach(function(k){ if(req.body[k] !== undefined) updates[k] = req.body[k]; });
     const { data, error } = await supabase.from('vk_business_discounts')
-      .update(req.body).eq('id', req.params.id).select().single();
+      .update(updates).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, discount: data });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1848,7 +1855,7 @@ SCHRITT 1 - Letzte Argumente (nutze diese in dieser Reihenfolge, 1 pro Nachricht
 ${(botConfig.exit_strategy_args||[]).filter(function(a){return a.argument;}).map(function(a,i){return (i+1)+'. '+a.argument;}).join('\n')}
 
 SCHRITT 2 - Falls Kaeufer immer noch nicht kauft:
-Sage: "Ich darf leider nicht weiter runtergehen als den Preis den ich dir genannt habe. Mein Vorschlag: Ich leite dich an unseren Verkaufsleiter weiter - der hat manchmal noch Moeglichkeiten. Waere das ok fuer dich?"
+Sage: "Ich darf leider nicht weiter runtergehen als den Preis den ich dir genannt habe. Mein Vorschlag: Ich leite dich an unseren Verkaufsexperten weiter - der hat manchmal noch Moeglichkeiten. Waere das ok?"
 Bei JA: "Super. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
 
@@ -2037,6 +2044,23 @@ app.post('/api/vk/cron/cleanup', async (req, res) => {
     console.error('Cron cleanup error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Sandbox/Start: Session für Report Test erstellen ────────────────────
+app.post('/api/vk/sandbox/start', async (req, res) => {
+  try {
+    const { phone, ai_mode } = req.body;
+    if (!phone) return res.status(400).json({ error: 'phone fehlt' });
+    const cleanPhone = String(phone).replace(/[^0-9]/g, '');
+    const token = generateToken();
+    const sessionInsert = { token, phone: cleanPhone, status: 'open', ai_mode: ai_mode || 'abteilungsleiter', expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() };
+    // Business-Rabatt prüfen
+    const bd = await vkGetBusinessDiscount(cleanPhone);
+    if (bd) { sessionInsert.business_discount_id = bd.id; sessionInsert.business_discount_pct = bd.discount_percent; }
+    const { data: session, error } = await supabase.from('vk_sessions').insert(sessionInsert).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true, token, session_id: session.id, url: 'https://converdino.com/bericht.html?s=' + token });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Admin: Test-Session (Sandbox) ─────────────────────────
@@ -2811,7 +2835,7 @@ SCHRITT 1 - Letzte Argumente (1 pro Nachricht, in dieser Reihenfolge):
 ${(botConfig.exit_strategy_args||[]).filter(function(a){return a.argument;}).map(function(a,i){return (i+1)+'. '+a.argument;}).join('\n')}
 
 SCHRITT 2 - Falls Kaeufer immer noch nicht kauft:
-Sage: "Ich darf leider nicht weiter runtergehen. Mein Vorschlag: Ich leite dich an unseren Verkaufsleiter weiter - der hat manchmal noch Moeglichkeiten. Waere das ok fuer dich?"
+Sage: "Ich darf leider nicht weiter runtergehen. Mein Vorschlag: Ich leite dich an unseren Verkaufsexperten weiter - der hat manchmal noch Moeglichkeiten. Waere das ok?"
 Bei JA: "Super. Deine WhatsApp-Nummer habe ich bereits. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
 
@@ -2852,6 +2876,21 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     price,
     messages: [{ role: 'user', content: text }]
   };
+  // Eskalations-Titel aus Business nachladen
+  if (lp.session_id) {
+    try {
+      const { data: _s } = await supabase.from('vk_sessions').select('business_discount_id').eq('id', lp.session_id).maybeSingle();
+      if (_s && _s.business_discount_id) {
+        const { data: _bd } = await supabase.from('vk_business_discounts').select('escalation_title,escalation_availability,seller_email').eq('id', _s.business_discount_id).maybeSingle();
+        if (_bd) {
+          lp._escalation_title = _bd.escalation_title || 'unseren Verkaufsexperten';
+          lp._escalation_availability = _bd.escalation_availability || '';
+          lp._seller_email = _bd.seller_email || null;
+        }
+      }
+    } catch(etErr) { console.error('escalation title:', etErr.message); }
+  }
+
   vkLPBotSessions.set(phone, session);
 
   // Claude antworten lassen
