@@ -2187,6 +2187,9 @@ app.post('/api/vk/admin/nuke-all', async (req, res) => {
   }
 });
 
+// ETag deaktivieren - verhindert 304 Caching-Probleme
+app.set('etag', false);
+
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
 });
@@ -2897,6 +2900,9 @@ const articleUpdate = {
 });
 
 app.get('/api/vk/results/:token', async (req, res) => {
+  // Kein Browser-Cache - immer frische Daten
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
   try {
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', req.params.token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
