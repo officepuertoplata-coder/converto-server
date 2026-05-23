@@ -2520,7 +2520,7 @@ app.get('/api/vk/article/:id/questions', async (req, res) => {
     };
     const catHint = catPrompts[cat] || catPrompts.standard;
 
-    const prompt = 'Du bist ein Verkaufsexperte. Erstelle einen Fragekatalog fuer: ' + (an.title_short || article.title || 'Artikel') + ' (Kategorie: ' + cat + ').\nTypische fehlende Infos: ' + catHint + '\nMax 10 Fragen die auf Fotos NICHT sichtbar sind. Helfen Preis zu optimieren.\nJSON: {"questions":[{"id":"q1","label":"Frage","placeholder":"z.B. EUR 95.000","type":"text","important":true}]}\ntype: text|number|yesno. important:true fuer 3 wichtigste Fragen.';
+    const prompt = 'Du bist ein Verkaufsexperte. Erstelle einen Fragekatalog fuer: ' + (an.title_short || article.title || 'Artikel') + ' (Kategorie: ' + cat + ').\n\nPFLICHT: Die ersten 2 Fragen IMMER:\n1. Exakte Modellbezeichnung / Typ (id: q_model, important: true)\n2. Baujahr / Erstzulassung (id: q_year, important: true)\n\nDann max 6 weitere kategoriespezifische Fragen: ' + catHint + '\nNur Fragen die auf Fotos NICHT sichtbar sind.\n\nJSON: {"questions":[{"id":"q_model","label":"Exakte Modellbezeichnung / Typ","placeholder":"z.B. Toyota 8FBE20, Jungheinrich EFG 316","type":"text","important":true}]}\ntype: text|number|yesno. important:true fuer die 3 wichtigsten.';
 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2531,7 +2531,19 @@ app.get('/api/vk/article/:id/questions', async (req, res) => {
     const text = d.content?.[0]?.text || '{"questions":[]}';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean.substring(clean.indexOf('{'), clean.lastIndexOf('}')+1));
-    const questions = parsed.questions || [];
+    let questions = parsed.questions || [];
+    // Sonstige Informationen / Korrekturen immer am Ende
+    const hasModel = questions.some(function(q){ return q.id === 'q_model'; });
+    if (!hasModel) {
+      questions.unshift({ id: 'q_model', label: 'Exakte Modellbezeichnung / Typ', placeholder: 'z.B. Toyota 8FBE20, Jungheinrich EFG 316', type: 'text', important: true });
+    }
+    questions.push({
+      id: 'q_sonstige',
+      label: 'Sonstige Angaben / Korrekturen der KI-Analyse',
+      placeholder: 'z.B. Tragkraft 2,4t statt 4,5t, Farbe blau, Baujahr 1998...',
+      type: 'text',
+      important: false
+    });
 
     await supabase.from('vk_articles').update({ questions }).eq('id', req.params.id);
     res.json({ questions });
@@ -2560,7 +2572,10 @@ app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
     const questions = article.questions || [];
 
     // Antworten als Text aufbereiten
-    const answersText = questions
+    // Sonstige Informationen hat höchste Priorität für Korrekturen
+    const sonstige = answers['q_sonstige'] || '';
+    const answersText = (sonstige ? 'KORREKTUREN VOM VERKAEUFER (hoechste Prioritaet): ' + sonstige + '\n\n' : '')
+      + questions
       .filter(q => answers[q.id] && answers[q.id] !== '')
       .map(q => q.label + ': ' + answers[q.id])
       .join('\n');
