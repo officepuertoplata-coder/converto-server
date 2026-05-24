@@ -2299,22 +2299,25 @@ app.listen(PORT, async () => {
   // Watchdog: Steckengebliebene 'analyzing' Sessions neu starten
   setTimeout(async function() {
     try {
-      const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // älter als 5 Min
       const { data: stuckSessions } = await supabase.from('vk_sessions')
-        .select('*, vk_articles(id, status, vk_photos(*))')
+        .select('id, token, phone, ai_mode')
         .eq('status', 'analyzing')
-        .lt('paid_at', cutoff)
         .limit(10);
       if (!stuckSessions || !stuckSessions.length) return;
       console.log('Watchdog: ' + stuckSessions.length + ' stuck sessions found');
       for (const sess of stuckSessions) {
         try {
-          const arts = sess.vk_articles || [];
+          const { data: arts } = await supabase.from('vk_articles')
+            .select('id, status, title, ai_mode, vk_photos(*)')
+            .eq('session_id', sess.id);
+          console.log('Watchdog session', sess.token, ': articles=', (arts||[]).length);
           let anyFixed = false;
           for (const art of arts) {
+            console.log('Watchdog: article', art.id, 'status=', art.status, 'photos=', (art.vk_photos||[]).length);
             if (art.status !== 'analyzed' && (art.vk_photos||[]).length > 0) {
-              console.log('Watchdog: retrigger article', art.id);
+              console.log('Watchdog: analyzing article', art.id);
               const analysis = await vkAnalyzeArticle(art, art.vk_photos, sess.phone, sess.ai_mode||'abteilungsleiter');
+              console.log('Watchdog: analysis done, title=', analysis.title_short, 'error=', analysis.error);
               await supabase.from('vk_articles').update({ analysis, status: 'analyzed', title: analysis.title_short||art.title }).eq('id', art.id);
               anyFixed = true;
             }
