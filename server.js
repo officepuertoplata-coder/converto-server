@@ -1774,10 +1774,20 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     if (!lp_slug || !messages) return res.status(400).json({ error: 'lp_slug und messages erforderlich' });
 
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(title, analysis, ai_mode), bot_config, ai_mode')
+      .select('*, vk_articles(title, analysis, ai_mode, id), bot_config, ai_mode, anrede, min_price, sale_price')
       .eq('slug', lp_slug).maybeSingle();
 
     if (!lp) return res.status(404).json({ error: 'LP nicht gefunden' });
+
+    // Dokumente für diesen Artikel laden
+    if (lp.vk_articles?.id || lp.article_id) {
+      try {
+        const artId = lp.vk_articles?.id || lp.article_id;
+        const { data: _docs } = await supabase.from('vk_article_docs')
+          .select('label, public_url, type').eq('article_id', artId);
+        if (_docs && _docs.length) lp._docs = _docs;
+      } catch(e) { console.error('Sandbox docs:', e.message); }
+    }
 
     const article = lp.vk_articles || {};
     const an = article.analysis || {};
@@ -1861,16 +1871,43 @@ Bei JA: "Super. Kannst du mir noch kurz deine E-Mail geben und wann du am besten
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
 
 === VERBOTEN ===
-- Fotos, Bilder, Dokumente senden anbieten - du bist reiner Textbot, kannst KEINE Medien senden
-- "Ich schicke/sende dir Fotos/Bilder/Dokumente" - NIEMALS
+${lp._docs && lp._docs.length ? `DOKUMENTE AKTIV ANBIETEN:\nDu hast folgende Unterlagen die du auf Anfrage als Link zusenden kannst:\n${lp._docs.map(d => '- ' + d.label + ': ' + d.public_url).join('\n')}\n\nWenn Kaeufer nach Unterlagen/Dossier/Fotos/Protokollen/Servicebuch fragt:\n→ Frage nach E-Mail: "An welche E-Mail soll ich die Unterlagen schicken?"\n→ Wenn Kaeufer E-Mail nennt: Antworte NUR mit: DOSSIER_SENDEN:[email]\nDu kannst proaktiv anbieten: "Ich habe Wartungsprotokoll und Unterlagen - soll ich die zusenden?"` : '- Fotos, Bilder, Dokumente senden anbieten - du bist reiner Textbot, kannst KEINE Medien senden'}
+- "Ich schicke/sende dir Fotos/Bilder/Dokumente" - NIEMALS (ausser Dokumente sind hinterlegt)
 - "Passt das zu dir?" nach Preisnennung
 - Preis oder Rabatt ohne Kaeufer-Frage ansprechen
 - Mehr als 3 Saetze pro Nachricht
 - Markdown, Listen, Sternchen, Aufzaehlungen
 - Marketingfloskeln: "Top-Deal", "Gerne", "Natuerlich", "Absolut"
 
+
+=== SPRACHE & STIL ===
+Schreib wie ein normaler Mensch im Gespraech - nicht wie eine Broschüre.
+
+EINFACH & KLAR:
+- Kurze Saetze. Ein Gedanke pro Satz.
+- Woerter die jeder kennt. Kein Businessdeutsch.
+- NICHT: "Im Rahmen einer umfassenden Pruefung wurde festgestellt..."
+- SONDERN: "Wir haben alles gecheckt - laeuft einwandfrei."
+- NICHT: "Ich moechte Sie darauf hinweisen, dass..."  
+- SONDERN: "Wichtig:" oder einfach direkt sagen
+
+VERBOTENE WOERTER & FLOSKELN:
+- "gerne" / "natuerlich" / "selbstverstaendlich" / "absolut"
+- "im Rahmen" / "hinsichtlich" / "bezueglich"
+- "Ich moechte Ihnen mitteilen" / "Ich darf darauf hinweisen"
+- "Premium" / "exklusiv" / "hochwertig" (ausser es stimmt wirklich)
+- Saetze die mit "Es" beginnen wenn man es vermeiden kann
+ANREDE: ${lp.anrede === 'du' ? 'DU-Form: du/dein/dir - niemals Sie' : 'SIE-Form: Sie/Ihr/Ihnen - niemals du'}
+
+
+TYPISCHE FEHLER VERMEIDEN:
+- Nicht zu viele Adjektive ("der wunderbare, hochwertige, gepflegte Stapler")
+- Nicht redundant ("Das Fahrzeug ist ein Stapler der als Gabelstapler funktioniert")
+- Nicht ausweichen wenn man direkt antworten kann
+- Nicht kuenstlich Begeisterung zeigen ("Das ist eine tolle Frage!")
+
 === STIL ===
-WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. Deutsch.`;
+WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. Immer auf Deutsch ausser Kaeufer schreibt andere Sprache.`;
 
      // Modell = LP ai_mode – wenn nicht gesetzt, aus Artikel lesen
     const lpAiMode = lp.ai_mode || lp.vk_articles?.ai_mode || 'abteilungsleiter';
@@ -2501,7 +2538,7 @@ async function vkRunMarketSearch(articleId, title, phone) {
 app.get('/api/vk/article/:id/questions', async (req, res) => {
   try {
     const { data: article } = await supabase.from('vk_articles')
-      .select('id, title, analysis, article_category, questions').eq('id', req.params.id).single();
+      .select('id, title, analysis, article_category, questions, answers').eq('id', req.params.id).single();
     if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
 
     // Bereits generierte Fragen zurückgeben - aber Pflichtfelder immer sicherstellen
@@ -2515,7 +2552,7 @@ app.get('/api/vk/article/:id/questions', async (req, res) => {
       if (!qs.find(function(q){ return q.id === 'q_sonstige'; })) {
         qs = qs.concat([{ id: 'q_sonstige', label: 'Zusätzliche Informationen / Korrekturen', placeholder: 'z.B. Tragkraft 2,4t statt 4,5t, Farbe blau, Baujahr 1998...', type: 'text', important: false }]);
       }
-      return res.json({ questions: qs });
+      return res.json({ questions: qs, answers: article.answers || {} });
     }
 
     const an = article.analysis || {};
@@ -2560,7 +2597,7 @@ app.get('/api/vk/article/:id/questions', async (req, res) => {
     });
 
     await supabase.from('vk_articles').update({ questions }).eq('id', req.params.id);
-    res.json({ questions });
+    res.json({ questions, answers: article.answers || {} });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3122,12 +3159,19 @@ Sage: "Ich darf leider nicht weiter runtergehen. Mein Vorschlag: Ich leite dich 
 Bei JA: "Super. Deine WhatsApp-Nummer habe ich bereits. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
 
-=== STIL - ABSOLUT WICHTIG ===
+=== SPRACHE & STIL - ABSOLUT WICHTIG ===
 - Du bist eine echte Person, kein Bot, kein Verkaeufer
 - WhatsApp-Stil: locker, direkt, menschlich
 - MAXIMAL 2-3 kurze Saetze. Immer. Keine Listen, keine Aufzaehlungen.
+- Schreib wie ein normaler Mensch - nicht wie eine Broschüre
+- Kurze Saetze. Ein Gedanke pro Satz. Woerter die jeder kennt.
+- VERBOTEN: "gerne", "natuerlich", "selbstverstaendlich", "absolut", "im Rahmen", "hinsichtlich"
+- VERBOTEN: "Ich moechte Sie darauf hinweisen", "Es sei erwaehnt dass", kuenstliche Begeisterung
+- NICHT: "Im Rahmen einer umfassenden Pruefung..." → SONDERN: "Haben alles gecheckt -"
+- NICHT: "Ich darf Ihnen mitteilen..." → SONDERN: einfach direkt sagen
+- Richtige Anrede ${lp.anrede === 'du' ? '(DU): immer du/dein/dir - nie Sie' : '(SIE): immer Sie/Ihr/Ihnen - nie du'} - konsequent durchhalten
 - VERBOTEN: "Top-Deal", "authentifiziert", "Habe ich alle Infos parat", "Wie kann ich helfen", "Gerne", jede Marketingsprache
-- VERBOTEN: Fotos, Bilder oder Dokumente anbieten zu senden - du bist reiner Textbot
+${lp._docs && lp._docs.length ? `DOKUMENTE AKTIV ANBIETEN:\n${lp._docs.map(d => '- ' + d.label + ': ' + d.public_url).join('\n')}\n\nBei Anfrage nach Unterlagen/Dossier/Fotos/Protokollen:\n1. Frage nach E-Mail des Kaeufers\n2. Wenn E-Mail erhalten → antworte NUR: DOSSIER_SENDEN:[email]\nProaktiv anbieten erlaubt: "Ich habe Unterlagen verfuegbar - soll ich die zusenden?"` : '- VERBOTEN: Fotos, Bilder oder Dokumente anbieten - du hast keine Unterlagen'}
 - Hoechstens 1 Emoji - keins ist auch ok
 - Natuerliche Sprache - du textest einem Bekannten, nicht einem Kunden
 
@@ -3249,6 +3293,59 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
     const agreedPrice = parseFloat(paymentMatch[1]);
     await vkSendLPPaymentLink(phone, session.lp, agreedPrice, phoneId);
     vkLPBotSessions.delete(phone);
+    return;
+  }
+
+  // Dossier direkt per WhatsApp senden (Standard), nur bei Email-Wunsch per Mail
+  const dossierWaMatch = reply.match(/DOSSIER_WA/);
+  const dossierMailMatch = reply.match(/DOSSIER_MAIL:([^\s,]+)/);
+
+  if (dossierWaMatch || dossierMailMatch) {
+    const docs = (session.lp && session.lp._docs) ? session.lp._docs : [];
+    const an = (session.lp && session.lp.vk_articles && session.lp.vk_articles.analysis) ? session.lp.vk_articles.analysis : {};
+    const artikel = an.title_short || (session.lp && session.lp.vk_articles && session.lp.vk_articles.title) || 'Artikel';
+    const anrede = (session.lp && session.lp.anrede) || 'Sie';
+
+    if (docs.length) {
+      if (dossierWaMatch) {
+        // Links direkt per WhatsApp senden
+        const docLines = docs.map(function(d){ return '📎 ' + d.label + ':\n' + d.public_url; }).join('\n\n');
+        const waMsg = 'Hier sind die Unterlagen direkt:\n\n' + docLines;
+        await vkSendWhatsApp(phone, waMsg);
+        console.log('Dossier per WA gesendet:', docs.length, 'Dokumente');
+      } else if (dossierMailMatch) {
+        // Per E-Mail senden wenn Kunde das explizit möchte
+        const buyerEmail = dossierMailMatch[1].trim();
+        if (buyerEmail.includes('@')) {
+          try {
+            const fetch = require('node-fetch');
+            const docsHtml = docs.map(function(d){
+              return '<tr><td style="padding:8px;font-weight:600;">' + d.label + '</td>'
+                + '<td style="padding:8px;"><a href="' + d.public_url + '">' + d.public_url + '</a></td></tr>';
+            }).join('');
+            const emailHtml = '<div style="font-family:Arial,sans-serif;max-width:520px;">'
+              + '<div style="background:#1b4332;color:#fff;padding:20px;">'
+              + '<div style="font-weight:800;">Unterlagen: ' + artikel + '</div></div>'
+              + '<div style="padding:20px;border:1px solid #e5e7eb;">'
+              + '<table style="width:100%;border-collapse:collapse;">' + docsHtml + '</table></div></div>';
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY },
+              body: JSON.stringify({
+                from: 'Converdino <noreply@converdino.com>',
+                to: buyerEmail,
+                subject: 'Unterlagen: ' + artikel,
+                html: emailHtml
+              })
+            });
+            const msg = anrede === 'du'
+              ? 'Habe dir die Unterlagen an ' + buyerEmail + ' geschickt.'
+              : 'Ich habe Ihnen die Unterlagen an ' + buyerEmail + ' geschickt.';
+            await vkSendWhatsApp(phone, msg);
+          } catch(e) { console.error('Dossier Mail:', e.message); }
+        }
+      }
+    }
     return;
   }
 
