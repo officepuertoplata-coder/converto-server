@@ -2325,6 +2325,14 @@ app.listen(PORT, async () => {
           if (anyFixed) {
             await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('id', sess.id);
             console.log('Watchdog: fixed session', sess.id);
+            }
+          // Auch wenn bereits analyzed - session auf done setzen
+          const _allDone2 = (arts||[]).every(a => a.status==='analyzed');
+          if (!anyFixed && _allDone2 && (arts||[]).length > 0) {
+            await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('id', sess.id);
+            console.log('Watchdog: session already done, fixed', sess.token);
+          }
+          if (false) {
           }
         } catch(e) { console.error('Watchdog error for session', sess.id, ':', e.message); }
       }
@@ -2915,6 +2923,15 @@ app.get('/api/vk/session/:token', async (req, res) => {
 
 
 // ── RETRIGGER ANALYSE für ausstehende Artikel ────────────────────────────
+
+// Session auf done setzen (wenn Frontend erkennt dass alle Artikel fertig)
+app.post('/api/vk/session-done/:token', async (req, res) => {
+  try {
+    await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('token', req.params.token);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/vk/retrigger-analysis', async (req, res) => {
   try {
     const { article_id, token } = req.body;
