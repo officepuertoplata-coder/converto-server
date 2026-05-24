@@ -2507,13 +2507,29 @@ async function vkAnalyzeArticle(article, photos, phone, aiMode) {
     photos = fp || [];
   }
  const imageBlocks = [];
+  const SUPPORTED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   for (const p of (photos || [])) {
     try {
       const imgRes = await fetch(p.public_url);
+      let ct = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0].toLowerCase();
+      // AVIF/HEIC/BMP nicht unterstützt → überspringen
+      if (!SUPPORTED_TYPES.includes(ct)) {
+        console.warn('Unsupported image format skipped:', ct, p.public_url);
+        // Versuche trotzdem als JPEG zu senden (manchmal falscher Content-Type)
+        ct = 'image/jpeg';
+      }
       const imgBuf = Buffer.from(await imgRes.arrayBuffer());
-      const ct = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0];
+      // Prüfe ob es tatsächlich ein Bild ist (magic bytes)
+      const header = imgBuf.slice(0, 4).toString('hex');
+      // AVIF magic: 00000020667479706176696600000000 (ftyp)
+      // JPEG magic: ffd8ff
+      // PNG magic: 89504e47
+      if (header.startsWith('0000') || header.includes('6674797061766966')) {
+        console.warn('AVIF/HEIF format detected - skipping:', p.public_url);
+        continue;
+      }
       imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: ct, data: imgBuf.toString('base64') } });
-    } catch(imgErr) { console.error('Image download error:', imgErr.message); }
+    } catch(imgErr) { console.error('Image download error:', imgErr.message, p.public_url); }
   }
   if (!imageBlocks.length) return { title_short: 'Analyse fehlgeschlagen', error: 'Keine Bilder ladbar' };
   const notesText = article.notes ? '\n\nZusatzinfos vom Verkaeufer: ' + article.notes : '';
@@ -2574,8 +2590,18 @@ system: 'Du bist ein erfahrener Verkaufstexter fuer Online-Marktplaetze (Willhab
   const data = await response.json();
   const text = data.content?.[0]?.text || '{}';
   let analysis;
-  try { analysis = JSON.parse(text.replace(/```json|```/g, '').trim()); }
-  catch(e) { analysis = { title_short: 'Analyse fehlgeschlagen', error: e.message }; }
+  try {
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('Kein JSON gefunden in: ' + cleaned.substring(0,100));
+    analysis = JSON.parse(cleaned.substring(jsonStart, jsonEnd+1));
+    if (!analysis.title_short) throw new Error('JSON unvollstaendig - kein title_short');
+  } catch(e) {
+    console.error('vkAnalyzeArticle JSON parse error:', e.message, 'text[:200]:', text.substring(0,200));
+    // Bei Parse-Fehler: NICHT als analyzed speichern - throw damit retry greift
+    throw new Error('Analyse JSON ungueltig: ' + e.message);
+  }
   return analysis;
 }
 
@@ -2948,6 +2974,10 @@ app.post('/api/vk/retrigger-analysis', async (req, res) => {
       try {
         const analysis = await vkAnalyzeArticle(article, article.vk_photos, session.phone, session.ai_mode || 'abteilungsleiter');
         const comp = analysis.compliance || {};
+        if (!analysis.title_short || analysis.error) {
+          console.error('Retrigger: invalid analysis, not saving:', JSON.stringify(analysis).substring(0,100));
+          return;
+        }
         await supabase.from('vk_articles').update({
           analysis, status: 'analyzed',
           article_category: analysis.article_category || 'standard',
@@ -3018,6 +3048,11 @@ app.post('/api/vk/photo', async (req, res) => {
     const { error: upErr } = await supabase.storage.from('vk-photos').upload(path, buffer, { contentType: content_type || 'image/jpeg', upsert: false });
     if (upErr) return res.status(400).json({ error: upErr.message });
     const { data: urlData } = supabase.storage.from('vk-photos').getPublicUrl(path);
+    // Warnung wenn AVIF - Claude kann es nicht analysieren
+    if (contentType && contentType.includes('avif')) {
+      console.warn('AVIF upload detected - analysis may fail. Recommend converting to JPG/PNG first.');
+      return res.status(400).json({ error: 'AVIF-Format wird nicht unterstützt. Bitte Fotos als JPG oder PNG hochladen.' });
+    }
     const { data, error } = await supabase.from('vk_photos').insert({ article_id, session_id, storage_path: path, public_url: urlData.publicUrl, source: 'upload', sort_order: (existing?.length || 0) + 1 }).select().single();
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true, photo: data });
