@@ -32,6 +32,14 @@ async function getAIModel(taskKey, aiMode) {
   return cfg[col] || 'claude-haiku-4-5';
 }
 app.use(cors({ origin: '*' }));
+
+// No-cache für alle API-Endpoints (verhindert 304)
+app.use('/api/', function(req, res, next) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 app.use(express.json({ limit: '50mb' }));
 express.urlencoded({ extended: true, limit: '50mb' })
 
@@ -2267,14 +2275,6 @@ app.post('/api/vk/admin/nuke-all', async (req, res) => {
 
 // ETag deaktivieren - verhindert 304 Caching-Probleme
 app.set('etag', false);
-
-// No-cache für alle API-Endpoints
-app.use('/api/', function(req, res, next) {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
 
 app.listen(PORT, () => {
   console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
