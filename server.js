@@ -1786,6 +1786,13 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
         const { data: _docs } = await supabase.from('vk_article_docs')
           .select('label, public_url, type').eq('article_id', artId);
         if (_docs && _docs.length) lp._docs = _docs;
+        // Hidden Photos wenn freigegeben
+        const artData = lp.vk_articles || {};
+        if (artData.bot_share_hidden) {
+          const { data: _hidden } = await supabase.from('vk_photos')
+            .select('public_url').eq('article_id', artId).eq('is_hidden', true);
+          if (_hidden && _hidden.length) lp._hidden_photos = _hidden.map(function(p){ return p.public_url; });
+        }
       } catch(e) { console.error('Sandbox docs:', e.message); }
     }
 
@@ -1871,6 +1878,7 @@ Bei JA: "Super. Kannst du mir noch kurz deine E-Mail geben und wann du am besten
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
 
 === VERBOTEN ===
+${lp._hidden_photos && lp._hidden_photos.length ? `VERSTECKTE FOTOS FREIGEGEBEN (nur auf Anfrage senden):\n` + lp._hidden_photos.map(function(u,i){ return 'Foto ' + (i+1) + ': ' + u; }).join('\n') + `\nWenn Kaeufer nach Fotos, Bildern, Nahaufnahmen fragt: Sende diese Links direkt.` : ''}
 ${lp._docs && lp._docs.length ? `DOKUMENTE AKTIV ANBIETEN:\nDu hast folgende Unterlagen die du auf Anfrage als Link zusenden kannst:\n${lp._docs.map(d => '- ' + d.label + ': ' + d.public_url).join('\n')}\n\nWenn Kaeufer nach Unterlagen/Dossier/Fotos/Protokollen/Servicebuch fragt:\n→ Frage nach E-Mail: "An welche E-Mail soll ich die Unterlagen schicken?"\n→ Wenn Kaeufer E-Mail nennt: Antworte NUR mit: DOSSIER_SENDEN:[email]\nDu kannst proaktiv anbieten: "Ich habe Wartungsprotokoll und Unterlagen - soll ich die zusenden?"` : '- Fotos, Bilder, Dokumente senden anbieten - du bist reiner Textbot, kannst KEINE Medien senden'}
 - "Ich schicke/sende dir Fotos/Bilder/Dokumente" - NIEMALS (ausser Dokumente sind hinterlegt)
 - "Passt das zu dir?" nach Preisnennung
@@ -2602,6 +2610,16 @@ app.get('/api/vk/article/:id/questions', async (req, res) => {
 });
 
 // ── ANTWORTEN SPEICHERN ──────────────────────────────────────────────────
+
+// ── HIDDEN PHOTOS FÜR BOT FREIGEBEN ─────────────────────────────────────
+app.post('/api/vk/article/:id/bot-share-hidden', async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    await supabase.from('vk_articles').update({ bot_share_hidden: !!enabled }).eq('id', req.params.id);
+    res.json({ success: true, bot_share_hidden: !!enabled });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/vk/article/:id/answers', async (req, res) => {
   try {
     const { answers } = req.body;
@@ -3208,6 +3226,17 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     const { data: _docs } = await supabase.from('vk_article_docs')
       .select('label, public_url, type').eq('article_id', lp.article_id || '');
     if (_docs && _docs.length) lp._docs = _docs;
+  } catch(e) {}
+
+  // Versteckte Fotos laden wenn freigegeben
+  try {
+    const { data: _art } = await supabase.from('vk_articles')
+      .select('bot_share_hidden, id').eq('id', lp.article_id || '').maybeSingle();
+    if (_art && _art.bot_share_hidden) {
+      const { data: _hidden } = await supabase.from('vk_photos')
+        .select('public_url, sort_order').eq('article_id', _art.id).eq('is_hidden', true);
+      if (_hidden && _hidden.length) lp._hidden_photos = _hidden.map(function(p){ return p.public_url; });
+    }
   } catch(e) {}
 
   // Eskalations-Titel aus Business nachladen
