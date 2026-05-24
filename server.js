@@ -2674,29 +2674,15 @@ app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
     }
 
     const prompt = 'Optimierter Verkaufsbericht. VERKAEUFER-ANGABEN haben hoechste Prioritaet - ueberschreiben alles:\n' + (answersText || 'keine') + '\n\nALTE ANALYSE (NUR als Basis, wird ueberschrieben wenn Verkaeufer andere Angaben macht):\nTitel alt: ' + (an.title_short||'') + ', Zustand: ' + (an.condition||'') + '\n\nWICHTIG: Wenn Verkaeufer-Angaben Modell/Typ enthalten → ALLE Titelfelder (title_short, title_long, title_quicksale) NEU generieren mit korrektem Modell.\nJSON mit ALLEN Feldern vollstaendig ausfuellen:\n'
-      + JSON.stringify({
-          title_short: 'Kurztitel max 60 Zeichen - MIT korrektem Modell aus Verkaeufer-Angaben',
-          title_long: 'Ausfuehrlicher Titel mit allen Specs aus Verkaeufer-Angaben',
-          title_quicksale: 'Knapper Titel fuer schnellen Verkauf - max 50 Zeichen',
-          article_category: 'Kategorie beibehalten: vehicle/industrial/luxury_watch/etc',
-          short_desc: '2-3 Saetze verkaufsorientiert mit echten Specs',
-          long_desc: 'Ausfuehrliche Beschreibung mit allen bekannten technischen Daten',
-          bullet_points: ['Highlight 1 mit echten Daten', 'Highlight 2'],
-          price_min: 0, price_max: 0, price_recommended: 0,
-          price_unknown: false,
-          price_reasoning: 'Begruendung mit echten Fakten aus Verkaeufer-Angaben',
-          condition: 'Zustand verkaufsorientiert formuliert',
-          keywords: ['keyword1', 'keyword2'],
-          tips: ['Verkaufstipp 1']
-        });
+      + '{"title_short":"Kurztitel max 60Z mit korrektem Modell","title_long":"Ausfuehrl. Titel mit Specs","title_quicksale":"Kurztitel Schnellverkauf max 50Z","article_category":"vehicle/industrial/etc","short_desc":"2-3 Saetze","long_desc":"Beschreibung mit Specs","bullet_points":["Highlight1","Highlight2"],"price_min":0,"price_max":0,"price_recommended":0,"price_unknown":false,"price_reasoning":"Begruendung","condition":"Zustand","keywords":["kw1"],"tips":["Tipp1"]}';
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: await getAIModel('sales_analysis_basic', article.ai_mode || 'abteilungsleiter'),
-        max_tokens: 2000,
-        system: 'Du bist Verkaufstexter. Erstelle verkaufsoptimierte Texte basierend auf echten Verkaeufer-Angaben. Keine Halluzinationen. Antworte NUR mit JSON.',
+        max_tokens: 3000,
+        system: 'Du bist Verkaufstexter. Erstelle verkaufsoptimierte Texte basierend auf echten Verkaeufer-Angaben. Keine Halluzinationen. Antworte NUR mit JSON. Halte Texte kompakt - max 3 Saetze pro Feld.',
         messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
       })
     });
@@ -2706,8 +2692,19 @@ app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
     let analysis;
     try { 
       const clean = text.replace(/```json|```/g, '').trim();
-      analysis = JSON.parse(clean.substring(clean.indexOf('{'), clean.lastIndexOf('}')+1));
-    } catch(e) { return res.status(500).json({ error: 'JSON Parse Fehler: ' + e.message }); }
+      const jsonStart = clean.indexOf('{');
+      const jsonEnd = clean.lastIndexOf('}');
+      if (jsonStart === -1) throw new Error('Kein JSON-Block in Antwort');
+      // Wenn JSON abgeschnitten: versuche zu reparieren
+      let jsonStr = jsonEnd !== -1 ? clean.substring(jsonStart, jsonEnd+1) : clean.substring(jsonStart) + '}';
+      try { analysis = JSON.parse(jsonStr); }
+      catch(e2) { 
+        // Letztes vollständiges Feld finden und JSON schließen
+        const lastComma = jsonStr.lastIndexOf(',"');
+        if (lastComma > 0) { jsonStr = jsonStr.substring(0, lastComma) + '}'; }
+        analysis = JSON.parse(jsonStr);
+      }
+    } catch(e) { return res.status(500).json({ error: 'JSON Parse Fehler: ' + e.message + ' (Antwort: ' + text.substring(0,100) + ')' }); }
 
     // Marktsuche mit echten Daten starten
     const searchTitle = analysis.title_short || an.title_short || article.title;
