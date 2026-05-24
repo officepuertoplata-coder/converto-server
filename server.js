@@ -2861,6 +2861,46 @@ app.get('/api/vk/session/:token', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── RETRIGGER ANALYSE für ausstehende Artikel ────────────────────────────
+app.post('/api/vk/retrigger-analysis', async (req, res) => {
+  try {
+    const { article_id, token } = req.body;
+    const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    const { data: article } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('id', article_id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+    if (!(article.vk_photos||[]).length) return res.status(400).json({ error: 'Keine Fotos vorhanden' });
+
+    res.json({ success: true, message: 'Analyse gestartet' });
+
+    // Analyse im Hintergrund
+    (async () => {
+      try {
+        const analysis = await vkAnalyzeArticle(article, article.vk_photos, session.phone, session.ai_mode || 'abteilungsleiter');
+        const comp = analysis.compliance || {};
+        await supabase.from('vk_articles').update({
+          analysis, status: 'analyzed',
+          article_category: analysis.article_category || 'standard',
+          title: analysis.title_short || article.title,
+          compliance_status: comp.blocked ? 'blocked' : (comp.category <= 2 ? 'needs_review' : 'approved'),
+          compliance_category: comp.category || 3
+        }).eq('id', article_id);
+        // Session auf done setzen wenn alle Artikel fertig
+        const { data: arts } = await supabase.from('vk_articles').select('id, status').eq('session_id', session.id);
+        const allDone = (arts||[]).every(a => a.status === 'analyzed');
+        if (allDone) {
+          await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('id', session.id);
+        }
+        if (analysis.title_short) {
+          vkRunMarketSearch(article_id, analysis.title_short, session.phone).catch(e => console.error('Market retrigger:', e.message));
+        }
+        console.log('Retrigger analysis done for article', article_id);
+      } catch(e) { console.error('Retrigger error:', e.message); }
+    })();
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/vk/article', async (req, res) => { try { const { token, title } = req.body; const { data: session } = await supabase.from('vk_sessions').select('id').eq('token', token).single(); if (!session) return res.status(404).json({ error: 'Session nicht gefunden' }); const { data: count } = await supabase.from('vk_articles').select('id', { count: 'exact' }).eq('session_id', session.id); if ((count?.length || 0) >= 20) return res.status(400).json({ error: 'Maximal 20 Artikel' }); const { data, error } = await supabase.from('vk_articles').insert({ session_id: session.id, title: title || 'Neuer Artikel', sort_order: (count?.length || 0) + 1, extended: false }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, article: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.put('/api/vk/article/:id/notes', async (req, res) => {
   try {
