@@ -804,15 +804,12 @@ app.post('/api/vk/business-free', async (req, res) => {
       if (bd) await supabase.from('vk_business_discounts').update({ used_count: (bd.used_count||0) + 1 }).eq('id', session.business_discount_id);
     }
 
-    res.json({ success: true, status: 'analyzing' });
-
-    // Analyse im Hintergrund
-    (async () => {
-      try {
+    // Analyse SYNCHRON ausführen - erst antworten wenn fertig
+    try {
         const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
         for (const article of (articles || [])) {
           if (!(article.vk_photos || []).length) continue;
-          const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
+          const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '', session.ai_mode || 'abteilungsleiter');
           const newTitle = analysis.title_short || null;
           const comp = analysis.compliance || {};
           const auth = analysis.authenticity || {};
@@ -849,35 +846,14 @@ app.post('/api/vk/business-free', async (req, res) => {
           analyzed_at: new Date().toISOString(),
           delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
         }).eq('id', session.id);
-        const link = `https://converdino.com/ergebnis.html?s=${token}`;
-        await vkSendWhatsApp(session.phone, `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\n${link}\n\n🗑️ Wird in ${days} Tagen gelöscht.`);
+        const link = 'https://converdino.com/ergebnis.html?s=' + token;
+        await vkSendWhatsApp(session.phone, '✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\n' + link + '\n\n🗑️ Wird in ' + days + ' Tagen gelöscht.');
+        res.json({ success: true, status: 'done' });
+        return;
       } catch(e) {
         console.error('Business-free analysis error:', e.message);
-        // Auto-Retry nach 15 Sekunden
-        setTimeout(async function() {
-          try {
-            console.log('Business-free retry for session:', session.id);
-            const { data: arts2 } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
-            let fixed = false;
-            for (const art2 of (arts2||[])) {
-              if (art2.status !== 'analyzed' && (art2.vk_photos||[]).length > 0) {
-                const a2 = await vkAnalyzeArticle(art2, art2.vk_photos, session.phone, session.ai_mode||'abteilungsleiter');
-                await supabase.from('vk_articles').update({ analysis: a2, status: 'analyzed', title: a2.title_short||art2.title }).eq('id', art2.id);
-                if (a2.title_short) vkRunMarketSearch(art2.id, a2.title_short, session.phone).catch(function(){});
-                fixed = true;
-              }
-            }
-            if (fixed) {
-              await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('id', session.id);
-              console.log('Business-free retry success:', session.id);
-            }
-          } catch(e2) {
-            console.error('Business-free retry failed:', e2.message);
-            await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
-          }
-        }, 15000);
+        res.json({ success: false, error: e.message, status: 'error' });
       }
-    })();
 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
