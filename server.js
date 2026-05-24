@@ -2314,7 +2314,7 @@ app.listen(PORT, async () => {
           let anyFixed = false;
           for (const art of arts) {
             console.log('Watchdog: article', art.id, 'status=', art.status, 'photos=', (art.vk_photos||[]).length);
-            if (art.status !== 'analyzed' && (art.vk_photos||[]).length > 0) {
+            if ((art.status !== 'analyzed' || !art.analysis || !art.analysis.title_short) && (art.vk_photos||[]).length > 0) {
               console.log('Watchdog: analyzing article', art.id);
               const analysis = await vkAnalyzeArticle(art, art.vk_photos, sess.phone, sess.ai_mode||'abteilungsleiter');
               console.log('Watchdog: analysis done, title=', analysis.title_short, 'error=', analysis.error);
