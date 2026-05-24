@@ -1037,7 +1037,8 @@ ${photos.length > 0 ? `
     ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich ab €' + lp.min_price + '</div>' : ''}
     ${expiryNote}
     ${(function(){
-      const goal = lp.bot_goal || 'direktkauf';
+      const goals = (lp.bot_goal || 'direktkauf').split(',').map(function(g){return g.trim();});
+      const goal = goals[0];
       const artTitle = esc(an.title_short || article.title || 'Produkt');
       const baseUrl = 'https://p.converdino.com/p/' + lp.slug;
       const waNum = '4367764118066';
@@ -1050,35 +1051,28 @@ ${photos.length > 0 ? `
         return '<a href="' + url + '" target="_blank" style="' + style + '">' + emoji + ' ' + label + '</a>';
       }
 
-      if (goal === 'direktkauf') {
-        return '<a class="cta-btn" href="/p/' + lp.slug + '/buy" id="cta-btn">🛒 Jetzt kaufen</a>'
-          + '<div style="text-align:center;margin-top:8px;font-size:.75rem;color:#9ca3af;">Sichere Zahlung via Stripe</div>'
-          + waBtn('💬', 'Frage stellen / Verhandeln', 'Hallo! Ich interessiere mich für "' + artTitle + '" (EUR ' + price + '). ' + baseUrl, false);
+      // Alle gewählten Goals als Buttons
+      var btns = '';
+      var first = true;
+      goals.forEach(function(g) {
+        if (g === 'direktkauf') {
+          if (first) btns += '<a class="cta-btn" href="/p/' + lp.slug + '/buy" id="cta-btn" style="margin-top:10px;">🛒 Jetzt kaufen – EUR ' + price + '</a><div style="text-align:center;margin-top:6px;font-size:.75rem;color:#9ca3af;">Sichere Zahlung via Stripe</div>';
+          else btns += waBtn('🛒', 'Jetzt kaufen – EUR ' + price, 'Hallo! Ich möchte "' + artTitle + '" kaufen. ' + baseUrl, false);
+        } else if (g === 'besichtigung') {
+          btns += waBtn('📍', 'Besichtigung vereinbaren', 'Hallo! Ich möchte "' + artTitle + '" besichtigen und einen Termin vereinbaren. ' + baseUrl, first);
+        } else if (g === 'kontakt') {
+          btns += waBtn('📞', 'Rückruf anfordern', 'Hallo! Ich bitte um Rückruf zu "' + artTitle + '". ' + baseUrl, first);
+        } else if (g === 'angebot') {
+          btns += waBtn('📋', 'Angebot / Inzahlungnahme', 'Hallo! Ich möchte ein Angebot für "' + artTitle + '" anfragen. ' + baseUrl, first);
+        } else if (g === 'leasing') {
+          btns += waBtn('💶', 'Finanzierung anfragen', 'Hallo! Ich interessiere mich für Leasing/Finanzierung von "' + artTitle + '". ' + baseUrl, first);
+        }
+        first = false;
+      });
+      if (!goals.includes('direktkauf')) {
+        btns += waBtn('💬', 'Mehr Informationen', 'Hallo! Ich interessiere mich für "' + artTitle + '" und habe Fragen. ' + baseUrl, false);
       }
-
-      if (goal === 'kontakt') {
-        return waBtn('📞', 'Rückruf anfordern', 'Hallo! Ich möchte gerne einen Rückruf zu "' + artTitle + '". ' + baseUrl, true)
-          + waBtn('💬', 'Mehr Informationen', 'Hallo! Ich habe Fragen zu "' + artTitle + '". ' + baseUrl, false);
-      }
-
-      if (goal === 'besichtigung') {
-        return waBtn('📍', 'Besichtigung vereinbaren', 'Hallo! Ich möchte "' + artTitle + '" besichtigen. ' + baseUrl, true)
-          + waBtn('📞', 'Rückruf anfordern', 'Hallo! Ich möchte einen Rückruf zu "' + artTitle + '". ' + baseUrl, false)
-          + waBtn('💬', 'Mehr Informationen', 'Hallo! Ich interessiere mich für "' + artTitle + '". ' + baseUrl, false);
-      }
-
-      if (goal === 'angebot') {
-        return waBtn('📋', 'Unverbindliches Angebot anfragen', 'Hallo! Ich möchte ein Angebot für "' + artTitle + '". ' + baseUrl, true)
-          + waBtn('🔄', 'Inzahlungnahme besprechen', 'Hallo! Ich interessiere mich für "' + artTitle + '" und möchte Inzahlungnahme besprechen. ' + baseUrl, false);
-      }
-
-      if (goal === 'leasing') {
-        return waBtn('💶', 'Finanzierungsanfrage stellen', 'Hallo! Ich interessiere mich für eine Finanzierung von "' + artTitle + '". ' + baseUrl, true)
-          + waBtn('📞', 'Beratungsgespräch vereinbaren', 'Hallo! Ich möchte ein Beratungsgespräch zu "' + artTitle + '". ' + baseUrl, false);
-      }
-
-      // Fallback
-      return waBtn('💬', 'Anfragen', 'Hallo! Ich interessiere mich für "' + artTitle + '". ' + baseUrl, true);
+      return btns || waBtn('💬', 'Anfragen', 'Hallo! Ich interessiere mich für "' + artTitle + '". ' + baseUrl, true);
     })()}
   </div>
 
@@ -1262,6 +1256,7 @@ stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
         stock_sold: 0,
         ai_mode: article?.ai_mode || session?.ai_mode || 'sachbearbeiter',
         anrede: req.body.anrede || 'Sie',
+        bot_goal: Array.isArray(req.body.bot_goals) ? req.body.bot_goals.join(',') : (req.body.bot_goal || 'direktkauf'),
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
@@ -2757,10 +2752,10 @@ app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
     // Marktvergleich immer löschen - wird neu generiert mit korrektem Modell
     delete mergedAnalysis.market_comparison;
 
-    await supabase.from('vk_articles').update({
-      analysis: mergedAnalysis,
-      status: 'analyzed'
-    }).eq('id', req.params.id);
+    const step2Update = { analysis: mergedAnalysis, status: 'analyzed' };
+    // article.title mit neuem Kurztitel synchronisieren
+    if (mergedAnalysis.title_short) step2Update.title = mergedAnalysis.title_short;
+    await supabase.from('vk_articles').update(step2Update).eq('id', req.params.id);
 
     if (searchTitle) vkRunMarketSearchV2(req.params.id, searchTitle, article.article_category, answers).catch(e => console.error('Market v2:', e.message));
 
