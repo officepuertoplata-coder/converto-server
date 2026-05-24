@@ -1036,14 +1036,50 @@ ${photos.length > 0 ? `
     
     ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich ab €' + lp.min_price + '</div>' : ''}
     ${expiryNote}
-    <a class="cta-btn" href="/p/${lp.slug}/buy" id="cta-btn">
-      🛒 Jetzt kaufen
-    </a>
-    <div style="text-align:center;margin-top:8px;font-size:.75rem;color:#9ca3af;">Sichere Zahlung via Stripe</div>
-    <a href="https://wa.me/4367764118066?text=${encodeURIComponent('Hallo! Ich interessiere mich für "' + (an.title_short || article.title || 'Produkt') + '" (EUR ' + price + '). Hier der Link: https://p.converdino.com/p/' + lp.slug)}" target="_blank"
-       style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px;background:#fff;border:2px solid #25D366;border-radius:12px;font-size:.95rem;font-weight:800;color:#25D366;text-decoration:none;margin-top:10px;transition:all .2s;">
-      💬 Über WhatsApp anfragen / verhandeln
-    </a>
+    ${(function(){
+      const goal = lp.bot_goal || 'direktkauf';
+      const artTitle = esc(an.title_short || article.title || 'Produkt');
+      const baseUrl = 'https://p.converdino.com/p/' + lp.slug;
+      const waNum = '4367764118066';
+
+      function waBtn(emoji, label, msg, primary) {
+        const url = 'https://wa.me/' + waNum + '?text=' + encodeURIComponent(msg);
+        const style = primary
+          ? 'display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;background:#25D366;border-radius:12px;font-size:.95rem;font-weight:800;color:#fff;text-decoration:none;margin-top:10px;'
+          : 'display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;background:#fff;border:2px solid #25D366;border-radius:12px;font-size:.88rem;font-weight:700;color:#25D366;text-decoration:none;margin-top:8px;';
+        return '<a href="' + url + '" target="_blank" style="' + style + '">' + emoji + ' ' + label + '</a>';
+      }
+
+      if (goal === 'direktkauf') {
+        return '<a class="cta-btn" href="/p/' + lp.slug + '/buy" id="cta-btn">🛒 Jetzt kaufen</a>'
+          + '<div style="text-align:center;margin-top:8px;font-size:.75rem;color:#9ca3af;">Sichere Zahlung via Stripe</div>'
+          + waBtn('💬', 'Frage stellen / Verhandeln', 'Hallo! Ich interessiere mich für "' + artTitle + '" (EUR ' + price + '). ' + baseUrl, false);
+      }
+
+      if (goal === 'kontakt') {
+        return waBtn('📞', 'Rückruf anfordern', 'Hallo! Ich möchte gerne einen Rückruf zu "' + artTitle + '". ' + baseUrl, true)
+          + waBtn('💬', 'Mehr Informationen', 'Hallo! Ich habe Fragen zu "' + artTitle + '". ' + baseUrl, false);
+      }
+
+      if (goal === 'besichtigung') {
+        return waBtn('📍', 'Besichtigung vereinbaren', 'Hallo! Ich möchte "' + artTitle + '" besichtigen. ' + baseUrl, true)
+          + waBtn('📞', 'Rückruf anfordern', 'Hallo! Ich möchte einen Rückruf zu "' + artTitle + '". ' + baseUrl, false)
+          + waBtn('💬', 'Mehr Informationen', 'Hallo! Ich interessiere mich für "' + artTitle + '". ' + baseUrl, false);
+      }
+
+      if (goal === 'angebot') {
+        return waBtn('📋', 'Unverbindliches Angebot anfragen', 'Hallo! Ich möchte ein Angebot für "' + artTitle + '". ' + baseUrl, true)
+          + waBtn('🔄', 'Inzahlungnahme besprechen', 'Hallo! Ich interessiere mich für "' + artTitle + '" und möchte Inzahlungnahme besprechen. ' + baseUrl, false);
+      }
+
+      if (goal === 'leasing') {
+        return waBtn('💶', 'Finanzierungsanfrage stellen', 'Hallo! Ich interessiere mich für eine Finanzierung von "' + artTitle + '". ' + baseUrl, true)
+          + waBtn('📞', 'Beratungsgespräch vereinbaren', 'Hallo! Ich möchte ein Beratungsgespräch zu "' + artTitle + '". ' + baseUrl, false);
+      }
+
+      // Fallback
+      return waBtn('💬', 'Anfragen', 'Hallo! Ich interessiere mich für "' + artTitle + '". ' + baseUrl, true);
+    })()}
   </div>
 
   ${bulletHTML ? `
@@ -2654,9 +2690,11 @@ app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
     const questions = article.questions || [];
 
     // Antworten als Text aufbereiten
-    // Sonstige Informationen hat höchste Priorität für Korrekturen
+    // Sonstige + Extra-Felder haben höchste Priorität
     const sonstige = answers['q_sonstige'] || '';
-    const answersText = (sonstige ? 'KORREKTUREN VOM VERKAEUFER (hoechste Prioritaet): ' + sonstige + '\n\n' : '')
+    const extraKV = answers['q_extra'] || '';
+    const answersText = (sonstige ? 'KORREKTUREN (hoechste Prioritaet): ' + sonstige + '\n' : '')
+      + (extraKV ? 'ZUSAETZLICHE ANGABEN: ' + extraKV + '\n\n' : '')
       + questions
       .filter(q => answers[q.id] && answers[q.id] !== '')
       .map(q => q.label + ': ' + answers[q.id])
