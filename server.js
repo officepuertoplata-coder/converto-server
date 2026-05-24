@@ -553,7 +553,24 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
           console.log('check-payment: analysis done for', token);
         } catch(e) {
           console.error('check-payment analysis error:', e.message);
-          await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
+          // Retry once after 10 seconds
+          setTimeout(async function() {
+            try {
+              console.log('Retrying analysis for token:', token);
+              const { data: arts2 } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+              for (const art2 of (arts2||[])) {
+                if (art2.status !== 'analyzed' && (art2.vk_photos||[]).length > 0) {
+                  const analysis2 = await vkAnalyzeArticle(art2, art2.vk_photos, session.phone, session.ai_mode||'abteilungsleiter');
+                  await supabase.from('vk_articles').update({ analysis: analysis2, status: 'analyzed', title: analysis2.title_short||art2.title }).eq('id', art2.id);
+                }
+              }
+              await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('id', session.id);
+              console.log('Retry analysis success for token:', token);
+            } catch(e2) {
+              console.error('Retry also failed:', e2.message);
+              await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
+            }
+          }, 10000);
         }
       })();
 
@@ -836,7 +853,29 @@ app.post('/api/vk/business-free', async (req, res) => {
         await vkSendWhatsApp(session.phone, `✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\n${link}\n\n🗑️ Wird in ${days} Tagen gelöscht.`);
       } catch(e) {
         console.error('Business-free analysis error:', e.message);
-        await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
+        // Auto-Retry nach 15 Sekunden
+        setTimeout(async function() {
+          try {
+            console.log('Business-free retry for session:', session.id);
+            const { data: arts2 } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+            let fixed = false;
+            for (const art2 of (arts2||[])) {
+              if (art2.status !== 'analyzed' && (art2.vk_photos||[]).length > 0) {
+                const a2 = await vkAnalyzeArticle(art2, art2.vk_photos, session.phone, session.ai_mode||'abteilungsleiter');
+                await supabase.from('vk_articles').update({ analysis: a2, status: 'analyzed', title: a2.title_short||art2.title }).eq('id', art2.id);
+                if (a2.title_short) vkRunMarketSearch(art2.id, a2.title_short, session.phone).catch(function(){});
+                fixed = true;
+              }
+            }
+            if (fixed) {
+              await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('id', session.id);
+              console.log('Business-free retry success:', session.id);
+            }
+          } catch(e2) {
+            console.error('Business-free retry failed:', e2.message);
+            await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
+          }
+        }, 15000);
       }
     })();
 
@@ -2276,8 +2315,40 @@ app.post('/api/vk/admin/nuke-all', async (req, res) => {
 // ETag deaktivieren - verhindert 304 Caching-Probleme
 app.set('etag', false);
 
-app.listen(PORT, () => {
-  console.log(`✅ Converto API v2.2.0 läuft auf Port ${PORT}`);
+app.listen(PORT, async () => {
+  console.log('✅ Converto API v2.2.0 läuft auf Port ' + PORT);
+
+  // Watchdog: Steckengebliebene 'analyzing' Sessions neu starten
+  setTimeout(async function() {
+    try {
+      const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // älter als 5 Min
+      const { data: stuckSessions } = await supabase.from('vk_sessions')
+        .select('*, vk_articles(id, status, vk_photos(*))')
+        .eq('status', 'analyzing')
+        .lt('paid_at', cutoff)
+        .limit(10);
+      if (!stuckSessions || !stuckSessions.length) return;
+      console.log('Watchdog: ' + stuckSessions.length + ' stuck sessions found');
+      for (const sess of stuckSessions) {
+        try {
+          const arts = sess.vk_articles || [];
+          let anyFixed = false;
+          for (const art of arts) {
+            if (art.status !== 'analyzed' && (art.vk_photos||[]).length > 0) {
+              console.log('Watchdog: retrigger article', art.id);
+              const analysis = await vkAnalyzeArticle(art, art.vk_photos, sess.phone, sess.ai_mode||'abteilungsleiter');
+              await supabase.from('vk_articles').update({ analysis, status: 'analyzed', title: analysis.title_short||art.title }).eq('id', art.id);
+              anyFixed = true;
+            }
+          }
+          if (anyFixed) {
+            await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString() }).eq('id', sess.id);
+            console.log('Watchdog: fixed session', sess.id);
+          }
+        } catch(e) { console.error('Watchdog error for session', sess.id, ':', e.message); }
+      }
+    } catch(e) { console.error('Watchdog startup error:', e.message); }
+  }, 5000);
 });
 
 // ═══════════════════════════════════════════════════════════
