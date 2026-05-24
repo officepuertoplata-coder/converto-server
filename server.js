@@ -1774,7 +1774,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     if (!lp_slug || !messages) return res.status(400).json({ error: 'lp_slug und messages erforderlich' });
 
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(title, analysis, ai_mode, id), bot_config, ai_mode, anrede, min_price, sale_price')
+      .select('*, vk_articles(title, analysis, ai_mode, id), bot_config, ai_mode, anrede, min_price, sale_price, bot_goal')
       .eq('slug', lp_slug).maybeSingle();
 
     if (!lp) return res.status(404).json({ error: 'LP nicht gefunden' });
@@ -1876,6 +1876,8 @@ SCHRITT 2 - Falls Kaeufer immer noch nicht kauft:
 Sage: "Ich darf leider nicht weiter runtergehen als den Preis den ich dir genannt habe. Mein Vorschlag: Ich leite dich an unseren Verkaufsexperten weiter - der hat manchmal noch Moeglichkeiten. Waere das ok?"
 Bei JA: "Super. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
+
+${vkBotGoalPrompt(lp, lp.anrede||'Sie')}
 
 === VERBOTEN ===
 ${lp._hidden_photos && lp._hidden_photos.length ? `VERSTECKTE FOTOS FREIGEGEBEN (nur auf Anfrage senden):\n` + lp._hidden_photos.map(function(u,i){ return 'Foto ' + (i+1) + ': ' + u; }).join('\n') + `\nWenn Kaeufer nach Fotos, Bildern, Nahaufnahmen fragt: Sende diese Links direkt.` : ''}
@@ -3062,6 +3064,75 @@ async function vkGetBusinessDiscount(phone) {
 const vkPendingWA = new Map();
 
 // ── LP BOT: Konversations-Speicher (In-Memory) ──────────
+
+// ── BOT GOAL: Ziel-spezifische Prompt-Blöcke ────────────────────────────
+function vkBotGoalPrompt(lp, anrede) {
+  const s = anrede === 'du';
+  const goal = (lp && lp.bot_goal) || 'direktkauf';
+  const minPreis = (lp && lp.min_price) || 0;
+  const preis = (lp && lp.sale_price) || 0;
+  const vkName = (lp && lp._escalation_title) || 'unseren Verkaufsexperten';
+  const standort = (lp && lp.bot_config && lp.bot_config.location) || '';
+
+  if (goal === 'kontakt') return '\n=== DEIN ZIEL ===\nVereinbare einen Rueckruf. KEIN Zahlungslink.\nWenn Interesse: frage nach Name und Telefonnummer.\nDann: "Wann ' + (s?'bist du':'sind Sie') + ' am besten erreichbar?"\nSobald Name + Tel + Zeit: sende NUR "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"\nPreis nennen OK aber nie unter ' + minPreis + ' EUR.';
+
+  if (goal === 'besichtigung') return '\n=== DEIN ZIEL ===\nVereinbare einen Besichtigungstermin vor Ort. KEIN Zahlungslink.\n' + (standort ? 'Standort: ' + standort + '\n' : '') + 'Wenn Interesse: frage nach Wunschtermin und Name.\nErwaehne Probefahrt / Probelauf moeglich.\nSobald Termin + Name + Tel: sende NUR "TERMIN_ANFRAGE:[name]:[tel]:[datum]"\nPreisfragen: "Das besprechen wir am besten direkt vor Ort."';
+
+  if (goal === 'angebot') return '\n=== DEIN ZIEL ===\nSammle Anforderungen und leite an ' + vkName + ' weiter. Kein Fixpreis, kein Zahlungslink.\nFrage: aktuelles Geraet, Budget, Timeline, Anforderungen.\nBei Inzahlungnahme: frage Modell/Baujahr/Zustand des alten Geraets.\nWenn genug Infos: Kontaktdaten sammeln → "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"';
+
+  if (goal === 'leasing') return '\n=== DEIN ZIEL ===\nFinanzierung/Leasing erklaeren und Beratungsgespraech vereinbaren. Kein Direktkauf.\nOrientierung: ca. ' + Math.round(preis/60) + '-' + Math.round(preis/36) + ' EUR/Monat. Immer als Schaetzung kennzeichnen.\nFrage: Laufzeit-Wunsch, Firmenname.\nZiel: Termin mit ' + vkName + ' → "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"';
+
+  // direktkauf (default)
+  return '\n=== DEIN ZIEL ===\nBringe den Kaeufer zum Kauf. Abschluss = Zahlungslink.\nWenn einig: sende NUR "ZAHLUNG_LINK:' + preis + '"\nUnter ' + minPreis + ' EUR nicht gehen.';
+}
+
+// ── NEUE TRIGGER: Kontakt + Termin ────────────────────────────────────────
+async function vkHandleBotTriggers(reply, phone, session) {
+  const lp = session.lp || {};
+
+  // Kontakt-Anfrage (Rueckruf)
+  const km = reply.match(/KONTAKT_ANFRAGE:([^:]+):([^:]+):(.+)/);
+  if (km) {
+    const [, name, tel, zeit] = km;
+    const an = lp.vk_articles?.analysis || {};
+    try { await supabase.from('vk_escalations').insert({ lp_id: lp.id||null, article_id: lp.article_id||null, lp_slug: lp.slug||session.lpSlug||'', article_title: an.title_short||'', buyer_phone: phone, buyer_contact_type: 'Telefon', buyer_contact: tel.trim(), buyer_availability: zeit.trim(), status: 'new' }); } catch(e) {}
+    await vkSendEscalationEmailV2(lp, { name: name.trim(), contact: tel.trim(), availability: zeit.trim(), type: 'Rückruf' });
+    const msg = (lp.anrede==='du') ? 'Danke ' + name.trim() + '! Deine Nummer ist notiert. ' + (lp._escalation_title||'Wir') + ' melden uns ' + zeit.trim() + '.' : 'Danke ' + name.trim() + '! Ihre Nummer ist notiert. ' + (lp._escalation_title||'Wir') + ' melden sich ' + zeit.trim() + '.';
+    await vkSendWhatsApp(phone, msg);
+    return true;
+  }
+
+  // Termin-Anfrage (Besichtigung)
+  const tm = reply.match(/TERMIN_ANFRAGE:([^:]+):([^:]+):(.+)/);
+  if (tm) {
+    const [, name, tel, datum] = tm;
+    const an = lp.vk_articles?.analysis || {};
+    try { await supabase.from('vk_escalations').insert({ lp_id: lp.id||null, article_id: lp.article_id||null, lp_slug: lp.slug||session.lpSlug||'', article_title: an.title_short||'', buyer_phone: phone, buyer_contact_type: 'Besichtigung', buyer_contact: tel.trim(), buyer_availability: datum.trim(), status: 'new' }); } catch(e) {}
+    await vkSendEscalationEmailV2(lp, { name: name.trim(), contact: tel.trim(), availability: datum.trim(), type: 'Besichtigung' });
+    const msg = (lp.anrede==='du') ? 'Super ' + name.trim() + '! Besichtigungswunsch für ' + datum.trim() + ' ist notiert. Wir bestätigen kurz.' : 'Sehr gut ' + name.trim() + '! Besichtigungswunsch für ' + datum.trim() + ' notiert. Wir bestätigen kurzfristig.';
+    await vkSendWhatsApp(phone, msg);
+    return true;
+  }
+  return false;
+}
+
+async function vkSendEscalationEmailV2(lp, contact) {
+  try {
+    let sellerEmail = lp._seller_email || null;
+    if (!sellerEmail && lp.session_id) {
+      const { data: s } = await supabase.from('vk_sessions').select('business_discount_id').eq('id', lp.session_id).maybeSingle();
+      if (s?.business_discount_id) { const { data: bd } = await supabase.from('vk_business_discounts').select('seller_email').eq('id', s.business_discount_id).maybeSingle(); if (bd?.seller_email) sellerEmail = bd.seller_email; }
+    }
+    if (!sellerEmail) return;
+    const fetch = require('node-fetch');
+    const an = lp.vk_articles?.analysis || {};
+    const artikel = an.title_short || lp.vk_articles?.title || 'Artikel';
+    const icon = contact.type === 'Besichtigung' ? '📅' : '📞';
+    const html = '<div style="font-family:Arial;max-width:520px;padding:20px;"><div style="background:#1b4332;color:#fff;padding:16px;border-radius:8px 8px 0 0;font-weight:800;">' + icon + ' ' + contact.type + ': ' + artikel + '</div><div style="border:1px solid #e5e7eb;padding:16px;border-radius:0 0 8px 8px;"><table style="width:100%;border-collapse:collapse;"><tr><td style="padding:6px;font-weight:700;">Name</td><td style="padding:6px;">' + contact.name + '</td></tr><tr style="background:#f9fafb;"><td style="padding:6px;font-weight:700;">Kontakt</td><td style="padding:6px;font-weight:700;color:#1b4332;font-size:1.05rem;">' + contact.contact + '</td></tr><tr><td style="padding:6px;font-weight:700;">' + (contact.type==='Besichtigung'?'Wunschtermin':'Erreichbar') + '</td><td style="padding:6px;">' + contact.availability + '</td></tr></table><div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px;margin-top:12px;font-size:.85rem;">⏰ Bitte zeitnah melden — Interesse ist aktuell hoch.</div></div></div>';
+    await fetch('https://api.resend.com/emails', { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+process.env.RESEND_API_KEY}, body:JSON.stringify({ from:'Converdino <noreply@converdino.com>', to:sellerEmail, subject:icon+' '+contact.type+': '+artikel, html }) });
+  } catch(e) { console.error('EscEmailV2:', e.message); }
+}
+
 const vkLPBotSessions = new Map(); // phone → { lpSlug, messages[], article, lp }
 
 async function vkCheckActiveLPBot(phone) {
@@ -3073,7 +3144,7 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
 
   // LP + Artikel aus DB laden
   const { data: lp } = await supabase.from('vk_landingpages')
-    .select('*, vk_articles(title, analysis)')
+    .select('*, vk_articles(title, analysis), bot_goal, anrede, min_price, sale_price')
     .eq('slug', lpSlug).maybeSingle();
 
   if (!lp) {
@@ -3176,6 +3247,8 @@ SCHRITT 2 - Falls Kaeufer immer noch nicht kauft:
 Sage: "Ich darf leider nicht weiter runtergehen. Mein Vorschlag: Ich leite dich an unseren Verkaufsexperten weiter - der hat manchmal noch Moeglichkeiten. Waere das ok?"
 Bei JA: "Super. Deine WhatsApp-Nummer habe ich bereits. Kannst du mir noch kurz deine E-Mail geben und wann du am besten erreichbar bist?"
 Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[zeitpunkt]"
+
+${vkBotGoalPrompt(lp, lp.anrede||'Sie')}
 
 === SPRACHE & STIL - ABSOLUT WICHTIG ===
 - Du bist eine echte Person, kein Bot, kein Verkaeufer
@@ -3324,6 +3397,10 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
     vkLPBotSessions.delete(phone);
     return;
   }
+
+  // Neue Ziel-Trigger (Kontakt/Termin)
+  const handled = await vkHandleBotTriggers(reply, phone, session);
+  if (handled) { vkLPBotSessions.delete(phone); return; }
 
   // Dossier direkt per WhatsApp senden (Standard), nur bei Email-Wunsch per Mail
   const dossierWaMatch = reply.match(/DOSSIER_WA/);
