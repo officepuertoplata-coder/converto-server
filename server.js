@@ -804,8 +804,11 @@ app.post('/api/vk/business-free', async (req, res) => {
       if (bd) await supabase.from('vk_business_discounts').update({ used_count: (bd.used_count||0) + 1 }).eq('id', session.business_discount_id);
     }
 
-    // Analyse SYNCHRON ausführen - erst antworten wenn fertig
-    try {
+    // Analyse im Hintergrund - sofort 'analyzing' zurück
+    res.json({ success: true, status: 'analyzing' });
+
+    (async () => {
+      try {
         const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
         for (const article of (articles || [])) {
           if (!(article.vk_photos || []).length) continue;
@@ -848,12 +851,11 @@ app.post('/api/vk/business-free', async (req, res) => {
         }).eq('id', session.id);
         const link = 'https://converdino.com/ergebnis.html?s=' + token;
         await vkSendWhatsApp(session.phone, '✅ Dein Verkaufsreport ist fertig!\n\n📋 Ergebnis:\n' + link + '\n\n🗑️ Wird in ' + days + ' Tagen gelöscht.');
-        res.json({ success: true, status: 'done' });
-        return;
       } catch(e) {
         console.error('Business-free analysis error:', e.message);
-        res.json({ success: false, error: e.message, status: 'error' });
+        await supabase.from('vk_sessions').update({ status: 'error' }).eq('token', token);
       }
+    })();
 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
