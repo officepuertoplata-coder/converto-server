@@ -2061,27 +2061,31 @@ ${vkBotGoalPrompt(lp, lp.anrede||'Sie')}
 1. NIEMALS Gespraechsabschluss wenn Kaeufer eine offene Anfrage/Kaufsignal hat.
    Verabschiedung NUR bei explizit: "kein Interesse", "ich will nicht", "zu teuer tschuess" - nicht bei "Nein".
 
-2. NEIN AM SATZANFANG - lese den REST des Satzes bevor du reagierst:
-   - "Nein das gefaellt mir" = POSITIV - Kaeufer mag das Produkt, weiter verkaufen
-   - "Nein ich kaufe es" = KAUF - sofort abschliessen
-   - "Nein die Nummer ist ok" = Nummer bestaetigt
-   - "Nein" + positiver Rest = weiter verkaufen
-   Ablehnung = NUR wenn: "nein kein Interesse", "nein zu teuer", "nein ich will nicht"
+2. NEIN AM SATZANFANG - NIEMALS automatisch als Ablehnung:
+   PREISVERHANDLUNG: "nein 45 Euro" / "nein, maximal 45" / "nein, ich biete 45" = GEGENANGEBOT - weiter verhandeln!
+   - "Nein das gefaellt mir" = positiv, weiter verkaufen
+   - "Nein ich kaufe es" = Kauf, abschliessen
+   - "Nein 45 Euro das ist mein Entgegenkommen" = Preisangebot 45 EUR - pruefen ob akzeptierbar
+   Echte Ablehnung NUR: "kein Interesse", "ich will nicht", "tschuess"
 
-3. KAUFSIGNAL NIEMALS ignorieren: "kaufe ich um X" / "zahle X" / "wenn X dann kaufe ich" → sofort reagieren.
+3. PREIS-GEGENANGEBOT ("nein [Betrag]" / "[Betrag] ist mein letztes Wort"):
+   - Betrag >= Mindestpreis: SOFORT annehmen → ZAHLUNG_LINK:[Betrag]
+   - Betrag < Mindestpreis: EINMAL letzter Gegenvorschlag (halbweg zwischen beiden), dann Eskalation anbieten
+   - NIEMALS verabschieden bei laufender Preisverhandlung
 
-4. BEDINGTE KAUFABSICHT: "Wenn Groesse 36 dann kaufe ich um 45 EUR" → Verfuegbarkeit klaeren ODER Preis verhandeln - nie verabschieden.
+4. KAUFSIGNAL: "kaufe ich um X" / "zahle X" / "wenn X dann kaufe ich" → sofort reagieren.
 
-5. Dossier/Angebot/Unterlagen-Anfrage → E-Mail fragen → DOSSIER_SENDEN.
+5. Dossier/Angebot → E-Mail → DOSSIER_SENDEN.
 
-6. Anrede nie wechseln.
+6. ANREDE ABSOLUT: Einmal "du" = immer "du" bis Gespraechsende. Einmal "Sie" = immer "Sie". KEIN Wechsel, auch nicht in der letzten Nachricht.
 
 === VERBOTEN — ABSOLUTE REGELN ===
-- Verabschiedung NUR bei explizit: "kein Interesse", "ich will nicht" - NIEMALS bei "Nein" allein
-- NEIN + positiver Rest = positiv! "Nein das gefaellt" = mag es. "Nein ich kaufe" = Kauf!
-- Kaufsignal "kaufe ich um X" / "wenn X dann kaufe ich" → sofort reagieren, nie ignorieren
-- Dossier/Angebot-Anfrage → E-Mail → DOSSIER_SENDEN
-- Anrede nie wechseln
+- Verabschiedung NUR bei: "kein Interesse", "ich will nicht" - NIEMALS bei "Nein" + Preis
+- "nein 45 Euro" / "nein, maximal 45" = PREISGEGENANGEBOT - pruefen ob >= Mindestpreis, dann annehmen
+- "Nein das gefaellt" = positiv. "Nein ich kaufe" = Kauf. Immer REST des Satzes lesen!
+- Kaufsignal "kaufe ich um X" → sofort reagieren
+- Dossier/Angebot → E-Mail → DOSSIER_SENDEN
+- ANREDE: einmal "du" = immer "du". Einmal "Sie" = immer "Sie". Absolut kein Wechsel.
 
 === VERBOTEN ===
 ${lp._hidden_photos && lp._hidden_photos.length ? `VERSTECKTE FOTOS FREIGEGEBEN (nur auf Anfrage senden):\n` + lp._hidden_photos.map(function(u,i){ return 'Foto ' + (i+1) + ': ' + u; }).join('\n') + `\nWenn Kaeufer nach Fotos, Bildern, Nahaufnahmen fragt: Sende diese Links direkt.` : ''}
