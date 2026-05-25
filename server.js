@@ -286,7 +286,16 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           // Prüfe ob aktive LP Bot Konversation läuft
           if (msgType === 'text') {
             const hasActiveBot = await vkCheckActiveLPBot(from);
-            if (hasActiveBot) {
+            if (hasActiveBot === 'recover') {
+              // Wiedererweckung: Session neu starten mit gespeichertem LP
+              const rec = vkLPBotRecovery.get(from);
+              vkLPBotRecovery.delete(from);
+              try {
+                console.log('LP Bot RECOVERY for', from, 'slug:', rec.lpSlug);
+                await vkHandleLPBot(from, rawText, rec.lpSlug, rec.phoneId || phoneId);
+                continue;
+              } catch(recErr) { console.error('LP Bot recovery error:', recErr.message); }
+            } else if (hasActiveBot) {
               try {
                 await vkHandleLPBotReply(from, rawText, phoneId);
                 continue;
@@ -2049,16 +2058,30 @@ Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[
 ${vkBotGoalPrompt(lp, lp.anrede||'Sie')}
 
 === VERBOTEN — ABSOLUTE REGELN ===
-1. NIEMALS Gespraechsabschluss ("Falls Sie Interesse haben schreiben Sie nochmal" / Verabschiedung) wenn Kaeufer eine offene Anfrage hat (Dossier, Angebot, Info, Rueckruf).
-2. NIEMALS "nein" als Ablehnung interpretieren wenn der Kontext eine Bestätigung bedeutet: "nein die Nummer ist ok" = WA-Nummer bestätigt → sofort KONTAKT_ANFRAGE setzen und Gespraech weiterfuehren.
-3. WENN Kaeufer "Dossier schicken" oder "Unterlagen" oder "Angebot" verlangt → sofort nach E-Mail fragen und DOSSIER_SENDEN auslösen. Niemals ignorieren oder verabschieden.
-4. ANREDE-KONSISTENZ: Wenn anrede=${lp.anrede==='du'?'"du"':'"Sie"'} dann immer nur ${lp.anrede==='du'?'"du/dein/dir"':'"Sie/Ihr/Ihnen"'} - nie mitten im Gespraech wechseln.
+1. NIEMALS Gespraechsabschluss wenn Kaeufer eine offene Anfrage/Kaufsignal hat.
+   Verabschiedung NUR bei explizit: "kein Interesse", "ich will nicht", "zu teuer tschuess" - nicht bei "Nein".
+
+2. NEIN AM SATZANFANG - lese den REST des Satzes bevor du reagierst:
+   - "Nein das gefaellt mir" = POSITIV - Kaeufer mag das Produkt, weiter verkaufen
+   - "Nein ich kaufe es" = KAUF - sofort abschliessen
+   - "Nein die Nummer ist ok" = Nummer bestaetigt
+   - "Nein" + positiver Rest = weiter verkaufen
+   Ablehnung = NUR wenn: "nein kein Interesse", "nein zu teuer", "nein ich will nicht"
+
+3. KAUFSIGNAL NIEMALS ignorieren: "kaufe ich um X" / "zahle X" / "wenn X dann kaufe ich" → sofort reagieren.
+
+4. BEDINGTE KAUFABSICHT: "Wenn Groesse 36 dann kaufe ich um 45 EUR" → Verfuegbarkeit klaeren ODER Preis verhandeln - nie verabschieden.
+
+5. Dossier/Angebot/Unterlagen-Anfrage → E-Mail fragen → DOSSIER_SENDEN.
+
+6. Anrede nie wechseln.
 
 === VERBOTEN — ABSOLUTE REGELN ===
-- NIEMALS Gespraechsabschluss/Verabschiedung wenn Kaeufer offene Anfrage hat (Dossier, Angebot, Info, Termin, Rueckruf)
-- "nein" IMMER im Kontext lesen: "nein die Nummer ist ok" = Nummer bestätigt, Gespraech weiter
-- Kaeufer sagt "Dossier/Angebot schicken" → sofort nach E-Mail fragen → DOSSIER_SENDEN ausloesen, NIE ignorieren
-- Anrede nie mid-Gespraech wechseln (Sie bleibt Sie, du bleibt du)
+- Verabschiedung NUR bei explizit: "kein Interesse", "ich will nicht" - NIEMALS bei "Nein" allein
+- NEIN + positiver Rest = positiv! "Nein das gefaellt" = mag es. "Nein ich kaufe" = Kauf!
+- Kaufsignal "kaufe ich um X" / "wenn X dann kaufe ich" → sofort reagieren, nie ignorieren
+- Dossier/Angebot-Anfrage → E-Mail → DOSSIER_SENDEN
+- Anrede nie wechseln
 
 === VERBOTEN ===
 ${lp._hidden_photos && lp._hidden_photos.length ? `VERSTECKTE FOTOS FREIGEGEBEN (nur auf Anfrage senden):\n` + lp._hidden_photos.map(function(u,i){ return 'Foto ' + (i+1) + ': ' + u; }).join('\n') + `\nWenn Kaeufer nach Fotos, Bildern, Nahaufnahmen fragt: Sende diese Links direkt.` : ''}
@@ -3774,9 +3797,14 @@ async function vkSendEscalationEmailV2(lp, contact) {
 }
 
 const vkLPBotSessions = new Map(); // phone → { lpSlug, messages[], article, lp }
+const vkLPBotRecovery = new Map(); // phone → { lpSlug, phoneId, ts } — für Wiedererweckung nach Session-Ende
 
 async function vkCheckActiveLPBot(phone) {
-  return vkLPBotSessions.has(phone);
+  if (vkLPBotSessions.has(phone)) return true;
+  // Recovery: gibt es eine kürzliche Session für diese Nummer?
+  const rec = vkLPBotRecovery.get(phone);
+  if (rec && (Date.now() - rec.ts) < 24 * 60 * 60 * 1000) return 'recover';
+  return false;
 }
 
 async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
@@ -3958,6 +3986,7 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
   // Konversation initialisieren
   const session = {
     lpSlug,
+    phoneId,
     lp,
     article,
     systemPrompt,
@@ -4245,6 +4274,8 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
   await vkSendWhatsApp(phone, reply);
   // Nach 30 Nachrichten Session leise beenden (kein Text anhängen)
   if (session.messages.length > 60) {
+    // Recovery-Info speichern damit Bot auf nächste Nachricht reagieren kann
+    vkLPBotRecovery.set(phone, { lpSlug: session.lpSlug, phoneId: session.phoneId, ts: Date.now() });
     vkLPBotSessions.delete(phone);
   }
 }
