@@ -1987,7 +1987,7 @@ VERBOTEN: Optionen, Ja/Nein, Preis in Eroeffnung.
 
 REAKTION: A) Konkret → Loesung + Ziel-Action | B) Vage → 1 Frage → Loesung | C) Preis → nennen + Wert | D) Signal → sofort Action | E) Einwand → loesen
 MAX 3 FRAGEN dann immer Action.
-Einigung: Kauf="ZAHLUNG_LINK:[BETRAG]" Termin="TERMIN_ANFRAGE:[n]:[t]:[d]" Rueckruf="KONTAKT_ANFRAGE:[n]:[t]:[z]" 
+Einigung: Kauf="ZAHLUNG_LINK:[BETRAG]" Termin="TERMIN_ANFRAGE:[name]:[kaeufer-wa-nummer]:[datum]" Rueckruf="KONTAKT_ANFRAGE:[name]:[kaeufer-wa-nummer]:[zeit]" (Telefon NICHT abfragen - hast du via WhatsApp)
 
 === UNIVERSELLE VERKAUFSPRINZIPIEN ===
 ${vkSalesPrinciplesText()}
@@ -3643,7 +3643,7 @@ function vkBotGoalPrompt(lp, anrede) {
   // Beschreibungen pro Ziel
   const goalDescriptions = {
     direktkauf: 'Direktverkauf: Zahlungslink senden. Trigger: "ZAHLUNG_LINK:' + preis + '"',
-    besichtigung: 'Probefahrt/Praesentation: Termin vereinbaren. Trigger: "TERMIN_ANFRAGE:[name]:[tel]:[datum]"' + (standort ? ' Standort: ' + standort : ''),
+    besichtigung: 'Probefahrt/Praesentation: Termin vereinbaren. Kaeufer-Telefon bereits bekannt via WhatsApp. Trigger: "TERMIN_ANFRAGE:[name]:[phone]:[datum]" (phone = WhatsApp-Nummer)' + (standort ? ' Standort: ' + standort : ''),
     information: 'Information: Unterlagen/Details zusenden. Dossier per E-Mail: "DOSSIER_SENDEN:[email]"',
     kontakt: 'Rueckruf: Name + Telefon + Zeit sammeln. Trigger: "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"',
     angebot: 'Angebot/Inzahlungnahme: Anforderungen sammeln, dann KONTAKT_ANFRAGE',
@@ -3691,7 +3691,8 @@ async function vkHandleBotTriggers(reply, phone, session) {
   // Termin-Anfrage (Besichtigung)
   const tm = reply.match(/TERMIN_ANFRAGE:([^:]+):([^:]+):(.+)/);
   if (tm) {
-    const [, name, tel, datum] = tm;
+    const [, name, telRaw, datum] = tm;
+    const tel = telRaw && telRaw.length > 5 ? telRaw : phone; // Fallback: WhatsApp-Nummer
     const an = lp.vk_articles?.analysis || {};
     try { await supabase.from('vk_escalations').insert({ lp_id: lp.id||null, article_id: lp.article_id||null, lp_slug: lp.slug||session.lpSlug||'', article_title: an.title_short||'', buyer_phone: phone, buyer_contact_type: 'Besichtigung', buyer_contact: tel.trim(), buyer_availability: datum.trim(), status: 'new' }); } catch(e) {}
     await vkSendEscalationEmailV2(lp, { name: name.trim(), contact: tel.trim(), availability: datum.trim(), type: 'Besichtigung' });
@@ -3833,7 +3834,7 @@ ABSCHLUSS (${aggr.label}):
 3. Weiteres Draengen: "Das ist mein letztes Wort."
 4. Unter EUR ${absoluteMin}: "Das geht wirklich nicht."
 5. Einigung Direktkauf: NUR "ZAHLUNG_LINK:[BETRAG]"
-   Einigung Termin: NUR "TERMIN_ANFRAGE:[name]:[tel]:[datum]"
+   Einigung Termin: NUR "TERMIN_ANFRAGE:[name]:[whatsapp-nummer-des-kaeufers]:[datum]" — Telefon NICHT abfragen, du hast es bereits
    Einigung Rueckruf: NUR "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]" 
 
 === EXIT-STRATEGIE (wenn Kaeufer unter absolutem Minimum bleibt) ===
@@ -4029,7 +4030,7 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
 
   // Dossier direkt per WhatsApp senden (Standard), nur bei Email-Wunsch per Mail
   const dossierWaMatch = reply.match(/DOSSIER_WA/);
-  const dossierMailMatch = reply.match(/DOSSIER_MAIL:([^\s,]+)/);
+  const dossierMailMatch = reply.match(/DOSSIER_SENDEN:([^\s,]+)/);
 
   if (dossierWaMatch || dossierMailMatch) {
     const docs = (session.lp && session.lp._docs) ? session.lp._docs : [];
@@ -4170,11 +4171,10 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
   session.messages.push({ role: 'assistant', content: reply });
 
   // Max 10 Nachrichten dann Session beenden
-  if (session.messages.length > 20) {
+  await vkSendWhatsApp(phone, reply);
+  // Nach 30 Nachrichten Session leise beenden (kein Text anhängen)
+  if (session.messages.length > 60) {
     vkLPBotSessions.delete(phone);
-    await vkSendWhatsApp(phone, reply + '\n\nFür weitere Fragen besuchen Sie unsere Webseite: https://p.converdino.com/p/' + session.lpSlug);
-  } else {
-    await vkSendWhatsApp(phone, reply);
   }
 }
 
