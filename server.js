@@ -1111,7 +1111,7 @@ ${photos.length > 0 ? `
     </div>` : ''}
     <div class="price-main">${priceStr}</div>
     
-    ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich ab €' + lp.min_price + '</div>' : ''}
+    ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich</div>' : ''}
     ${expiryNote}
     ${(function(){
       const goals = (lp.bot_goal || 'direktkauf').split(',').map(function(g){return g.trim();});
@@ -1994,6 +1994,15 @@ Wenn Kaeufer Eintausch erwaehnt oder fragt ob moeglich:
 2. Mit diesen Infos: IMMER grobe Orientierung nennen: "Ein [Modell] Baujahr [X] mit [KM] km liegt am Markt grob bei EUR X-Y - haengt vom Zustand ab"
 3. Erst DANN: "Den genauen Eintauschwert bestimmen wir beim Besichtigungstermin - da schaut sich unser Kollege beides an"
 VERBOTEN: "Weiss ich nicht" / "Kann ich nicht sagen" / nur auf Termin verweisen ohne Orientierung zu geben.
+
+=== WISSENSLUECKEN (wenn du eine Frage nicht beantworten kannst) ===
+NIEMALS: "Ich habe keine verifizierten Informationen" → und dann sofort Rueckruf anbieten.
+RICHTIG: 3-Schritt-Antwort:
+1. Ehrlich anerkennen: "Ehrlich gesagt habe ich das gerade nicht zur Hand"
+2. Losung anbieten: "Das klaere ich fuer Sie ab - ich oder ein Kollege melden sich kurz mit der Information"
+3. Gespraech weiterführen: "Was interessiert Sie noch am Geraet?" oder naechste Qualifizierungsfrage stellen
+Ziel: Im Gespraech bleiben, nicht eskalieren nur weil eine Detail-Frage offen ist.
+Eskalation (KONTAKT_ANFRAGE / Verkaufsleiter) NUR wenn Kaeufer explizit Rueckruf moechte oder Preis-Verhandlung festgefahren ist.
 
 === KAEUFER-KONTAKT ===
 Der Kaeufer kommuniziert per WhatsApp - seine Nummer ist bekannt.
@@ -3797,6 +3806,14 @@ EINTAUSCH (wenn Kaeufer Eintausch erwaehnt):
 2. IMMER grobe Orientierung geben: "Ein [Modell] Baujahr [X] mit [KM] liegt am Markt grob bei EUR X-Y"
 3. Dann: "Den genauen Wert bestimmen wir beim Besichtigungstermin - da schaut sich mein Kollege beides an"
 VERBOTEN: Eintausch ablehnen oder nur auf Termin verweisen ohne Orientierung.
+
+WISSENSLUECKEN (wenn du eine Detail-Frage nicht beantworten kannst):
+NIEMALS sofort zum Rueckruf/Eskalation springen weil du etwas nicht weisst.
+RICHTIG - 3 Schritte:
+1. Ehrlich: "${lp.anrede==='du'?'Ehrlich gesagt habe ich das gerade nicht zur Hand':'Ehrlich gesagt habe ich das gerade nicht zur Hand'}"
+2. Lösung: "Das klaere ich fuer ${lp.anrede==='du'?'dich':'Sie'} ab - ich oder ein Kollege melden sich kurz mit der Info"
+3. Weiter: "Was interessiert ${lp.anrede==='du'?'dich':'Sie'} noch am Geraet?" oder naechste Frage stellen
+Eskalation nur wenn Kaeufer EXPLIZIT Rueckruf moechte oder Preisverhandlung festgefahren ist.
 
 DEIN PRODUKT:
 Artikel: ${an.title_short || article.title || 'Produkt'}
