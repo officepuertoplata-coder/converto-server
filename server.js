@@ -3066,6 +3066,7 @@ app.post('/api/vk/article/:id/answers', async (req, res) => {
 // ── ANALYSE SCHRITT 2: Mit Antworten optimieren ──────────────────────────
 app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
   try {
+    const { einspruch } = req.body || {};
     const { data: article } = await supabase.from('vk_articles')
       .select('*, vk_photos(*), analysis, questions, answers').eq('id', req.params.id).single();
     if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
@@ -3074,12 +3075,21 @@ app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
     const an = article.analysis || {};
     const answers = article.answers || {};
     const questions = article.questions || [];
+    const correctionRound = (an.correction_round || 0) + 1;
+
+    // Einspruch hat ABSOLUT HÖCHSTE PRIORITÄT - überschreibt alles
+    const einspruchText = einspruch ? einspruch.trim() : '';
+    if (einspruchText && answers) {
+      // Einspruch auch in answers speichern für DNA-Generierung
+      answers['q_sonstige'] = (answers['q_sonstige'] ? answers['q_sonstige'] + ' | ' : '') + einspruchText;
+      await supabase.from('vk_articles').update({ answers }).eq('id', req.params.id);
+    }
 
     // Antworten als Text aufbereiten
-    // Sonstige + Extra-Felder haben höchste Priorität
     const sonstige = answers['q_sonstige'] || '';
     const extraKV = answers['q_extra'] || '';
-    const answersText = (sonstige ? 'KORREKTUREN (hoechste Prioritaet): ' + sonstige + '\n' : '')
+    const answersText = (einspruchText ? '=== EINSPRUCH KUNDE – ABSOLUT KORREKT, ÜBERSCHREIBT ALLES ===\n' + einspruchText + '\n=== ENDE EINSPRUCH ===\n\n' : '')
+      + (sonstige && sonstige !== einspruchText ? 'WEITERE KORREKTUREN: ' + sonstige + '\n' : '')
       + (extraKV ? 'ZUSAETZLICHE ANGABEN: ' + extraKV + '\n\n' : '')
       + questions
       .filter(q => answers[q.id] && answers[q.id] !== '')
@@ -3143,6 +3153,10 @@ app.post('/api/vk/article/:id/analyze-step2', async (req, res) => {
     // Marktvergleich immer löschen - wird neu generiert mit korrektem Modell
     delete mergedAnalysis.market_comparison;
 
+    // correction_round tracken
+    mergedAnalysis.correction_round = correctionRound;
+    if (einspruchText) mergedAnalysis.last_einspruch = einspruchText;
+    if (correctionRound >= 3) mergedAnalysis.needs_escalation = true;
     const step2Update = { analysis: mergedAnalysis, status: 'analyzed' };
     // article.title mit neuem Kurztitel synchronisieren
     if (mergedAnalysis.title_short) step2Update.title = mergedAnalysis.title_short;
