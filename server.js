@@ -1336,6 +1336,7 @@ stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
         ai_mode: article?.ai_mode || session?.ai_mode || 'sachbearbeiter',
         anrede: req.body.anrede || 'Sie',
         bot_goal: Array.isArray(req.body.bot_goals) ? JSON.stringify(req.body.bot_goals) : (req.body.bot_goal || 'direktkauf'),
+        bot_name_override: req.body.bot_name_override || null,
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
@@ -1921,7 +1922,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const aggr = aggrMap[aggrLevel] || aggrMap.professional;
     const absoluteMin = Math.max(minPrice, price - Math.round(price * aggr.maxDiscount));
 
-    const botName = botConfig.bot_name || 'ein Verkaufsassistent';
+    const botName = lp.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent';
     const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat.', haendler:'Du bist ein erfahrener Haendler.', geschaeft:'Du repraesentierst ein Unternehmen.', nachlass:'Du loest einen Nachlass auf.' };
 
     const catContextBot = vkGetCategoryContext(article.article_category || 'standard');
@@ -1976,6 +1977,18 @@ Festpreis: EUR ${price} | Minimum: EUR ${absoluteMin} (NIEMALS nennen)
 4. Weiteres Draengen: "Das ist mein letztes Wort."
 5. Unter EUR ${absoluteMin}: "Das geht wirklich nicht."
 6. Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
+
+=== EINTAUSCH ===
+Wenn Kaeufer Eintausch erwaehnt oder fragt ob moeglich:
+1. Sofort bestaetigen: "Ja, das machen wir - welches Fahrzeug, Baujahr und ungefaehre KM?"
+2. Mit diesen Infos: IMMER grobe Orientierung nennen: "Ein [Modell] Baujahr [X] mit [KM] km liegt am Markt grob bei EUR X-Y - haengt vom Zustand ab"
+3. Erst DANN: "Den genauen Eintauschwert bestimmen wir beim Besichtigungstermin - da schaut sich unser Kollege beides an"
+VERBOTEN: "Weiss ich nicht" / "Kann ich nicht sagen" / nur auf Termin verweisen ohne Orientierung zu geben.
+
+=== KAEUFER-KONTAKT ===
+Der Kaeufer kommuniziert per WhatsApp - seine Nummer ist bekannt.
+Wenn Rueckruf gewuenscht: "Soll ich dich auf dieser WhatsApp-Nummer zurueckrufen oder hast du eine andere?" - NIE nach Telefonnummer fragen die schon bekannt ist.
+Fuer Trigger TERMIN_ANFRAGE und KONTAKT_ANFRAGE: verwende "[kaeufer-wa-nummer]" als Platzhalter - die echte Nummer wird automatisch eingesetzt.
 
 === GESPRAECHSFUEHRUNG ===
 
@@ -2716,8 +2729,8 @@ function vkGetCategoryContext(category) {
     vehicle: {
       label: 'Fahrzeug / KFZ',
       next_step: 'Probefahrt anbieten',
-      qualify: 'Eintausch vorhanden? Finanzierung gewünscht? Barzahlung oder Leasing?',
-      value_args: 'Serviceheft lückenlos, TÜV/HU, Garantie, Kilometerstand, Unfallfreiheit',
+      qualify: 'Eintausch vorhanden? Wenn ja: Marke, Modell, Baujahr, KM abfragen fuer grobe Schaetzung. Finanzierung: Orientierung geben (Monatliche Rate ca. X EUR), Genaueres beim Termin.',
+      value_args: 'Serviceheft lückenlos, TÜV/HU, Garantie, Kilometerstand, Unfallfreiheit, AHK, Ausstattung',
       buyer_types: 'Familie (Platz+Sicherheit), Gewerbe (Kapazität+Steuer), Einzelperson (Komfort+Status)'
     },
     industrial: {
@@ -3676,6 +3689,9 @@ function vkBotGoalPrompt(lp, anrede) {
 async function vkHandleBotTriggers(reply, phone, session) {
   const lp = session.lp || {};
 
+  // Platzhalter [kaeufer-wa-nummer] durch echte Nummer ersetzen
+  reply = reply.replace(/\[kaeufer-wa-nummer\]/g, phone);
+
   // Kontakt-Anfrage (Rueckruf)
   const km = reply.match(/KONTAKT_ANFRAGE:([^:]+):([^:]+):(.+)/);
   if (km) {
@@ -3755,12 +3771,22 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
   const maxDiscount = Math.round(price * aggr.maxDiscount);
   const absoluteMin = Math.max(minPrice, price - maxDiscount);
 const botConfig = lp.bot_config || {};
-const systemPrompt = `Du bist ${botConfig.bot_name || 'ein Verkaufsassistent'}.
+const systemPrompt = `Du bist ${lp.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent'}.
 ${botConfig.context === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt.' : botConfig.context === 'haendler' ? 'Du bist ein erfahrener Haendler mit tiefem Produktwissen.' : botConfig.context === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : botConfig.context === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und ehrlich.' : ''}
 Du beherrschst professionelle Verkaufstechniken - wirkst aber wie ein echter Mensch.
 
 ANREDE: Spreche den Kaeufer ausschliesslich mit "${lp.anrede === 'du' ? 'du/dein/dir' : 'Sie/Ihr/Ihnen'}" an.
 ${lp.anrede === 'du' ? 'Niemals "Sie" verwenden.' : 'Niemals "du/dein/dir" verwenden. Immer "Sie/Ihr/Ihnen".'} Diese Regel gilt absolut.
+
+KAEUFER-KONTAKT: Der Kaeufer ist per WhatsApp erreichbar - die Nummer ist bekannt.
+→ Rueckruf-Anfrage: "Soll ich ${lp.anrede === 'du' ? 'dich' : 'Sie'} auf dieser WhatsApp-Nummer zurueckrufen oder ${lp.anrede === 'du' ? 'hast du' : 'haben Sie'} eine andere?" - NIE nach Nummer fragen die schon bekannt ist.
+→ Trigger mit Kaeufer-Nummer: verwende "[kaeufer-wa-nummer]" - die echte Nummer wird automatisch eingesetzt.
+
+EINTAUSCH (wenn Kaeufer Eintausch erwaehnt):
+1. "Ja, das ist moeglich - welches Fahrzeug, Baujahr und ungefaehre KM?"
+2. IMMER grobe Orientierung geben: "Ein [Modell] Baujahr [X] mit [KM] liegt am Markt grob bei EUR X-Y"
+3. Dann: "Den genauen Wert bestimmen wir beim Besichtigungstermin - da schaut sich mein Kollege beides an"
+VERBOTEN: Eintausch ablehnen oder nur auf Termin verweisen ohne Orientierung.
 
 DEIN PRODUKT:
 Artikel: ${an.title_short || article.title || 'Produkt'}
