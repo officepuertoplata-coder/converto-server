@@ -2048,6 +2048,18 @@ Sobald du E-Mail und Zeitpunkt hast: sende NUR "VERKAUFSLEITER_ANFRAGE:[email]:[
 
 ${vkBotGoalPrompt(lp, lp.anrede||'Sie')}
 
+=== VERBOTEN — ABSOLUTE REGELN ===
+1. NIEMALS Gespraechsabschluss ("Falls Sie Interesse haben schreiben Sie nochmal" / Verabschiedung) wenn Kaeufer eine offene Anfrage hat (Dossier, Angebot, Info, Rueckruf).
+2. NIEMALS "nein" als Ablehnung interpretieren wenn der Kontext eine Bestätigung bedeutet: "nein die Nummer ist ok" = WA-Nummer bestätigt → sofort KONTAKT_ANFRAGE setzen und Gespraech weiterfuehren.
+3. WENN Kaeufer "Dossier schicken" oder "Unterlagen" oder "Angebot" verlangt → sofort nach E-Mail fragen und DOSSIER_SENDEN auslösen. Niemals ignorieren oder verabschieden.
+4. ANREDE-KONSISTENZ: Wenn anrede=${lp.anrede==='du'?'"du"':'"Sie"'} dann immer nur ${lp.anrede==='du'?'"du/dein/dir"':'"Sie/Ihr/Ihnen"'} - nie mitten im Gespraech wechseln.
+
+=== VERBOTEN — ABSOLUTE REGELN ===
+- NIEMALS Gespraechsabschluss/Verabschiedung wenn Kaeufer offene Anfrage hat (Dossier, Angebot, Info, Termin, Rueckruf)
+- "nein" IMMER im Kontext lesen: "nein die Nummer ist ok" = Nummer bestätigt, Gespraech weiter
+- Kaeufer sagt "Dossier/Angebot schicken" → sofort nach E-Mail fragen → DOSSIER_SENDEN ausloesen, NIE ignorieren
+- Anrede nie mid-Gespraech wechseln (Sie bleibt Sie, du bleibt du)
+
 === VERBOTEN ===
 ${lp._hidden_photos && lp._hidden_photos.length ? `VERSTECKTE FOTOS FREIGEGEBEN (nur auf Anfrage senden):\n` + lp._hidden_photos.map(function(u,i){ return 'Foto ' + (i+1) + ': ' + u; }).join('\n') + `\nWenn Kaeufer nach Fotos, Bildern, Nahaufnahmen fragt: Sende diese Links direkt.` : ''}
 ${lp._answers && lp._answers.length ? `\nVERIFIZIERTE FAKTEN - VOM VERKAEUFER BESTAETIGT (immer verwenden wenn gefragt):\n` + lp._answers.map(function(a){ return '- ' + a.label + ': ' + a.value; }).join('\n') : ''}
