@@ -3116,7 +3116,7 @@ app.post('/api/vk/photo', async (req, res) => {
     if (upErr) return res.status(400).json({ error: upErr.message });
     const { data: urlData } = supabase.storage.from('vk-photos').getPublicUrl(path);
     // Warnung wenn AVIF - Claude kann es nicht analysieren
-    if (contentType && contentType.includes('avif')) {
+   if (content_type && content_type.includes('avif')) {
       console.warn('AVIF upload detected - analysis may fail. Recommend converting to JPG/PNG first.');
       return res.status(400).json({ error: 'AVIF-Format wird nicht unterstützt. Bitte Fotos als JPG oder PNG hochladen.' });
     }
