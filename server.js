@@ -879,6 +879,55 @@ function vkGenerateSlug(title) {
 }
 
 // Produktseite HTML generieren
+function vkBuildAnswerFakten(answers, questions) {
+  if (!answers || !questions || !questions.length) return '';
+  const skip = ['q_sonstige', 'q_model', 'q_extra'];
+  const rows = [];
+  const icons = {
+    'Baujahr': '📅', 'Baujahr / Erstzulassung': '📅',
+    'Kilometerstand': '🔢', 'Betriebsstunden': '⏱',
+    'Serviceheft': '📋', 'Wartungsbuch': '📋',
+    'Letzte Wartung': '🔧', 'Wann war die letzte Wartung': '🔧',
+    'Vorbesitzer': '👤', 'Anzahl Vorbesitzer': '👤',
+    'Unfallschaden': '💥', 'Unfallschäden': '💥',
+    'Motor': '⚙️', 'Motor- und Getriebeuntersuchung': '⚙️',
+    'Antrieb': '🚗', 'Hubhöhe': '📐', 'Tragkraft': '🏋',
+    'Maximale Hubhöhe': '📐', 'Antriebsart': '⚡',
+    'TÜV': '✅', 'Hauptuntersuchung': '✅'
+  };
+  const yesNo = { 'ja': '✅ Ja', 'nein': '❌ Nein', 'weiß nicht': '—' };
+  questions.filter(function(q){ return !skip.includes(q.id); }).forEach(function(q) {
+    var val = answers[q.id];
+    if (!val || val === '') return;
+    var displayVal = yesNo[val.toLowerCase()] || val;
+    var icon = '•';
+    Object.keys(icons).forEach(function(k){ if (q.label && q.label.toLowerCase().includes(k.toLowerCase())) icon = icons[k]; });
+    rows.push('<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0fdf4;">'
+      + '<span style="font-size:1rem;width:22px;text-align:center;flex-shrink:0;">' + icon + '</span>'
+      + '<span style="font-size:.82rem;color:#6b7280;flex:1;">' + (q.label||q.id) + '</span>'
+      + '<span style="font-size:.85rem;font-weight:700;color:#1b4332;">' + displayVal + '</span>'
+      + '</div>');
+  });
+  // Extra KV Paare
+  if (answers['q_extra']) {
+    answers['q_extra'].split(',').forEach(function(kv){
+      var parts = kv.split(':');
+      if (parts.length >= 2) {
+        rows.push('<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0fdf4;">'
+          + '<span style="font-size:1rem;width:22px;text-align:center;flex-shrink:0;">•</span>'
+          + '<span style="font-size:.82rem;color:#6b7280;flex:1;">' + parts[0].trim() + '</span>'
+          + '<span style="font-size:.85rem;font-weight:700;color:#1b4332;">' + parts.slice(1).join(':').trim() + '</span>'
+          + '</div>');
+      }
+    });
+  }
+  if (!rows.length) return '';
+  return '<div class="section-card" style="background:#f0fdf4;border:1.5px solid #86efac;">'
+    + '<div class="section-heading" style="color:#15803d;">✅ Fahrzeugdaten — vom Verkäufer bestätigt</div>'
+    + '<div>' + rows.join('') + '</div>'
+    + '</div>';
+}
+
 function vkBuildLandingpageHTML(article, session, lp, sellerInfo) {
   const an = article.analysis || {};
   const photos = article.vk_photos || [];
@@ -918,6 +967,9 @@ const badgeHTML = (lp.show_score_badge && an && an.authenticity && an.authentici
   const keywordHTML = (an.keywords||[]).slice(0,8).map(k =>
     '<span class="tag">' + esc(k) + '</span>'
   ).join('');
+
+  // Fakten aus Fragebogen-Antworten
+  const faktenHTML = vkBuildAnswerFakten(article.answers || {}, article.questions || []);
 
   // Condition badge
   const conditionColor = { 'Neu': '#059669', 'Neuwertig': '#059669', 'Sehr gut': '#2d7a4f', 'Gut': '#d97706', 'Gebraucht': '#9ca3af' };
@@ -1107,6 +1159,8 @@ ${photos.length > 0 ? `
     <ul class="highlight-list">${bulletHTML}</ul>
   </div>` : ''}
 
+  ${faktenHTML}
+
   ${an.short_desc || an.long_desc ? `
   <div class="section-card">
     <div class="section-heading">📋 Beschreibung</div>
@@ -1210,7 +1264,7 @@ function shareLP() {
 app.get('/p/:slug', async (req, res) => {
   try {
     const { data: lp } = await supabase.from('vk_landingpages')
-      .select('*, vk_articles(*, vk_photos(*)), vk_sessions(phone)')
+      .select('*, vk_articles(*, vk_photos(*), questions, answers), vk_sessions(phone)')
       .eq('slug', req.params.slug)
       .single();
 
@@ -1937,6 +1991,7 @@ ${vkBotGoalPrompt(lp, lp.anrede||'Sie')}
 
 === VERBOTEN ===
 ${lp._hidden_photos && lp._hidden_photos.length ? `VERSTECKTE FOTOS FREIGEGEBEN (nur auf Anfrage senden):\n` + lp._hidden_photos.map(function(u,i){ return 'Foto ' + (i+1) + ': ' + u; }).join('\n') + `\nWenn Kaeufer nach Fotos, Bildern, Nahaufnahmen fragt: Sende diese Links direkt.` : ''}
+${lp._answers && lp._answers.length ? `\nVERIFIZIERTE FAKTEN - VOM VERKAEUFER BESTAETIGT (immer verwenden wenn gefragt):\n` + lp._answers.map(function(a){ return '- ' + a.label + ': ' + a.value; }).join('\n') : ''}
 ${lp._docs && lp._docs.length ? `DOKUMENTE AKTIV ANBIETEN:\nDu hast folgende Unterlagen die du auf Anfrage als Link zusenden kannst:\n${lp._docs.map(d => '- ' + d.label + ': ' + d.public_url).join('\n')}\n\nWenn Kaeufer nach Unterlagen/Dossier/Fotos/Protokollen/Servicebuch fragt:\n→ Frage nach E-Mail: "An welche E-Mail soll ich die Unterlagen schicken?"\n→ Wenn Kaeufer E-Mail nennt: Antworte NUR mit: DOSSIER_SENDEN:[email]\nDu kannst proaktiv anbieten: "Ich habe Wartungsprotokoll und Unterlagen - soll ich die zusenden?"` : '- Fotos, Bilder, Dokumente senden anbieten - du bist reiner Textbot, kannst KEINE Medien senden'}
 - "Ich schicke/sende dir Fotos/Bilder/Dokumente" - NIEMALS (ausser Dokumente sind hinterlegt)
 - "Passt das zu dir?" nach Preisnennung
@@ -2621,6 +2676,18 @@ async function vkAutoGenerateDNA(articleId, analysis, sessionAiMode) {
       try {
         const lpAiMode = lp.ai_mode || sessionAiMode || 'abteilungsleiter';
         const dnaModel = lpAiMode === 'experte' ? 'claude-opus-4-6' : lpAiMode === 'abteilungsleiter' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+        // Artikel mit Antworten laden
+        const { data: artData } = await supabase.from('vk_articles').select('answers, questions').eq('id', articleId).single();
+        const artAnswers = (artData && artData.answers) || {};
+        const artQuestions = (artData && artData.questions) || [];
+
+        // Verifizierte Fakten aus Fragebogen
+        const faktenLines = artQuestions
+          .filter(function(q){ return artAnswers[q.id] && q.id !== 'q_sonstige'; })
+          .map(function(q){ return (q.label||q.id) + ': ' + artAnswers[q.id]; });
+        if (artAnswers['q_extra']) faktenLines.push('Zusatz: ' + artAnswers['q_extra']);
+        const faktenText = faktenLines.length ? '\nVERIFIZIERTE FAKTEN (vom Verkaeufer bestätigt - im Bot-Gespraech verwenden):\n' + faktenLines.join('\n') : '';
+
         const productInfo = [
           an.title_short && 'Produkt: ' + an.title_short,
           an.short_desc && 'Beschreibung: ' + an.short_desc,
@@ -2628,11 +2695,11 @@ async function vkAutoGenerateDNA(articleId, analysis, sessionAiMode) {
           (an.bullet_points||[]).length && 'Highlights: ' + an.bullet_points.join(' | '),
           lp.sale_price && 'Verkaufspreis: EUR ' + lp.sale_price,
           an.price_min && 'Marktpreis: EUR ' + an.price_min + ' - EUR ' + (an.price_max || ''),
-        ].filter(Boolean).join('\n');
+        ].filter(Boolean).join('\n') + faktenText;
 
         if (!productInfo) { console.log('vkAutoGenerateDNA: kein productInfo fuer Artikel', articleId); continue; }
 
-        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie. Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.\n\n' + productInfo + '\n\nAntworte NUR mit JSON, kein Markdown:\n{\n  "bot_name": "Max",\n  "product_story": "Geschichte in 2-3 Saetzen",\n  "emotion": "Emotionaler Kern (2-3 Saetze)",\n  "fomo": "Knappheitsargument",\n  "persona": "Zielgruppe konkret",\n  "feature_benefits": [{"feature": "Merkmal", "benefit": "Nutzen"}],\n  "product_values": [{"label": "Wert", "meaning": "Bedeutung"}],\n  "fomo_list": [{"situation": "Wann", "argument": "Argument"}],\n  "qa_pairs": [{"q": "Frage", "a": "Antwort"}],\n  "exit_strategy_args": [{"label": "Bezeichnung", "argument": "Argument wenn kein weiterer Rabatt moeglich"}],\n  "notes": "Hinweise max 2 Saetze"\n}\nMin. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs, 3 exit_strategy_args. Deutsch.';
+        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie. Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.\n\n' + productInfo + '\n\nAntworte NUR mit JSON, kein Markdown:\n{\n  "bot_name": "Max",\n  "product_story": "Geschichte in 2-3 Saetzen",\n  "emotion": "Emotionaler Kern (2-3 Saetze)",\n  "fomo": "Knappheitsargument",\n  "persona": "Zielgruppe konkret",\n  "feature_benefits": [{"feature": "Merkmal", "benefit": "Nutzen"}],\n  "product_values": [{"label": "Wert", "meaning": "Bedeutung"}],\n  "fomo_list": [{"situation": "Wann", "argument": "Argument"}],\n  "qa_pairs": [{"q": "Typische Kaeufer-Frage zu den verifizierten Fakten", "a": "Direkte Antwort mit konkreten Zahlen/Fakten"}],\n  "exit_strategy_args": [{"label": "Bezeichnung", "argument": "Argument wenn kein weiterer Rabatt moeglich"}],\n  "notes": "Hinweise max 2 Saetze"\n}\nMin. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs, 3 exit_strategy_args. Deutsch.';
 
         const dnaRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -3508,6 +3575,27 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     const { data: _docs } = await supabase.from('vk_article_docs')
       .select('label, public_url, type').eq('article_id', lp.article_id || '');
     if (_docs && _docs.length) lp._docs = _docs;
+  } catch(e) {}
+
+  // Antworten aus Fragebogen laden für Bot
+  try {
+    const { data: _artFull } = await supabase.from('vk_articles')
+      .select('bot_share_hidden, id, answers, questions').eq('id', lp.article_id || '').maybeSingle();
+    if (_artFull && _artFull.answers && _artFull.questions) {
+      const _ans = [];
+      (_artFull.questions||[]).forEach(function(q){
+        if (_artFull.answers[q.id] && q.id !== 'q_sonstige' && q.id !== 'q_extra') {
+          _ans.push({ label: q.label||q.id, value: _artFull.answers[q.id] });
+        }
+      });
+      if (_artFull.answers['q_extra']) {
+        _artFull.answers['q_extra'].split(',').forEach(function(kv){
+          var p = kv.split(':');
+          if (p.length >= 2) _ans.push({ label: p[0].trim(), value: p.slice(1).join(':').trim() });
+        });
+      }
+      if (_ans.length) lp._answers = _ans;
+    }
   } catch(e) {}
 
   // Versteckte Fotos laden wenn freigegeben
