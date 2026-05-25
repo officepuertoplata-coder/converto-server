@@ -27,9 +27,9 @@ async function getAIModel(taskKey, aiMode) {
     } catch(e) { console.error('AI model config error:', e.message); }
   }
   const cfg = _aiModelCache && _aiModelCache[taskKey];
-  if (!cfg) return 'claude-haiku-4-5';
+  if (!cfg) return 'claude-haiku-4-5-20251001';
   const col = (aiMode || 'sachbearbeiter') + '_model';
-  return cfg[col] || 'claude-haiku-4-5';
+  return cfg[col] || 'claude-haiku-4-5-20251001';
 }
 app.use(cors({ origin: '*' }));
 
@@ -393,7 +393,7 @@ app.post('/api/pages/extract-doc', async (req, res) => {
     const { base64, media_type, filename } = req.body;
     if (!base64) return res.status(400).json({ error: 'base64 fehlt' });
     const fetch = require('node-fetch');
-    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 2000, messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: media_type || 'application/pdf', data: base64 } }, { type: 'text', text: 'Extrahiere alle relevanten Informationen aus diesem Dokument für eine Firmen-Landingpage. Strukturiere die Ausgabe: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt, Zahlen/Statistiken, Referenzen. Nur die extrahierten Infos, kein Kommentar.' }] }] }) });
+    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 2000, messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: media_type || 'application/pdf', data: base64 } }, { type: 'text', text: 'Extrahiere alle relevanten Informationen aus diesem Dokument für eine Firmen-Landingpage. Strukturiere die Ausgabe: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt, Zahlen/Statistiken, Referenzen. Nur die extrahierten Infos, kein Kommentar.' }] }] }) });
     const data = await response.json();
     res.json({ success: true, extracted: data.content?.[0]?.text || '' });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -407,7 +407,7 @@ app.post('/api/pages/extract-url', async (req, res) => {
     if (!webRes.ok) throw new Error('Website nicht erreichbar: ' + webRes.status);
     let text = (await webRes.text()).replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim().substring(0, 8000);
     if (!text || text.length < 50) throw new Error('Kein lesbarer Inhalt gefunden');
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 2000, messages: [{ role: 'user', content: `Analysiere diesen Website-Inhalt:\n${text}\n\nExtrahiere: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt.` }] }) });
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 2000, messages: [{ role: 'user', content: `Analysiere diesen Website-Inhalt:\n${text}\n\nExtrahiere: Firmenname, Beschreibung, Leistungen, Zielgruppe, USP, Kontakt.` }] }) });
     const aiData = await aiRes.json();
     if (aiData.error) throw new Error(aiData.error.message);
     res.json({ success: true, extracted: aiData.content?.[0]?.text || '', url });
@@ -449,7 +449,7 @@ app.post('/api/pages/generate', async (req, res) => {
     const waNum = s.whatsapp ? s.whatsapp.replace(/[^0-9]/g,'') : '';
     const userPrompt = `Erstelle eine vollständige, professionelle HTML Landingpage:\n\nFIRMA: ${s.company_name || 'Unbekannt'}\nBRANCHE: ${s.industry || 'Allgemein'}\nBESCHREIBUNG: ${s.description || ''}\nZIELGRUPPE: ${s.target_audience || ''}\nUSP: ${s.usp || ''}\nLEISTUNGEN: ${s.services || ''}\nCTA: ${s.cta || 'Jetzt anfragen'}\nWHATSAPP: ${s.whatsapp || ''}\nEMAIL: ${s.email || ''}\nSPRACHE(N): ${langLabel}\nSECTIONS: ${sections}${extracted_text ? '\nZUSATZ-INFO:\n' + extracted_text.substring(0, 1000) : ''}${imgNote}\n\nFARBEN: Primär ${color1}, Sekundär ${color2}, Akzent1 ${color3}, Akzent2 ${color4}\n${isMultilang ? `MEHRSPRACHIG: Sprachwechsler (${langs.map(l=>langNames[l]).join(' | ')}). Standard: ${langNames[langs[0]]}.` : `SPRACHE: ${langNames[langs[0]]||'Deutsch'}.`}\n${waNum ? `WhatsApp Float Button mit href="https://wa.me/${waNum}"` : ''}\n\nGib NUR das HTML zurück, beginnend mit <!DOCTYPE html>.`;
     const msgContent = [...imgBlocks, { type: 'text', text: userPrompt }];
-    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] }) });
+    const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: msgContent }] }) });
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
     let html = data.content?.[0]?.text || '';
@@ -4355,7 +4355,7 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
     const photoList = photos.map((p, i) => (i + 1) + '. ' + p.public_url).join('\n');
 
     // Upload mode aus Business Discount laden
-    let groupingModel = 'claude-haiku-4-5';
+    let groupingModel = 'claude-haiku-4-5-20251001';
     try {
       const { data: sess } = await supabase.from('vk_sessions')
         .select('business_discount_id').eq('id', sessionId).maybeSingle();
@@ -4363,7 +4363,7 @@ async function vkGroupAndCreateArticles(sessionId, tempArticleId, phone) {
         const { data: bd } = await supabase.from('vk_business_discounts')
           .select('upload_mode').eq('id', sess.business_discount_id).maybeSingle();
         if (bd && bd.upload_mode === 'expert') {
-          groupingModel = 'claude-haiku-4-5';
+          groupingModel = 'claude-haiku-4-5-20251001';
           console.log('Expert mode: using Opus for grouping');
         }
       }
@@ -4523,7 +4523,7 @@ async function vkComplianceCheckPhoto(imageBase64, mediaType) {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 300,
         messages: [{
           role: 'user',
@@ -5310,7 +5310,7 @@ Sprache: Deutsch. Max 3 Sätze. Natürlich, nicht marketingmäßig.`;
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 300,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -5394,7 +5394,7 @@ Antworte NUR mit JSON, kein Markdown:
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
       })
