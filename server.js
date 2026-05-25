@@ -1111,7 +1111,7 @@ ${photos.length > 0 ? `
     </div>` : ''}
     <div class="price-main">${priceStr}</div>
     
-    ${lp.min_price && lp.min_price < price ? '<div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Preisverhandlung möglich</div>' : ''}
+
     ${expiryNote}
     ${(function(){
       const goals = (lp.bot_goal || 'direktkauf').split(',').map(function(g){return g.trim();});
