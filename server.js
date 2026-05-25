@@ -933,7 +933,7 @@ function vkBuildAnswerFakten(answers, questions) {
   if (!rows.length) return '';
   return '<div class="section-card" style="background:#f0fdf4;border:1.5px solid #86efac;padding:0;">'
     + '<div onclick="this.parentElement.classList.toggle(\'open\')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:14px 16px;user-select:none;">'
-    + '<span style="color:#15803d;font-weight:700;font-size:.85rem;">✅ Fahrzeugdaten — vom Verkäufer bestätigt</span>'
+    + '<span style="color:#15803d;font-weight:700;font-size:.85rem;">✅ Angaben — vom Verkäufer bestätigt</span>'
     + '<span class="facts-chevron" style="font-size:.9rem;color:#15803d;transition:transform .25s;">▼</span>'
     + '</div>'
     + '<div class="facts-body" style="display:none;padding:0 16px 14px;">'
@@ -3812,7 +3812,7 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
 
   // LP + Artikel aus DB laden
   const { data: lp } = await supabase.from('vk_landingpages')
-    .select('*, vk_articles(title, analysis), bot_goal, anrede, min_price, sale_price')
+    .select('*, vk_articles(title, analysis, vk_photos(public_url)), bot_goal, anrede, min_price, sale_price, bot_config, ai_mode')
     .eq('slug', lpSlug).maybeSingle();
 
   if (!lp) {
@@ -4067,7 +4067,12 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     })
   });
   const data = await response.json();
-  const reply = data.content?.[0]?.text || 'Entschuldigung, ich konnte Ihre Anfrage nicht verarbeiten.';
+  if (data.error || !data.content) {
+    console.error('LP Bot API error:', JSON.stringify(data.error || data).substring(0, 200));
+    await vkSendWhatsApp(phone, 'Einen Moment bitte, ich bin gleich wieder da.');
+    return;
+  }
+  const reply = data.content?.[0]?.text || 'Einen Moment bitte.';
 
   // Prüfen ob Payment Link generiert werden soll
   const paymentMatch = reply.match(/ZAHLUNG_LINK:(\d+(?:\.\d+)?)/);
@@ -4113,7 +4118,12 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
     })
   });
   const data = await response.json();
-  const reply = data.content?.[0]?.text || 'Entschuldigung, ein Fehler ist aufgetreten.';
+  if (data.error || !data.content) {
+    console.error('LP BotReply API error:', JSON.stringify(data.error || data).substring(0, 200));
+    await vkSendWhatsApp(phone, 'Einen Moment bitte, ich bin gleich wieder da.');
+    return;
+  }
+  const reply = data.content?.[0]?.text || 'Einen Moment bitte.';
 
   // Payment Link check
   const paymentMatch = reply.match(/ZAHLUNG_LINK:(\d+(?:\.\d+)?)/);
