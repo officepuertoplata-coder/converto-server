@@ -4268,7 +4268,197 @@ async function vkHandleWhatsAppImage(phone, mediaId, merchantId) {
 
   } catch(e) { console.error('VK WhatsApp handler error:', e.message); }
 }
+// ══════════════════════════════════════════════════════════════════════
+// NEUE ENDPOINTS – In server.js EINFÜGEN direkt VOR der Zeile:
+//   module.exports = { vkHandleWhatsAppImage };
+// (ganz am Ende der Datei, kurz vor dem letzten module.exports)
+// ══════════════════════════════════════════════════════════════════════
 
+
+// ── WIDGET.JS – Einbettbarer WhatsApp-Button für Kundenseiten ─────────
+app.get('/widget.js', (req, res) => {
+  const slug = (req.query.slug || '').replace(/[^a-z0-9-]/g, '');
+  const waNum = '4367764118066';
+  const baseUrl = 'https://p.converdino.com/p/';
+
+  const js = `(function(){
+  var slug='${slug}';
+  var waNum='${waNum}';
+  if(!slug){console.warn('Converdino Widget: kein slug angegeben');return;}
+  var style=document.createElement('style');
+  style.textContent='.cvd-btn{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;align-items:center;gap:10px;background:#25D366;color:#fff;padding:13px 22px;border-radius:30px;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-weight:800;font-size:14px;box-shadow:0 4px 16px rgba(37,211,102,.45);transition:all .2s;cursor:pointer;border:none;white-space:nowrap;}.cvd-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(37,211,102,.55);}@media(max-width:480px){.cvd-btn{bottom:14px;right:14px;padding:11px 16px;font-size:13px;}}';
+  document.head.appendChild(style);
+  var btn=document.createElement('a');
+  btn.className='cvd-btn';
+  var lpUrl='https://p.converdino.com/p/'+slug;
+  var msg=encodeURIComponent('Hallo! Ich interessiere mich für dieses Angebot: '+lpUrl);
+  btn.href='https://wa.me/'+waNum+'?text='+msg;
+  btn.target='_blank';
+  btn.rel='noopener';
+  btn.setAttribute('aria-label','Jetzt per WhatsApp anfragen');
+  btn.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="white" style="flex-shrink:0;"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>Jetzt anfragen';
+  document.body.appendChild(btn);
+  console.log('Converdino Widget geladen fuer: '+slug);
+})();`;
+
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(js);
+});
+
+
+// ── FOTO + PDF GEMEINSAM ANALYSIEREN → DNA + Fragebogen befüllen ──────
+app.post('/api/vk/article/:id/analyze-with-doc', async (req, res) => {
+  try {
+    const { pdf_base64, pdf_content_type, label } = req.body;
+    if (!pdf_base64) return res.status(400).json({ error: 'pdf_base64 fehlt' });
+
+    const { data: article } = await supabase.from('vk_articles')
+      .select('*, vk_photos(*), analysis, answers, questions')
+      .eq('id', req.params.id).single();
+    if (!article) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+    const { data: sess } = await supabase.from('vk_sessions')
+      .select('phone, ai_mode').eq('id', article.session_id).maybeSingle();
+    const aiMode = sess?.ai_mode || 'abteilungsleiter';
+
+    const fetch = require('node-fetch');
+    const SUPPORTED = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
+
+    // Fotos laden (max 5)
+    const contentBlocks = [];
+    for (const p of (article.vk_photos || []).slice(0, 5)) {
+      try {
+        const imgRes = await fetch(p.public_url);
+        const ct = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0].toLowerCase();
+        if (!SUPPORTED.includes(ct)) continue;
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        const header = buf.slice(0, 4).toString('hex');
+        if (header.startsWith('0000')) continue;
+        contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: ct, data: buf.toString('base64') } });
+      } catch(e) { console.error('Doc+foto img load:', e.message); }
+    }
+
+    // PDF/Dokument hinzufügen
+    contentBlocks.push({
+      type: 'document',
+      source: {
+        type: 'base64',
+        media_type: pdf_content_type || 'application/pdf',
+        data: pdf_base64
+      }
+    });
+
+    // Analysefrage
+    contentBlocks.push({
+      type: 'text',
+      text: `Analysiere die Fotos UND das beigefügte Dokument/Dossier gemeinsam.
+Extrahiere ALLE technischen Fakten und Daten aus dem Dokument.
+
+Antworte NUR mit validem JSON (kein Markdown):
+{
+  "extracted_facts": {
+    "q_model": "exakter Modellname/Typ/Bezeichnung (null wenn unbekannt)",
+    "q_year": "Baujahr / Erstzulassung / Herstellungsjahr (null wenn unbekannt)",
+    "q_km": "Kilometerstand in km (null wenn unbekannt)",
+    "q_hours": "Betriebsstunden (null wenn unbekannt)",
+    "q_service": "Serviceheft / Wartungsbuch vorhanden: Ja oder Nein (null wenn unbekannt)",
+    "q_tuev": "TÜV / Hauptuntersuchung gültig bis (null wenn unbekannt)",
+    "q_owners": "Anzahl Vorbesitzer als Zahl (null wenn unbekannt)",
+    "q_accident": "Unfallschäden: Ja oder Nein oder Unbekannt",
+    "q_last_service": "Letzte Wartung: Datum und/oder Werkstatt (null wenn unbekannt)"
+  },
+  "extra_facts": [
+    {"key": "Bezeichnung des Faktums", "value": "Wert des Faktums"}
+  ],
+  "document_summary": "Kurze Zusammenfassung des Dokuments in 2-3 Sätzen auf Deutsch.",
+  "title_update": "Verbesserter Kurztitel mit exaktem Modell falls aus Dokument bekannt, sonst null"
+}`
+    });
+
+    const modelMap = { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
+    const model = modelMap[aiMode] || 'claude-sonnet-4-6';
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: 2000, messages: [{ role: 'user', content: contentBlocks }] })
+    });
+
+    const data = await r.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const text = data.content?.[0]?.text || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    let parsed;
+    try {
+      parsed = JSON.parse(clean.substring(clean.indexOf('{'), clean.lastIndexOf('}') + 1));
+    } catch(e) {
+      throw new Error('JSON Parse Fehler bei KI-Antwort: ' + e.message);
+    }
+
+    // Antworten zusammenführen (bestehende + neue)
+    const existingAnswers = article.answers || {};
+    const newAnswers = { ...existingAnswers };
+    const facts = parsed.extracted_facts || {};
+    Object.entries(facts).forEach(([k, v]) => {
+      if (v && v !== 'null' && String(v).length > 0 && v !== 'nicht gefunden' && v !== 'unbekannt') {
+        newAnswers[k] = String(v);
+      }
+    });
+
+    // Extra-Fakten als q_extra speichern
+    const extras = (parsed.extra_facts || []).filter(e => e.key && e.value);
+    if (extras.length > 0) {
+      const existingExtra = newAnswers['q_extra'] ? newAnswers['q_extra'].split(',') : [];
+      const newExtras = extras.map(e => `${e.key}: ${e.value}`);
+      newAnswers['q_extra'] = [...existingExtra, ...newExtras].filter(Boolean).join(',');
+    }
+
+    // In DB speichern
+    const updateData = { answers: newAnswers };
+    if (parsed.title_update) updateData.title = parsed.title_update;
+
+    // Dokument in vk_article_docs speichern
+    if (label) {
+      await supabase.from('vk_article_docs').insert({
+        article_id: req.params.id,
+        session_id: article.session_id || null,
+        type: pdf_content_type?.includes('pdf') ? 'pdf' : 'doc',
+        label: label || 'Dossier',
+        public_url: null,
+        storage_path: null,
+        file_name: label
+      }).catch(e => console.error('Doc save:', e.message));
+    }
+
+    await supabase.from('vk_articles').update(updateData).eq('id', req.params.id);
+
+    // DNA automatisch neu generieren mit den neuen Fakten
+    if (article.analysis && article.analysis.title_short) {
+      vkAutoGenerateDNA(req.params.id, article.analysis, aiMode)
+        .catch(e => console.error('DNA after doc-analyze:', e.message));
+    }
+
+    const factCount = Object.values(facts).filter(v => v && v !== 'null' && String(v).length > 0).length;
+    console.log('analyze-with-doc: ' + factCount + ' Fakten extrahiert für Artikel', req.params.id);
+
+    res.json({
+      success: true,
+      facts_count: factCount,
+      extracted_facts: facts,
+      extra_facts: extras,
+      document_summary: parsed.document_summary || '',
+      title_update: parsed.title_update || null,
+      answers: newAnswers
+    });
+
+  } catch(e) {
+    console.error('analyze-with-doc error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 module.exports = { vkHandleWhatsAppImage };
 
 // ═══════════════════════════════════════════════════════════
