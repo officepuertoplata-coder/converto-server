@@ -503,7 +503,7 @@ app.post('/api/vk/check-payment', async (req, res) => {
 
       (async () => {
         try {
-          const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+          const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id);
           for (const article of (articles || [])) {
             if (!(article.vk_photos || []).length) continue;
             const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '', session ? session.ai_mode : 'sachbearbeiter');
@@ -557,7 +557,7 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
           setTimeout(async function() {
             try {
               console.log('Retrying analysis for token:', token);
-              const { data: arts2 } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+              const { data: arts2 } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id);
               for (const art2 of (arts2||[])) {
                 if (art2.status !== 'analyzed' && (art2.vk_photos||[]).length > 0) {
                   const analysis2 = await vkAnalyzeArticle(art2, art2.vk_photos, session.phone, session.ai_mode||'abteilungsleiter');
@@ -809,7 +809,7 @@ app.post('/api/vk/business-free', async (req, res) => {
 
     (async () => {
       try {
-        const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+        const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id);
         for (const article of (articles || [])) {
           if (!(article.vk_photos || []).length) continue;
           const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '', session.ai_mode || 'abteilungsleiter');
@@ -1924,6 +1924,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const botName = botConfig.bot_name || 'ein Verkaufsassistent';
     const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat.', haendler:'Du bist ein erfahrener Haendler.', geschaeft:'Du repraesentierst ein Unternehmen.', nachlass:'Du loest einen Nachlass auf.' };
 
+    const catContextBot = vkGetCategoryContext(article.article_category || 'standard');
     const systemPrompt = `=== DEIN CHARAKTER ===
 Du bist ${botName}. ${contextMap[botConfig.context]||'Du bist ein erfahrener Verkaeufer.'}
 Du wirkst wie ein echter Mensch - kein Bot, kein Assistent.
@@ -1975,6 +1976,14 @@ Phase 1 - Bedarf: 1 offene Frage. Kaufmotiv herausfinden. Nie Preis erwaehnen.
 Phase 2 - Loesung: Produkt als Antwort auf genau diesen Bedarf zeigen.
 Phase 3 - Einwand: Echter Einwand direkt loesen. Vorwand: echten Grund finden.
 Phase 4 - Abschluss: Kaufsignal erkennen, konsequent schliessen.
+
+=== UNIVERSELLE VERKAUFSPRINZIPIEN ===
+${vkSalesPrinciplesText()}
+
+=== KATEGORIE: ${catContextBot.label} ===
+Naechster Schritt wenn Interesse: ${catContextBot.next_step}
+Qualifizierung: ${catContextBot.qualify}
+Wertargumente: ${catContextBot.value_args}
 
 === EXIT-STRATEGIE (wenn Kaeufer unter Mindestpreis bleibt) ===
 Wenn Kaeufer unter EUR ${absoluteMin} bleibt UND du bereits "letztes Wort" gesagt hast:
@@ -2661,10 +2670,88 @@ system: 'Du bist ein erfahrener Verkaufstexter fuer Online-Marktplaetze (Willhab
 }
 
 // ── AUTO-DNA: Generiert bot_config für alle LPs eines Artikels ──────────
+// ═══════════════════════════════════════════════════════════════════════
+// UNIVERSELLE VERKAUFSPRAXIS (erweiterbar — neue Prinzipien unten hinzufügen)
+// ═══════════════════════════════════════════════════════════════════════
+const UNIVERSAL_SALES_PRINCIPLES = [
+  {
+    id: 'availability_fomo',
+    label: 'Verfügbarkeit + FOMO',
+    text: 'Bestätige sofort die Verfügbarkeit. Erwähne konkret dass es andere Interessenten gibt aber noch kein Abschluss. Biete sofort den nächsten konkreten Schritt an (Besichtigung, Termin, Demo, Musterversand).'
+  },
+  {
+    id: 'price_with_value',
+    label: 'Preis immer mit Wert begründen',
+    text: 'Nenne den Preis IMMER mit Begründung was inkludiert ist (Zustand, Garantie, Service, Zertifikate, Ausstattung, Besonderheiten). Niemals nur die Zahl nennen ohne Kontext.'
+  },
+  {
+    id: 'discount_qualify_first',
+    label: 'Rabatt → erst qualifizieren',
+    text: 'Nie sofort nachgeben. Zuerst fragen: Gibt es ein Produkt zum Eintausch / Inzahlungnahme? Ist der Käufer entscheidungsbereit heute? Welche Timeline hat er? Erst dann und nur dann über Spielraum reden.'
+  },
+  {
+    id: 'appointment_concrete',
+    label: 'Termin konkret organisieren',
+    text: 'Nicht vage "kommen Sie vorbei" sondern: "Nennen Sie mir 2-3 Termine wann es für Sie passt und ich organisiere alles." Immer den Ball zurückspielen mit einer konkreten Handlungsaufforderung.'
+  }
+  // ← Neue Prinzipien hier hinzufügen
+];
+
+// ── KATEGORIE-SPEZIFISCHE ERGÄNZUNGEN ──────────────────────────────────
+function vkGetCategoryContext(category) {
+  const cat = (category || 'standard').toLowerCase();
+  const contexts = {
+    vehicle: {
+      label: 'Fahrzeug / KFZ',
+      next_step: 'Probefahrt anbieten',
+      qualify: 'Eintausch vorhanden? Finanzierung gewünscht? Barzahlung oder Leasing?',
+      value_args: 'Serviceheft lückenlos, TÜV/HU, Garantie, Kilometerstand, Unfallfreiheit',
+      buyer_types: 'Familie (Platz+Sicherheit), Gewerbe (Kapazität+Steuer), Einzelperson (Komfort+Status)'
+    },
+    industrial: {
+      label: 'Maschine / Industrie',
+      next_step: 'Maschinenvorführung / Besichtigung',
+      qualify: 'Inzahlungnahme alte Maschine? Wann Produktionsstart geplant? Finanzierung?',
+      value_args: 'Betriebsstunden, Wartungsprotokoll, Ersatzteilversorgung, CE-Konformität',
+      buyer_types: 'Produktion (Kapazität+Ausfallsicherheit), Händler (Wiederverkauf), Handwerk (Vielseitigkeit)'
+    },
+    medical: {
+      label: 'Medizintechnik',
+      next_step: 'Demo-Termin oder Teststellung anbieten',
+      qualify: 'Welche Anwendung genau? Wie viele Patienten/Behandlungen täglich? Zertifizierungsbedarf?',
+      value_args: 'Kalibrierung aktuell, CE-Zertifikat, Herstellergarantie, Schulungsangebot',
+      buyer_types: 'Praxis (Effizienz+Abrechnung), Klinik (Volumen+Wartung), Händler (Marge+Support)'
+    },
+    cosmetics: {
+      label: 'Kosmetik / Beauty',
+      next_step: 'Musterversand anbieten oder Zertifikate zusenden',
+      qualify: 'B2B oder Endkunde? Mindestbestellmenge? Eigenmarke oder Weiterverkauf?',
+      value_args: 'INCI-Liste, Zertifikate (bio/vegan/cruelty-free), Chargen-Dokumentation, Haltbarkeit',
+      buyer_types: 'Salon (Weiterverkauf+Marge), Händler (Volumen+Exklusivität), Endkunde (Eigennutz+Qualität)'
+    },
+    standard: {
+      label: 'Allgemein',
+      next_step: 'Besichtigung oder weitere Informationen anbieten',
+      qualify: 'Wofür wird das Produkt genutzt? Kaufbereit oder noch vergleichen?',
+      value_args: 'Zustand, Vollständigkeit, Herkunft, besondere Eigenschaften',
+      buyer_types: 'Privatperson (Eigennutz), Händler (Weiterverkauf), Gewerbe (Betriebsmittel)'
+    }
+  };
+  return contexts[cat] || contexts['standard'];
+}
+
+// ── Helper: Verkaufsprinzipien als Prompt-Text ─────────────────────────
+function vkSalesPrinciplesText() {
+  return UNIVERSAL_SALES_PRINCIPLES.map(function(p){
+    return p.label.toUpperCase() + ':\n' + p.text;
+  }).join('\n\n');
+}
+
 async function vkAutoGenerateDNA(articleId, analysis, sessionAiMode) {
   try {
     const fetch = require('node-fetch');
-    // Alle aktiven LPs für diesen Artikel finden
+
+    // ── 1. LPs für diesen Artikel laden ────────────────────────────────────
     const { data: lps } = await supabase.from('vk_landingpages')
       .select('id, ai_mode, anrede, sale_price')
       .eq('article_id', articleId)
@@ -2672,21 +2759,47 @@ async function vkAutoGenerateDNA(articleId, analysis, sessionAiMode) {
     if (!lps || !lps.length) return;
 
     const an = analysis || {};
+
+    // ── 2. Artikel-Daten laden: Fragen + Fotos + Dossier ───────────────────
+    const { data: artData } = await supabase.from('vk_articles')
+      .select('answers, questions, title')
+      .eq('id', articleId)
+      .single();
+    const artAnswers = (artData && artData.answers) || {};
+    const artQuestions = (artData && artData.questions) || [];
+
+    // Fragen → verifizierte Fakten
+    const faktenLines = artQuestions
+      .filter(function(q){ return artAnswers[q.id] && q.id !== 'q_sonstige'; })
+      .map(function(q){ return (q.label || q.id) + ': ' + artAnswers[q.id]; });
+    if (artAnswers['q_extra']) faktenLines.push('Zusatz: ' + artAnswers['q_extra']);
+    const faktenText = faktenLines.length
+      ? '\nVERIFIZIERTE FAKTEN (vom Verkaeufer bestätigt – im Bot-Gesprach direkt verwenden):\n' + faktenLines.join('\n')
+      : '';
+
+    // Fotos laden (max 4 für DNA-Analyse, sichtbare zuerst)
+    const { data: photos } = await supabase.from('vk_photos')
+      .select('public_url, storage_path')
+      .eq('article_id', articleId)
+      .order('sort_order', { ascending: true })
+      .limit(4);
+    const photoUrls = (photos || []).map(function(p){ return p.public_url; }).filter(Boolean);
+
+    // Dossier-Dokumente laden (Labels für DNA-Kontext)
+    const { data: docs } = await supabase.from('vk_article_docs')
+      .select('label, content_type, public_url')
+      .eq('article_id', articleId);
+    const dossierText = (docs && docs.length)
+      ? '\nDOSSIER-DOKUMENTE (vorhanden – Bot kann auf Anfrage zusenden):\n' + docs.map(function(d){ return '- ' + d.label; }).join('\n')
+      : '';
+
+    // ── 3. Pro LP: DNA generieren ──────────────────────────────────────────
     for (const lp of lps) {
       try {
         const lpAiMode = lp.ai_mode || sessionAiMode || 'abteilungsleiter';
-        const dnaModel = lpAiMode === 'experte' ? 'claude-opus-4-6' : lpAiMode === 'abteilungsleiter' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
-        // Artikel mit Antworten laden
-        const { data: artData } = await supabase.from('vk_articles').select('answers, questions').eq('id', articleId).single();
-        const artAnswers = (artData && artData.answers) || {};
-        const artQuestions = (artData && artData.questions) || [];
-
-        // Verifizierte Fakten aus Fragebogen
-        const faktenLines = artQuestions
-          .filter(function(q){ return artAnswers[q.id] && q.id !== 'q_sonstige'; })
-          .map(function(q){ return (q.label||q.id) + ': ' + artAnswers[q.id]; });
-        if (artAnswers['q_extra']) faktenLines.push('Zusatz: ' + artAnswers['q_extra']);
-        const faktenText = faktenLines.length ? '\nVERIFIZIERTE FAKTEN (vom Verkaeufer bestätigt - im Bot-Gespraech verwenden):\n' + faktenLines.join('\n') : '';
+        const dnaModel = lpAiMode === 'experte' ? 'claude-opus-4-6'
+          : lpAiMode === 'abteilungsleiter' ? 'claude-sonnet-4-6'
+          : 'claude-haiku-4-5-20251001';
 
         const productInfo = [
           an.title_short && 'Produkt: ' + an.title_short,
@@ -2694,23 +2807,143 @@ async function vkAutoGenerateDNA(articleId, analysis, sessionAiMode) {
           an.condition && 'Zustand: ' + an.condition,
           (an.bullet_points||[]).length && 'Highlights: ' + an.bullet_points.join(' | '),
           lp.sale_price && 'Verkaufspreis: EUR ' + lp.sale_price,
-          an.price_min && 'Marktpreis: EUR ' + an.price_min + ' - EUR ' + (an.price_max || ''),
-        ].filter(Boolean).join('\n') + faktenText;
+          an.price_min && 'Marktpreis: EUR ' + an.price_min + ' – EUR ' + (an.price_max || ''),
+        ].filter(Boolean).join('\n') + faktenText + dossierText;
 
-        if (!productInfo) { console.log('vkAutoGenerateDNA: kein productInfo fuer Artikel', articleId); continue; }
+        if (!productInfo.trim()) {
+          console.log('vkAutoGenerateDNA: kein productInfo fuer Artikel', articleId);
+          continue;
+        }
 
-        const dnaPrompt = 'Du bist Experte fuer Verkaufspsychologie. Analysiere dieses Produkt und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.\n\n' + productInfo + '\n\nAntworte NUR mit JSON, kein Markdown:\n{\n  "bot_name": "Max",\n  "product_story": "Geschichte in 2-3 Saetzen",\n  "emotion": "Emotionaler Kern (2-3 Saetze)",\n  "fomo": "Knappheitsargument",\n  "persona": "Zielgruppe konkret",\n  "feature_benefits": [{"feature": "Merkmal", "benefit": "Nutzen"}],\n  "product_values": [{"label": "Wert", "meaning": "Bedeutung"}],\n  "fomo_list": [{"situation": "Wann", "argument": "Argument"}],\n  "qa_pairs": [{"q": "Typische Kaeufer-Frage zu den verifizierten Fakten", "a": "Direkte Antwort mit konkreten Zahlen/Fakten"}],\n  "exit_strategy_args": [{"label": "Bezeichnung", "argument": "Argument wenn kein weiterer Rabatt moeglich"}],\n  "notes": "Hinweise max 2 Saetze"\n}\nMin. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs, 3 exit_strategy_args. Deutsch.';
+        // Kategorie aus Analyse ermitteln
+        const articleCategory = an.article_category || 'standard';
+        const catCtx = vkGetCategoryContext(articleCategory);
+        const salesPrinciples = vkSalesPrinciplesText();
+
+        const dnaInstruction = 'Du bist Experte fuer Verkaufspsychologie und Copywriting.\n' +
+          'Analysiere dieses Produkt (Bilder + Fakten) und erstelle Bot-Training-Daten fuer einen WhatsApp-Verkaufsbot.\n' +
+          '\n=== UNIVERSELLE VERKAUFSPRINZIPIEN (der Bot MUSS diese anwenden) ===\n' +
+          salesPrinciples + '\n' +
+          '\n=== KATEGORIE: ' + catCtx.label + ' ===\n' +
+          'Naechster Schritt: ' + catCtx.next_step + '\n' +
+          'Qualifizierung: ' + catCtx.qualify + '\n' +
+          'Wertargumente: ' + catCtx.value_args + '\n' +
+          'Kaeufertypen: ' + catCtx.buyer_types + '\n' +
+          (dossierText ? '\nDer Bot kann vorhandene Dossier-Dokumente auf Kaeufer-Anfrage per E-Mail zusenden.\n' : '') +
+          '\nDie qa_pairs sollen KONKRETE Antworten auf die verifizierten Fakten enthalten.\n' +
+          '\nAntworte NUR mit JSON, kein Markdown:\n' +
+          '{\n' +
+          '  "bot_name": "passender Vorname",\n' +
+          '  "product_story": "Geschichte in 2-3 Saetzen (warum ist das Produkt besonders)",\n' +
+          '  "emotion": "Emotionaler Kern (2-3 Saetze – was bedeutet dieses Produkt dem Kaeufer)",\n' +
+          '  "fomo": "Konkretes Knappheitsargument passend zur Kategorie",\n' +
+          '  "persona": "Zielgruppe konkret beschreiben – passend zu den Kaeufertypen der Kategorie",\n' +
+          '  "feature_benefits": [{"feature": "Konkretes Merkmal vom Foto/Fakten/Dossier", "benefit": "Nutzen fuer den Kaeufer"}],\n' +
+          '  "product_values": [{"label": "Wertkategorie", "meaning": "Konkrete Bedeutung"}],\n' +
+          '  "fomo_list": [{"situation": "Wann einsetzen", "argument": "Konkretes Knappheitsargument"}],\n' +
+          '  "qa_pairs": [{"q": "Kaeufer-Frage zu verifizierten Fakten", "a": "Direkte Antwort mit Zahlen/Fakten"}],\n' +
+          '  "exit_strategy_args": [{"label": "Bezeichnung", "argument": "Argument wenn kein weiterer Rabatt moeglich"}],\n' +
+          '  "next_step_script": "Konkreter Satz um ' + catCtx.next_step + ' zu initiieren",\n' +
+          '  "qualify_script": "Konkreter Satz fuer Qualifizierungsfrage: ' + catCtx.qualify.split('?')[0] + '",\n' +
+          '  "notes": "Besondere Hinweise fuer den Bot max 2 Saetze"\n' +
+          '}\n' +
+          'Min. 4 feature_benefits, 3 product_values, 3 fomo_list, 4 qa_pairs, 3 exit_strategy_args. Sprache: Deutsch.';
+
+        // Message-Content: Fotos + Text zusammenbauen
+        let msgContent;
+        if (photoUrls.length > 0) {
+          // Mit Fotos: multimodal (URL-basiert via text block mit Foto-Listing + text prompt)
+          // Fotos als base64 laden für Vision
+          const photoBlocks = [];
+          for (const url of photoUrls) {
+            try {
+              const imgRes = await fetch(url);
+              const arrayBuffer = await imgRes.arrayBuffer();
+              const base64 = Buffer.from(arrayBuffer).toString('base64');
+              const ct = (imgRes.headers.get('content-type') || 'image/jpeg').split(';')[0];
+              photoBlocks.push({ type: 'image', source: { type: 'base64', media_type: ct, data: base64 } });
+            } catch(imgErr) {
+              console.error('DNA foto laden fehler:', imgErr.message);
+            }
+          }
+          msgContent = [
+            ...photoBlocks,
+            { type: 'text', text: '=== PRODUKT-INFORMATIONEN ===\n' + productInfo + '\n\n' + dnaInstruction }
+          ];
+        } else {
+          // Ohne Fotos: nur Text
+          msgContent = '=== PRODUKT-INFORMATIONEN ===\n' + productInfo + '\n\n' + dnaInstruction;
+        }
 
         const dnaRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: dnaModel, max_tokens: 2000, messages: [{ role: 'user', content: dnaPrompt }] })
+          body: JSON.stringify({ model: dnaModel, max_tokens: 2000, messages: [{ role: 'user', content: msgContent }] })
         });
         const dnaData = await dnaRes.json();
         const dnaText = dnaData.content?.[0]?.text || '{}';
-        const dna = JSON.parse(dnaText.replace(/```json|```/g, '').trim());
+        const dnaClean = dnaText.replace(/```json|```/g, '').trim();
+        const dna = JSON.parse(dnaClean);
+
         await supabase.from('vk_landingpages').update({ bot_config: dna }).eq('id', lp.id);
-        console.log('DNA auto-generated for LP', lp.id, 'model:', dnaModel, 'artikel:', an.title_short);
+        console.log('DNA auto-generated for LP', lp.id, 'model:', dnaModel,
+          'artikel:', an.title_short, 'fotos:', photoBlocks ? photoBlocks.length : 0,
+          'fakten:', faktenLines.length, 'docs:', docs ? docs.length : 0);
+
+        // ── DNA-Qualität bewerten ─────────────────────────────────────────
+        const dnaScore = (dna.qa_pairs || []).length + (dna.feature_benefits || []).length;
+        const dnaComplete = faktenLines.length >= 2 && dnaScore >= 6;
+        await supabase.from('vk_articles')
+          .update({ dna_status: dnaComplete ? 'complete' : 'needs_questions', dna_score: dnaScore })
+          .eq('id', articleId);
+
+        // ── Wenn unzureichend → Branchen-Fragen automatisch generieren ───
+        if (!dnaComplete) {
+          console.log('DNA score', dnaScore, '/ fakten', faktenLines.length, '→ auto-generate Fragen für Artikel', articleId);
+          (async function genQuestions() {
+            try {
+              const { data: artCheck } = await supabase.from('vk_articles')
+                .select('questions').eq('id', articleId).single();
+              if (artCheck && artCheck.questions && artCheck.questions.length > 0) return; // Fragen schon da
+              const cat = an.article_category || 'standard';
+              const catHints = {
+                vehicle:    'KM-Stand, TÜV bis, Vorbesitzer Anzahl, Serviceheft vorhanden, Unfallschäden, Motor/Getriebetyp, Farbe',
+                industrial: 'Tragkraft, Betriebsstunden, letzte Wartung, Wartungsbuch vorhanden, Neupreis, Verkaufsgrund',
+                luxury_watch:'Referenznummer, Box & Papers vorhanden, Servicehistorie, Kaufjahr, Neupreis',
+                electronics:'Seriennummer/Modell, Kaufjahr, Zustand, Zubehör vollständig, Garantie aktiv',
+                jewelry:    'Material/Legierung, Zertifikate vorhanden, Karat/Gewicht, Schätzwert',
+                standard:   'Kaufjahr/Baujahr, Neupreis, Zustand genau beschreiben, Zubehör, Verwendung'
+              };
+              const catHint = catHints[cat] || catHints.standard;
+              const fetch = require('node-fetch');
+              const qRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'claude-haiku-4-5-20251001', max_tokens: 1500,
+                  messages: [{ role: 'user', content:
+                    'Erstelle branchen-spezifische Verkäufer-Fragen für: ' + (an.title_short || 'Artikel') + ' (Kategorie: ' + cat + ').\n' +
+                    'Wichtige Informationen die fehlen könnten: ' + catHint + '\n' +
+                    'Nur Fragen die auf Fotos NICHT sichtbar sind. Max 8 Fragen, direkt und konkret.\n' +
+                    'JSON: {"questions":[{"id":"q_model","label":"Exakte Modellbezeichnung","placeholder":"z.B. Toyota 8FBE20","type":"text","important":true}]}\n' +
+                    'type: text | number | yesno. important:true für die 3 wichtigsten Fragen.'
+                  }]
+                })
+              });
+              const qData = await qRes.json();
+              const qText = qData.content?.[0]?.text || '{"questions":[]}';
+              const qClean = qText.replace(/```json|```/g, '').trim();
+              const qParsed = JSON.parse(qClean.substring(qClean.indexOf('{'), qClean.lastIndexOf('}')+1));
+              let questions = qParsed.questions || [];
+              if (!questions.find(function(q){ return q.id === 'q_model'; })) {
+                questions.unshift({ id: 'q_model', label: 'Exakte Modellbezeichnung / Typ', placeholder: 'z.B. Toyota 8FBE20', type: 'text', important: true });
+              }
+              questions.push({ id: 'q_sonstige', label: 'Zusätzliche Informationen / Korrekturen', placeholder: 'Weitere wichtige Fakten...', type: 'text', important: false });
+              await supabase.from('vk_articles').update({ questions }).eq('id', articleId);
+              console.log('Auto-Branchen-Fragen generiert für Artikel', articleId, '(', questions.length, 'Fragen, Kategorie:', cat + ')');
+            } catch(qErr) { console.error('Auto-Fragen Fehler:', qErr.message); }
+          })();
+        }
       } catch(lpErr) { console.error('DNA LP error:', lpErr.message); }
     }
   } catch(e) { console.error('vkAutoGenerateDNA error:', e.message); }
@@ -3007,7 +3240,7 @@ app.get('/api/vk/session/:token', async (req, res) => {
   try {
     const { data: session, error } = await supabase.from('vk_sessions').select('*').eq('token', req.params.token).single();
     if (error || !session) return res.status(404).json({ error: 'Session nicht gefunden' });
-    const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id).order('sort_order', { ascending: true });
+    const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id).order('sort_order', { ascending: true });
     const enriched = (articles || []).map(a => ({ ...a, photo_count: (a.vk_photos || []).length }));
     const price = vkCalcPrice(enriched);
     res.json({ ...session, articles: enriched, price });
@@ -3197,7 +3430,7 @@ app.post('/api/vk/stripe-webhook', express.raw({ type: 'application/json' }), as
       await supabase.from('vk_sessions').update({ status: 'analyzing', paid_at: now.toISOString(), stripe_session_id: stripeSession.id, total_price: stripeSession.amount_total / 100 }).eq('id', session.id);
       (async () => {
         try {
-          const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+          const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id);
           for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); const newTitle = analysis.title_short || null;
           const comp = analysis.compliance || {};
 const auth = analysis.authenticity || {};
@@ -3240,7 +3473,7 @@ app.get('/api/vk/results/:token', async (req, res) => {
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', req.params.token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
     if (!['done', 'analyzing'].includes(session.status)) return res.status(400).json({ error: 'Analyse noch nicht abgeschlossen', status: session.status });
-    const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id).order('sort_order', { ascending: true });
+    const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id).order('sort_order', { ascending: true });
     if (!session.result_viewed_at) await supabase.from('vk_sessions').update({ result_viewed_at: new Date().toISOString() }).eq('id', session.id);
     res.json({ ...session, articles: articles || [] });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -3285,7 +3518,7 @@ app.post('/api/vk/admin/analyze/:sessionId', async (req, res) => {
     await supabase.from('vk_sessions').update({ status: 'analyzing' }).eq('id', session.id);
     res.json({ success: true, message: 'Analyse gestartet' });
     (async () => {
-      const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+      const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id);
       for (const article of (articles || [])) { const photos = article.vk_photos || []; if (!photos.length) continue; const analysis = await vkAnalyzeArticle(article, photos, session ? session.phone : (phone || '')); const newTitle = analysis.title_short || null;
           const articleUpdate = { analysis, status: 'analyzed' };
           if (newTitle) articleUpdate.title = newTitle;
@@ -4500,7 +4733,7 @@ app.post('/api/vk/coupon/redeem', async (req, res) => {
       await supabase.from('vk_sessions').update({ status: 'analyzing', paid_at: new Date().toISOString(), total_price: 0, coupon_code: code.toUpperCase() }).eq('id', session.id);
       (async () => {
         try {
-          const { data: arts } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+          const { data: arts } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id);
           for (const article of (arts||[])) { if (!(article.vk_photos||[]).length) continue; const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : ''); const newTitle = analysis.title_short || null;
           const articleUpdate = { analysis, status: 'analyzed' };
           if (newTitle) articleUpdate.title = newTitle;
@@ -4573,7 +4806,7 @@ app.post('/api/vk/auto-group', async (req, res) => {
     const { token, ai_mode } = req.body;
     const { data: session } = await supabase.from('vk_sessions').select('*').eq('token', token).single();
     if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
-    const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
+    const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*), dna_status, dna_score, questions').eq('session_id', session.id);
     if (!articles || !articles.length) return res.json({ success: true, groups: 0 });
     const allPhotos = [];
     articles.forEach(function(a) { (a.vk_photos || []).forEach(function(p) { allPhotos.push({ ...p, article_id: a.id }); }); });
