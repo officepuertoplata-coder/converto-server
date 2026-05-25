@@ -922,10 +922,16 @@ function vkBuildAnswerFakten(answers, questions) {
     });
   }
   if (!rows.length) return '';
-  return '<div class="section-card" style="background:#f0fdf4;border:1.5px solid #86efac;">'
-    + '<div class="section-heading" style="color:#15803d;">✅ Fahrzeugdaten — vom Verkäufer bestätigt</div>'
+  return '<div class="section-card" style="background:#f0fdf4;border:1.5px solid #86efac;padding:0;">'
+    + '<div onclick="this.parentElement.classList.toggle(\'open\')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:14px 16px;user-select:none;">'
+    + '<span style="color:#15803d;font-weight:700;font-size:.85rem;">✅ Fahrzeugdaten — vom Verkäufer bestätigt</span>'
+    + '<span class="facts-chevron" style="font-size:.9rem;color:#15803d;transition:transform .25s;">▼</span>'
+    + '</div>'
+    + '<div class="facts-body" style="display:none;padding:0 16px 14px;">'
     + '<div>' + rows.join('') + '</div>'
-    + '</div>';
+    + '</div>'
+    + '</div>'
+    + '<style>.section-card.open .facts-body{display:block!important}.section-card.open .facts-chevron{transform:rotate(180deg)}</style>';
 }
 
 function vkBuildLandingpageHTML(article, session, lp, sellerInfo) {
