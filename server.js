@@ -4430,7 +4430,7 @@ Antworte NUR mit validem JSON (kein Markdown):
         public_url: null,
         storage_path: null,
         file_name: label
-      }).catch(e => console.error('Doc save:', e.message));
+      });
     }
 
     await supabase.from('vk_articles').update(updateData).eq('id', req.params.id);
