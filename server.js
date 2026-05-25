@@ -1320,6 +1320,15 @@ app.post('/api/vk/landingpage', async (req, res) => {
     const activeUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 const authScore = article.analysis?.authenticity?.score ?? null;
 const showBadge = !!show_score_badge && authScore !== null && authScore >= 60;
+    // Extrafelder die in bot_config JSONB gespeichert werden (keine extra DB-Spalten nötig)
+    const lpBotConfig = {
+      bot_name_override: req.body.bot_name_override || null,
+      stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
+      mwst_included: !!req.body.mwst_included,
+      mwst_rate: parseFloat(req.body.mwst_rate) || 20,
+      min_price: parseFloat(req.body.min_price) || null
+    };
+
     const { data: lp, error } = await supabase.from('vk_landingpages').insert({
       article_id, session_id, slug,
       active_until: activeUntil,
@@ -1329,14 +1338,15 @@ const showBadge = !!show_score_badge && authScore !== null && authScore >= 60;
       shipping_cost: parseFloat(shipping_cost) || 0,
       pickup_location: pickup_location || null,
       sale_price: parseFloat(sale_price) || null,
+      min_price: parseFloat(req.body.min_price) || null,
       status: 'active', views: 0,
-show_score_badge: showBadge,
-stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
-        stock_sold: 0,
-        ai_mode: article?.ai_mode || session?.ai_mode || 'sachbearbeiter',
-        anrede: req.body.anrede || 'Sie',
-        bot_goal: Array.isArray(req.body.bot_goals) ? JSON.stringify(req.body.bot_goals) : (req.body.bot_goal || 'direktkauf'),
-        bot_name_override: req.body.bot_name_override || null,
+      show_score_badge: showBadge,
+      stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
+      stock_sold: 0,
+      ai_mode: article?.ai_mode || session?.ai_mode || 'sachbearbeiter',
+      anrede: req.body.anrede || 'Sie',
+      bot_goal: Array.isArray(req.body.bot_goals) ? JSON.stringify(req.body.bot_goals) : (req.body.bot_goal || 'direktkauf'),
+      bot_config: lpBotConfig
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
@@ -1922,7 +1932,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const aggr = aggrMap[aggrLevel] || aggrMap.professional;
     const absoluteMin = Math.max(minPrice, price - Math.round(price * aggr.maxDiscount));
 
-    const botName = lp.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent';
+    const botName = botConfig.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent';
     const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat.', haendler:'Du bist ein erfahrener Haendler.', geschaeft:'Du repraesentierst ein Unternehmen.', nachlass:'Du loest einen Nachlass auf.' };
 
     const catContextBot = vkGetCategoryContext(article.article_category || 'standard');
@@ -3771,7 +3781,7 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
   const maxDiscount = Math.round(price * aggr.maxDiscount);
   const absoluteMin = Math.max(minPrice, price - maxDiscount);
 const botConfig = lp.bot_config || {};
-const systemPrompt = `Du bist ${lp.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent'}.
+const systemPrompt = `Du bist ${botConfig.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent'}.
 ${botConfig.context === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt.' : botConfig.context === 'haendler' ? 'Du bist ein erfahrener Haendler mit tiefem Produktwissen.' : botConfig.context === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : botConfig.context === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und ehrlich.' : ''}
 Du beherrschst professionelle Verkaufstechniken - wirkst aber wie ein echter Mensch.
 
