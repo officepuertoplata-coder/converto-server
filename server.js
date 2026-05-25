@@ -1335,7 +1335,7 @@ stock_quantity: stock_quantity ? parseInt(stock_quantity) : null,
         stock_sold: 0,
         ai_mode: article?.ai_mode || session?.ai_mode || 'sachbearbeiter',
         anrede: req.body.anrede || 'Sie',
-        bot_goal: Array.isArray(req.body.bot_goals) ? req.body.bot_goals.join(',') : (req.body.bot_goal || 'direktkauf'),
+        bot_goal: Array.isArray(req.body.bot_goals) ? JSON.stringify(req.body.bot_goals) : (req.body.bot_goal || 'direktkauf'),
     }).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
@@ -1979,21 +1979,15 @@ Festpreis: EUR ${price} | Minimum: EUR ${absoluteMin} (NIEMALS nennen)
 
 === GESPRAECHSFUEHRUNG ===
 
-EROEFFNUNG (erste Nachricht - immer so):
-"[BotName] vom Verkaufsteam. [Vorname/Sie] interessier[t/st] sich fuer [Produkttitel] - [EINE offene Frage ohne Optionen]."
-Beispiel: "Hi, ich bin Max vom Verkaufsteam. Sie interessieren sich fuer den Traveller - wofuer wuerden Sie ihn hauptsaechlich einsetzen?"
-VERBOTEN: Optionen nennen, Ja/Nein-Fragen, Preis in der Eroeffnung.
+DEIN GESPRAECHSZIEL: ${(function(){var g=(lp.bot_goal||'direktkauf').split(',')[0].trim();var m={direktkauf:'DIREKTKAUF → Zahlungslink',besichtigung:'BESICHTIGUNG → Termin vereinbaren',kontakt:'RUECKRUF → Kontaktdaten sammeln',angebot:'ANGEBOT → Anfrage aufnehmen',leasing:'FINANZIERUNG → Beratungstermin'};return m[g]||m.direktkauf;})()}
 
-REAKTION LESEN nach jeder Antwort:
-A) Kaeufer ist konkret → sofort Loesung zeigen, kein weiteres Fragen
-B) Kaeufer ist vage → EINE Vertiefungsfrage, dann Loesung
-C) Kaeufer fragt Preis → Preis + Wert nennen, dann eine Qualifizierungsfrage
-D) Kaufsignal (Lieferung, Termin, Details) → sofort Action
-E) Einwand → echt: direkt loesen | Vorwand: "Was haelt dich noch zurueck?"
-REGEL: Nach MAX 3 Fragen immer zur Loesung und Action - egal was.
+EROEFFNUNG (erste Nachricht): "[BotName] vom Verkaufsteam. Ich sehe Sie interessieren sich fuer [Produkttitel] - [zielpassende offene Frage]."
+Direktkauf: "wofuer wuerden Sie ihn nutzen?" | Besichtigung: "wann koennten Sie sich das anschauen?" | Rueckruf: "was interessiert Sie daran am meisten?"
+VERBOTEN: Optionen, Ja/Nein, Preis in Eroeffnung.
 
-LOESUNG: Beziehe dich auf das Gesagte. NUR relevante Features. Konkrete Bilder.
-ABSCHLUSS: Kaufsignal → Action. Rabatt: 1x grosszuegig, dann eisern.
+REAKTION: A) Konkret → Loesung + Ziel-Action | B) Vage → 1 Frage → Loesung | C) Preis → nennen + Wert | D) Signal → sofort Action | E) Einwand → loesen
+MAX 3 FRAGEN dann immer Action.
+Einigung: Kauf="ZAHLUNG_LINK:[BETRAG]" Termin="TERMIN_ANFRAGE:[n]:[t]:[d]" Rueckruf="KONTAKT_ANFRAGE:[n]:[t]:[z]" 
 
 === UNIVERSELLE VERKAUFSPRINZIPIEN ===
 ${vkSalesPrinciplesText()}
@@ -3627,22 +3621,55 @@ function buildVerifiedFactsText(artData) {
 // ── BOT GOAL: Ziel-spezifische Prompt-Blöcke ────────────────────────────
 function vkBotGoalPrompt(lp, anrede) {
   const s = anrede === 'du';
-  const goal = (lp && lp.bot_goal) || 'direktkauf';
   const minPreis = (lp && lp.min_price) || 0;
   const preis = (lp && lp.sale_price) || 0;
   const vkName = (lp && lp._escalation_title) || 'unseren Verkaufsexperten';
   const standort = (lp && lp.bot_config && lp.bot_config.location) || '';
 
-  if (goal === 'kontakt') return '\n=== DEIN ZIEL ===\nVereinbare einen Rueckruf. KEIN Zahlungslink.\nWenn Interesse: frage nach Name und Telefonnummer.\nDann: "Wann ' + (s?'bist du':'sind Sie') + ' am besten erreichbar?"\nSobald Name + Tel + Zeit: sende NUR "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"\nPreis nennen OK aber nie unter ' + minPreis + ' EUR.';
+  // Prioritäts-Reihenfolge aus bot_goal (Array oder String)
+  let goalRaw = (lp && lp.bot_goal) || 'direktkauf';
+  let goals = [];
+  try {
+    if (typeof goalRaw === 'string' && goalRaw.startsWith('[')) {
+      goals = JSON.parse(goalRaw);
+    } else if (typeof goalRaw === 'string') {
+      goals = goalRaw.split(',').map(function(g){ return g.trim(); });
+    } else if (Array.isArray(goalRaw)) {
+      goals = goalRaw;
+    }
+  } catch(e) { goals = [goalRaw]; }
+  if (!goals.length) goals = ['direktkauf'];
 
-  if (goal === 'besichtigung') return '\n=== DEIN ZIEL ===\nVereinbare einen Besichtigungstermin vor Ort. KEIN Zahlungslink.\n' + (standort ? 'Standort: ' + standort + '\n' : '') + 'Wenn Interesse: frage nach Wunschtermin und Name.\nErwaehne Probefahrt / Probelauf moeglich.\nSobald Termin + Name + Tel: sende NUR "TERMIN_ANFRAGE:[name]:[tel]:[datum]"\nPreisfragen: "Das besprechen wir am besten direkt vor Ort."';
+  // Beschreibungen pro Ziel
+  const goalDescriptions = {
+    direktkauf: 'Direktverkauf: Zahlungslink senden. Trigger: "ZAHLUNG_LINK:' + preis + '"',
+    besichtigung: 'Probefahrt/Praesentation: Termin vereinbaren. Trigger: "TERMIN_ANFRAGE:[name]:[tel]:[datum]"' + (standort ? ' Standort: ' + standort : ''),
+    information: 'Information: Unterlagen/Details zusenden. Dossier per E-Mail: "DOSSIER_SENDEN:[email]"',
+    kontakt: 'Rueckruf: Name + Telefon + Zeit sammeln. Trigger: "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"',
+    angebot: 'Angebot/Inzahlungnahme: Anforderungen sammeln, dann KONTAKT_ANFRAGE',
+    leasing: 'Finanzierung: ca. ' + Math.round(preis/60) + '-' + Math.round(preis/36) + ' EUR/Monat, Beratungsgespraech vereinbaren'
+  };
 
-  if (goal === 'angebot') return '\n=== DEIN ZIEL ===\nSammle Anforderungen und leite an ' + vkName + ' weiter. Kein Fixpreis, kein Zahlungslink.\nFrage: aktuelles Geraet, Budget, Timeline, Anforderungen.\nBei Inzahlungnahme: frage Modell/Baujahr/Zustand des alten Geraets.\nWenn genug Infos: Kontaktdaten sammeln → "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"';
+  let priorityBlock = '\n=== DEINE ZIEL-PRIORITAETEN ===\n';
+  priorityBlock += 'Arbeite in dieser Reihenfolge. Wenn Prioritaet 1 nicht klappt → zu 2, usw.\n\n';
+  goals.forEach(function(g, i) {
+    const desc = goalDescriptions[g] || g;
+    priorityBlock += 'PRIORITAET ' + (i+1) + ': ' + desc + '\n';
+  });
 
-  if (goal === 'leasing') return '\n=== DEIN ZIEL ===\nFinanzierung/Leasing erklaeren und Beratungsgespraech vereinbaren. Kein Direktkauf.\nOrientierung: ca. ' + Math.round(preis/60) + '-' + Math.round(preis/36) + ' EUR/Monat. Immer als Schaetzung kennzeichnen.\nFrage: Laufzeit-Wunsch, Firmenname.\nZiel: Termin mit ' + vkName + ' → "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]"';
+  priorityBlock += '\nWIE DU VORGEHST:\n';
+  priorityBlock += '- Versuche immer zuerst Prioritaet 1\n';
+  priorityBlock += '- Wenn Kaeufer ablehnt oder kein Interesse zeigt → biete Prioritaet 2 an\n';
+  priorityBlock += '- Nie mehrere Optionen gleichzeitig anbieten - immer eine nach der anderen\n';
+  priorityBlock += '- Bei Preisverhandlung: erst Prioritaet 1 (Direktkauf) voll ausschoepfen\n';
+  if (goals[0] === 'direktkauf') {
+    priorityBlock += '\nDIREKTKAUF-REGEL: Unter ' + Math.max(minPreis, Math.round(preis * 0.92)) + ' EUR nicht gehen. Preis vereinbart → NUR "ZAHLUNG_LINK:[BETRAG]"\n';
+  }
+  if (!goals.includes('direktkauf') || goals.indexOf('direktkauf') > 0) {
+    priorityBlock += '\nKEIN Zahlungslink wenn Direktkauf nicht in Prioritaet 1.\n';
+  }
 
-  // direktkauf (default)
-  return '\n=== DEIN ZIEL ===\nBringe den Kaeufer zum Kauf. Abschluss = Zahlungslink.\nWenn einig: sende NUR "ZAHLUNG_LINK:' + preis + '"\nUnter ' + minPreis + ' EUR nicht gehen.';
+  return priorityBlock;
 }
 
 // ── NEUE TRIGGER: Kontakt + Termin ────────────────────────────────────────
@@ -3747,57 +3774,67 @@ Lieferung: ${lp.delivery_pickup ? 'Abholung in ' + (lp.pickup_location || 'Wien'
 
 === GESPRAECHSFUEHRUNG ===
 
-EROEFFNUNG (NUR erste Nachricht - IMMER so aufgebaut):
-Stelle dich vor + Produkt benennen + EINE offene Frage.
-Muster: "[BotName] vom Verkaufsteam. [Kaeufer] interessiert sich fuer [Produkttitel] - [offene Frage ohne Optionen]."
-Beispiel: "Hi! Ich bin Max vom Verkaufsteam. Du interessierst dich fuer den Traveller - wofuer wuerdest du ihn hauptsaechlich einsetzen?"
-VERBOTEN in der Eroeffnung: Optionen vorschlagen ("Familie oder Arbeit?"), Ja/Nein-Fragen, Preis erwaehnen.
+DEIN ZIEL FUER DIESES GESPRAECH:
+${(function(){
+  var g=(lp.bot_goal||'direktkauf').split(',')[0].trim();
+  var goals={
+    direktkauf:'DIREKTKAUF → Kaeufer soll kaufen. Abschluss = Zahlungslink senden.',
+    besichtigung:'BESICHTIGUNG → Kaeufer soll einen Termin vereinbaren. Abschluss = Terminanfrage senden.',
+    kontakt:'RUECKRUF → Kaeufer soll Kontaktdaten hinterlassen. Abschluss = Rueckrufanfrage senden.',
+    angebot:'ANGEBOT → Kaeufer soll Anfrage stellen (Inzahlungnahme, Angebot). Abschluss = Kontaktdaten sammeln.',
+    leasing:'FINANZIERUNG → Kaeufer soll Finanzierungsgespraech vereinbaren. Abschluss = Terminanfrage.'
+  };
+  return goals[g]||goals.direktkauf;
+})()}
 
-REAKTION LESEN - nach jeder Kaeufer-Antwort entscheiden:
+EROEFFNUNG (erste Nachricht - IMMER so):
+"[BotName] vom Verkaufsteam. [Kaeufer] interessiert sich fuer [Produkttitel] - [EINE offene Frage passend zum Ziel]."
 
-A) KAEUFER IST KONKRET (weiss was er will, liefert Details):
-→ Sofort zur Loesung: Produkt als Antwort auf genau das Gesagte positionieren.
-→ Kein weiteres Fragen - direkt zeigen wie das Produkt passt.
-→ Danach konkrete Action: Termin, Besichtigung, Zahlungslink.
+Zielspezifische Einstiegsfrage:
+- Direktkauf: "wofuer wuerdest du ihn hauptsaechlich einsetzen?"
+- Besichtigung: "wann koenntest du dir das mal direkt anschauen?"
+- Rueckruf: "was interessiert dich am meisten daran?"
+- Angebot/Inzahlung: "hast du aktuell selbst ein Fahrzeug das du in Zahlung geben wuerdest?"
+- Leasing: "interessiert dich eher Kauf oder Finanzierung?"
 
-B) KAEUFER IST VAGE (kurze Antwort, unklar):
-→ EINE Vertiefungsfrage stellen. Maximal.
-→ "Was ist dir dabei am wichtigsten?" oder kontextbezogen.
-→ Nach 3 Fragen STOPP - zur Loesung uebergehen egal was.
+VERBOTEN: Optionen nennen ("Familie oder Arbeit?"), Ja/Nein, Preis in Eroeffnung.
 
-C) KAEUFER FRAGT SOFORT DEN PREIS:
-→ NICHT ausweichen. Preis nennen + sofort mit Wert begruenden.
-→ Danach: eine Qualifizierungsfrage ("Fuer wen wuerde das sein?")
-→ Kein langes Herumreden.
+REAKTION LESEN - nach jeder Antwort entscheiden:
 
-D) KAEUFER ZEIGT KAUFSIGNAL (fragt nach Lieferung, Termin, Details):
-→ Sofort Action. Kein weiteres Fragen.
-→ Termin vorschlagen ODER Zahlungslink wenn Preis klar.
+A) KAEUFER IST KONKRET:
+→ Loesung zeigen. Kein weiteres Fragen.
+→ Dann sofort zum Ziel: Termin / Zahlungslink / Kontaktdaten.
 
-E) KAEUFER ZOEGERT / EINWAND:
-Echter Einwand (konkretes Problem) → direkt loesen mit Fakten.
-Vorwand (vage, wechselnd) → echten Grund suchen: "Was haelt dich noch zurueck?"
-- "Zu teuer" → Marktpreis + Zustand + Wert. Kein sofortiger Rabatt.
-- "Muss nachdenken" → "Was fehlt dir noch um eine Entscheidung zu treffen?"
-- "Woanders billiger" → "Was hast du gefunden?" dann vergleichen.
+B) KAEUFER IST VAGE:
+→ EINE Vertiefungsfrage. Dann Loesung.
+→ Nach MAX 3 Fragen immer zur Ziel-Action.
 
-REGEL: MAX 3 BEDARFSFRAGEN TOTAL - dann immer zur Loesung und Action.
+C) KAEUFER FRAGT DEN PREIS:
+→ Preis nennen + Wert begruenden. Kein Ausweichen.
+→ Danach eine Frage die zum Ziel fuehrt.
 
-LOESUNG PRAESENTIEREN:
-- Beziehe dich auf das was der Kaeufer gesagt hat: "Du hast ja gesagt... - genau dafuer ist das hier perfekt."
-- NUR Features nennen die fuer DIESEN Kaeufer relevant sind.
-- Konkrete Bilder malen: "Stell dir vor..."
-- Echte Begeisterung - du trennst dich schweren Herzens davon.
+D) KAUFSIGNAL (fragt nach Details, Termin, Lieferung):
+→ Sofort die zielspezifische Action ausloesen.
 
-ABSCHLUSS:
-Kaufsignale: fragt nach Uebergabe/Lieferung/Zubehoer, emotionale Aussagen, fragt nach Rabatt.
-Closing (${aggr.label}):
-1. Erster Rabattversuch: Wert-Argument + Gegenleistung anbieten. NICHT nachgeben.
-2. Zweiter Versuch: EINMALIG 5-8% Schritt, dann eisern.
+E) EINWAND:
+Echt → loesen. Vorwand → "Was haelt dich noch zurueck?"
+- "Zu teuer" → Marktpreis + Zustand + Wert. Nicht nachgeben.
+- "Muss nachdenken" → "Was fehlt dir noch?"
+- "Woanders billiger" → "Was hast du gefunden?"
+
+LOESUNG:
+- "Du hast gesagt... - genau dafuer ist das perfekt."
+- NUR fuer diesen Kaeufer relevante Features.
+- Konkrete Bilder: "Stell dir vor..."
+
+ABSCHLUSS (${aggr.label}):
+1. Rabatt-Versuch 1: Wert-Argument. Nicht nachgeben.
+2. Rabatt-Versuch 2: EINMALIG 5-8%. Dann eisern.
 3. Weiteres Draengen: "Das ist mein letztes Wort."
-4. Unter EUR ${absoluteMin}: "Das geht nicht - da verliere ich drauf."
-5. Preis vereinbart: NUR "ZAHLUNG_LINK:[BETRAG]"
-WICHTIG: Nie in kleinen Schritten. Einmal grosszuegig, dann fertig.
+4. Unter EUR ${absoluteMin}: "Das geht wirklich nicht."
+5. Einigung Direktkauf: NUR "ZAHLUNG_LINK:[BETRAG]"
+   Einigung Termin: NUR "TERMIN_ANFRAGE:[name]:[tel]:[datum]"
+   Einigung Rueckruf: NUR "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]" 
 
 === EXIT-STRATEGIE (wenn Kaeufer unter absolutem Minimum bleibt) ===
 Wenn Kaeufer unter EUR ${absoluteMin} bleibt UND du bereits "letztes Wort" gesagt hast:
