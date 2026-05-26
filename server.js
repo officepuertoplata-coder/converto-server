@@ -406,7 +406,48 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
           }
           const anyExtended = (articles || []).some(a => a.extended);
           const days = anyExtended ? 7 : 3;
-          await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
+          // Haiku Doc-Analyse BEVOR 'done' gesetzt wird
+      try {
+        for (const article of (articles || [])) {
+          const { data: artDocs2 } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
+          if (!artDocs2 || !artDocs2.length) continue;
+          const { data: artNow2 } = await supabase.from('vk_articles').select('answers').eq('id', article.id).single();
+          const ans2 = Object.assign({}, artNow2?.answers || {});
+          const allExtras = ans2.q_extra ? ans2.q_extra.split('|||') : [];
+          for (const doc of artDocs2) {
+            if (!doc.public_url) continue;
+            try {
+              const docRes2 = await fetch(doc.public_url);
+              const docBuf2 = Buffer.from(await docRes2.arrayBuffer());
+              const haikusRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: AI.grouping,
+                  max_tokens: 2000,
+                  system: 'Extrahiere ALLE Fakten aus dem Dokument. Antworte NUR mit JSON Array: [{"k":"Bezeichnung","v":"Wert"}]. Kein Markdown.',
+                  messages: [{ role: 'user', content: [
+                    { type: 'document', source: { type: 'base64', media_type: doc.content_type || 'application/pdf', data: docBuf2.toString('base64') } },
+                    { type: 'text', text: 'Liste ALLE Fakten als JSON Array [{k,v}]. Jeden Wert einzeln erfassen.' }
+                  ]}]
+                })
+              });
+              const hd = await haikusRes.json();
+              const ht = (hd.content?.[0]?.text || '[]').replace(/```json|```/g,'').trim();
+              const si = ht.indexOf('['), ei = ht.lastIndexOf(']');
+              if (si >= 0 && ei > si) {
+                JSON.parse(ht.substring(si, ei+1)).filter(p => p.k && p.v).forEach(p => allExtras.push(p.k+': '+p.v));
+              }
+            } catch(de2) { console.error('Doc haiku error:', de2.message); }
+          }
+          if (allExtras.length > 0) {
+            ans2.q_extra = allExtras.join('|||');
+            await supabase.from('vk_articles').update({ answers: ans2 }).eq('id', article.id);
+          }
+        }
+      } catch(docErr2) { console.error('Doc block error:', docErr2.message); }
+
+      await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
           const link = `https://converdino.com/ergebnis.html?s=${token}`;
           const allLink = `https://converdino.com/auftraege.html?p=${encodeURIComponent(session.phone)}`;
           await vkSendWhatsApp(session.phone, `Dein Verkaufsreport ist fertig!\n\nErgebnis:\n${link}\n\nAlle Auftraege:\n${allLink}\n\nWird in ${days} Tagen geloescht.`);
