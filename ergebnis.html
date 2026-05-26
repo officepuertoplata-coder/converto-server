@@ -206,11 +206,8 @@ function render(){
     html += '<div class="foto-grid" id="fg-'+a.id+'">';
     (a.vk_photos||[]).forEach(function(p){
       html += '<div class="foto-thumb"><img src="'+esc(p.public_url)+'" loading="lazy">';
-      html += '<button class="foto-del" onclick="delPhoto(\'' + p.id + '\',\'' + a.id + '\')">✕</button></div>';
     });
-    html += '<button class="add-foto-btn" onclick="trigAddPhoto(\'' + a.id + '\')">📷<span>Hinzufügen</span></button>';
     html += '</div>';
-    html += '<button class="reanalyze-btn btn-sm" onclick="reAnalyze(\'' + a.id + '\')">🔄 Neu analysieren</button>';
     html += '</div>';
 
     // ── PREISE ──
@@ -254,53 +251,15 @@ function render(){
     html += '<div class="foto-grid" id="fg-'+a.id+'">';
     (a.vk_photos||[]).forEach(function(p){
       html += '<div class="foto-thumb"><img src="'+esc(p.public_url)+'" loading="lazy">';
-      html += '<button class="foto-del" onclick="delPhoto(\''+p.id+'\',\''+a.id+'\')">✕</button></div>';
     });
-    html += '<button class="add-foto-btn" onclick="trigAddPhoto(\''+a.id+'\')">📷<span>Hinzufügen</span></button>';
     html += '</div>';
-    html += '<button class="reanalyze-btn btn-sm" onclick="reAnalyze(\''+a.id+'\')">🔄 Neu analysieren</button>';
     html += '</div>';
 
     // ── DOKUMENTE ──
     html += '<div class="sec">';
     html += '<div class="sec-title">📎 Dokumente</div>';
     html += '<div id="docs-'+a.id+'"><div style="font-size:.78rem;color:var(--mu);">Lade...</div></div>';
-    html += '<div class="doc-add-row">';
-    html += '<input class="doc-inp" id="dlabel-'+a.id+'" placeholder="Bezeichnung (z.B. Serviceheft)">';
-    html += '<button class="doc-upload-btn" onclick="trigDocUpload(\''+a.id+'\')">📄 PDF hochladen & analysieren</button>';
-    html += '<input type="file" id="docfile-'+a.id+'" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="uploadDoc(\''+a.id+'\',this)">';
-    html += '</div></div>';
 
-    // ── EINSPRUCH / KORREKTUR ──
-    html += '<div class="sec">';
-    html += '<div class="einspruch-box">';
-    html += '<div class="einspruch-label">✏️ Korrektur der KI-Analyse</div>';
-    html += '<textarea class="einspruch-input" id="einspruch-'+a.id+'" placeholder="z.B. Modell ist Toyota 8FBE20 (nicht 8FBM), KM-Stand 15.200, Baujahr 2018, Farbe blau..."></textarea>';
-    html += '<div style="display:flex;gap:8px;margin-top:8px;">';
-    html += '<button class="btn btn-gold btn-sm" onclick="doStep2(\''+a.id+'\')">🔄 Korrigieren & neu analysieren</button>';
-    html += '</div></div></div>';
-
-    // ── WISSENSDATENBANK ──
-    html += '<div class="sec">';
-    html += '<div style="cursor:pointer;user-select:none;display:flex;align-items:center;padding:16px;background:#f0fdf4;border-radius:10px;margin-bottom:12px;border:1.5px solid #86efac;" onclick="toggleSection(\'wb-'+a.id+'\')">';
-    html += '<span style="font-size:1rem;font-weight:900;color:#15803d;">🧠 Wissensdatenbank & Fragekatalog</span>';
-    html += '<span id="qcount-'+a.id+'" style="background:#15803d;color:#fff;font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:10px;margin-left:10px;">Lade...</span>';
-    html += '<span id="wbarr-'+a.id+'" style="margin-left:auto;font-size:.85rem;color:#15803d;">▲</span></div>';
-    html += '<div id="wb-'+a.id+'">';
-    html += '<div id="questions-'+a.id+'"><div style="font-size:.78rem;color:var(--mu);">Lade Fragen...</div></div>';
-    html += '<div style="margin-top:10px;">';
-    html += '<button class="btn btn-sm" style="background:#eff6ff;color:var(--blue);border:1.5px solid #bfdbfe;" onclick="saveAnswers(\''+a.id+'\')">💾 Antworten speichern</button>';
-    html += '</div></div>';
-
-    // ── DNA + LP ──
-    html += '<div class="action-row">';
-    if(!lp){
-      html += '<button class="btn btn-primary" id="dna-btn-'+a.id+'" onclick="generateDNA(\''+a.id+'\')">🚀 LP & Bot erstellen</button>';
-    } else {
-      html += '<span class="badge badge-green">🧬 DNA aktiv</span>';
-      html += '<button class="btn btn-sm btn-secondary" onclick="generateDNA(\''+a.id+'\')">🔄 DNA neu generieren</button>';
-    }
-    html += '</div>';
 
     // LP Section
     if(lp){
@@ -313,6 +272,35 @@ function render(){
     } else if(a.lp_booked){
       html += '<div class="sec" id="lp-sec-'+a.id+'" style="display:none;">';
       html += buildLPForm(a);
+      html += '</div>';
+    }
+
+    // ── EINSPRUCH ──
+    html += '<div class="sec">';
+    html += '<div class="einspruch-box">';
+    html += '<div class="einspruch-label">✏️ Korrektur der KI-Analyse</div>';
+    html += '<textarea class="einspruch-input" id="einspruch-'+a.id+'" placeholder="z.B. Modell ist Toyota 8FBE20, KM-Stand 15.200, Baujahr 2018..."></textarea>';
+    html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+    html += '<button class="btn btn-gold btn-sm" onclick="doStep2(\''+a.id+'\')">🔄 Korrigieren & neu analysieren</button>';
+    html += '</div></div></div>';
+
+    // ── WISSENSDATENBANK ──
+    html += '<div class="sec">';
+    html += '<div style="cursor:pointer;user-select:none;display:flex;align-items:center;padding:14px 16px;background:#f0fdf4;border-radius:10px;border:1.5px solid #86efac;" onclick="toggleSection(\'wb-'+a.id+'\')">';
+    html += '<span style="font-size:.95rem;font-weight:900;color:#15803d;">🧠 Wissensdatenbank & Fragekatalog</span>';
+    html += '<span id="qcount-'+a.id+'" style="background:#15803d;color:#fff;font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:10px;margin-left:10px;">Lade...</span>';
+    html += '<span id="wbarr-'+a.id+'" style="margin-left:auto;font-size:.85rem;color:#15803d;">▲</span>';
+    html += '</div>';
+    html += '<div id="wb-'+a.id+'">';
+    html += '<div id="questions-'+a.id+'"><div style="font-size:.78rem;color:var(--mu);padding:8px;">Lade...</div></div>';
+    html += '<div style="margin-top:10px;padding:0 2px;">';
+    html += '<button class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;" onclick="saveAnswers(\''+a.id+'\')">💾 Antworten speichern</button>';
+    html += '</div></div></div>';
+
+    // ── LP & BOT BUTTON ──
+    if(!lp){
+      html += '<div style="padding:16px;">';
+      html += '<button id="dna-btn-'+a.id+'" onclick="generateDNA(\''+a.id+'\')" style="width:100%;padding:20px;background:#25D366;color:#fff;border:none;border-radius:14px;font-size:1.15rem;font-weight:900;cursor:pointer;font-family:Nunito,sans-serif;box-shadow:0 6px 20px rgba(37,211,102,.4);letter-spacing:.3px;">🚀 LP & Bot erstellen</button>';
       html += '</div>';
     }
 
