@@ -132,13 +132,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script>
 const API='https://converto-server-production.up.railway.app';
 const MODES={
-  sachbearbeiter:{icon:'&#128100;',name:'Sachbearbeiter',sub:'Basis \xd71',mult:1},
-  abteilungsleiter:{icon:'&#128202;',name:'Abteilungsleiter',sub:'Standard \xd72',mult:2},
-  experte:{icon:'&#127919;',name:'Experte',sub:'Premium \xd74',mult:4}
 };
 let sessionToken=null,sd=null,couponData=null,bizDisc=null;
-const notesCache={},daysCache={},artModes={};
-let selMode='sachbearbeiter';
+const notesCache={},daysCache={};
 let _dragPid=null,_dragSid=null;
 
 function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
@@ -146,24 +142,20 @@ function escA(s){return s?String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
 function toast(msg){var t=document.getElementById('toast');t.innerHTML=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
 function showErr(msg){document.getElementById('app').innerHTML='<div class="card"><div class="err-box">&#9888; '+msg+'</div></div>'}
 
-function getArtMode(id){return artModes[id]||selMode}
-function getArtMult(id){return MODES[getArtMode(id)]?.mult||1}
-function setArtMode(id,m){
-  artModes[id]=m;
-  if(m==='sachbearbeiter'&&sd?.articles){sd.articles.forEach(a=>{if(a.id===id&&a.lp_booked){a.lp_booked=false;saveLPField(id,{lp_booked:false});}});}
   render();
 }
-function setMode(m){
-  selMode=m;
-  if(sd?.articles){var n=sd.articles.filter(a=>artModes[a.id]&&artModes[a.id]!==m).length;if(n>0)toast('&#8505;&#65039; '+n+' Position'+(n>1?'en haben':' hat')+' eigenen Modus');}
   render();
 }
 function getArtDays(id){return daysCache[id]||3}
 
 function calcArtPrice(a){
-  var pics=(a.vk_photos||[]).length;if(!pics)return 0;
-  var mult=getArtMult(a.id);
-  if(a.lp_booked&&(a.lp_days||0)>0){var r=a.lp_has_bot?1.00:0.40;return Math.round((a.lp_days||7)*r*mult*100)/100;}
+  var t=0;
+  var pc=a.photo_count||(a.vk_photos||[]).length||0;
+  if(pc>0){t+=1.00;t+=Math.max(0,pc-1)*0.25;}
+  if(a.extended)t+=1.00;
+  if(a.lp_booked&&a.lp_days>0){var r=a.lp_has_bot?1.00:0.40;t+=Math.round(a.lp_days*r*100)/100;}
+  return Math.round(t*100)/100;
+}
   var v=1.00+Math.max(0,pics-1)*0.25;var d=getArtDays(a.id);if(d>3)v+=Math.floor(d/7)*1.00;
   return Math.round(v*mult*100)/100;
 }
@@ -187,7 +179,6 @@ async function loadSession(){
     sd=await r.json();
     if(new URLSearchParams(location.search).get('paid')==='1'&&sd.status==='open'){showAnalyzing();pollStatus();return;}
     try{var dr=await fetch(API+'/api/vk/session/'+sessionToken+'/discount');var dd=await dr.json();if(dd.has_discount)bizDisc=dd;}catch(e){}
-    if(sd.ai_mode&&MODES[sd.ai_mode])selMode=sd.ai_mode;
     render();
   }catch(e){showErr('Fehler: '+e.message);}
 }
@@ -214,7 +205,7 @@ function buildPage(){
   html+='<div style="display:flex;justify-content:space-between;font-size:.88rem;padding:4px 0;"><span style="color:#9ca3af">Status</span><span style="background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:10px;font-weight:700;font-size:.8rem;">'+({open:'Offen',paid:'Bezahlt',analyzing:'Analyse',done:'Fertig'}[sd.status]||sd.status)+'</span></div>';
   html+='<div style="display:flex;justify-content:space-between;font-size:.88rem;padding:4px 0;"><span style="color:#9ca3af">Telefon</span><span>+'+(sd.phone||'')+'</span></div></div>';
   html+='<div class="card"><div class="card-title">Artikel &amp; Fotos</div>';
-  var isMass=selMode==='abteilungsleiter'||selMode==='experte';
+  var isMass=true;
   if(isMass){
     var tp=arts.reduce((s,a)=>s+(a.vk_photos||[]).length,0);
     html+='<div class="hint"><strong>&#128248; Massen-Upload aktiv</strong>Lade alle Fotos auf einmal hoch.</div>';
@@ -236,15 +227,9 @@ function buildPage(){
   return html;
 }
 
-function buildModeSelector(){
-  var h='<div class="mode-sel">';
-  Object.keys(MODES).forEach(k=>{var m=MODES[k],on=selMode===k;h+='<button class="mode-btn'+(on?' on':'')+'" onclick="setMode(\''+k+'\')">';h+='<span class="mode-icon">'+m.icon+'</span><span class="mode-name">'+m.name+'</span><span class="mode-sub">'+m.sub+'</span></button>';});
-  return h+'</div>';
-}
-
 function buildArt(a,idx){
   var pics=(a.vk_photos||[]).slice().sort((x,y)=>(x.sort_order||0)-(y.sort_order||0));
-  var aMode=getArtMode(a.id),aPrice=calcArtPrice(a);
+  var aPrice=calcArtPrice(a);
   var notes=notesCache[a.id]!==undefined?notesCache[a.id]:(a.notes||'');
   var h='<div class="art" id="art-'+a.id+'">';
   h+='<div class="art-head"><span class="art-num">#'+(idx+1)+'</span>';
@@ -252,8 +237,6 @@ function buildArt(a,idx){
   if(pics.length>0)h+='<span class="badge">'+pics.length+' Foto'+(pics.length!==1?'s':'')+'</span>';
   h+='</div>';
   h+='<div class="ki-row">';
-  [{k:'sachbearbeiter',cls:'ki-s'},{k:'abteilungsleiter',cls:'ki-a'},{k:'experte',cls:'ki-e'}].forEach(c=>{
-    var on=aMode===c.k;h+='<button class="ki-chip'+(on?' '+c.cls:'')+'" onclick="setArtMode(\''+a.id+'\',\''+c.k+'\')">'+(on?['&#128100;','&#128202;','&#127919;'][{sachbearbeiter:0,abteilungsleiter:1,experte:2}[c.k]]:'')+MODES[c.k].name+(on?' &#10003;':'')+'</button>';
   });
   h+='</div>';
   var photoHTML=pics.map((p,pi)=>{
@@ -297,8 +280,7 @@ function buildDaySel(a){
 }
 
 function buildLP(a){
-  var artMode=getArtMode(a.id);
-  if(artMode==='sachbearbeiter'&&!(bizDisc?.has_discount))return '';
+  
   if(!(a.vk_photos||[]).length)return '';
   var booked=!!a.lp_booked,days=a.lp_days||7,bot=!!a.lp_has_bot;
   var mult=getArtMult(a.id),lpR=bot?1.00:0.40,lpCost=Math.round(days*lpR*mult*100)/100;
@@ -333,7 +315,6 @@ function buildSummary(arts,total){
   arts.forEach(a=>{
     var ap=calcArtPrice(a),aMult=getArtMult(a.id);
     if(!(a.vk_photos||[]).length)return;
-    var modeTag=' <span style="font-size:.68rem;color:#9ca3af;">'+MODES[getArtMode(a.id)].name+' \xd7'+aMult+'</span>';
     h+='<div class="pr-row pr-sub"><span>'+esc(a.title||'Artikel')+modeTag+'</span><span style="font-weight:700;">\u20ac'+ap.toFixed(2)+'</span></div>';
   });
   if(bizDisc?.has_discount){var disc=Math.round(total*bizDisc.percent/100*100)/100;h+='<div class="pr-row" style="color:#059669;"><span>\ud83c\udff7\ufe0f Firmenrabatt ('+bizDisc.percent+'%)</span><span>-\u20ac'+disc.toFixed(2)+'</span></div>';}
@@ -414,7 +395,7 @@ async function uploadPhotos(artId,files){
 }
 async function autoGroup(){
   toast('&#8987; KI gruppiert...');
-  try{var r=await fetch(API+'/api/vk/auto-group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:sessionToken,ai_mode:selMode})});if(r.ok){var d=await r.json();toast('&#10003; '+(d.groups||0)+' Artikel erkannt!');var r2=await fetch(API+'/api/vk/session/'+sessionToken);sd=await r2.json();render();}}
+  try{var r=await fetch(API+'/api/vk/auto-group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:sessionToken})});if(r.ok){var d=await r.json();toast('&#10003; '+(d.groups||0)+' Artikel erkannt!');var r2=await fetch(API+'/api/vk/session/'+sessionToken);sd=await r2.json();render();}}
   catch(e){toast('Auto-Gruppierung folgt');}
 }
 
@@ -443,8 +424,8 @@ async function valCoupon(){
 
 async function startPay(){
   try{
-    var artDays={},artModeMap={};(sd.articles||[]).forEach(a=>{artDays[a.id]=getArtDays(a.id);artModeMap[a.id]=getArtMode(a.id);});
-    var body={token:sessionToken,ai_mode:selMode,article_days:artDays,article_modes:artModeMap};
+    var artDays={};(sd.articles||[]).forEach(a=>{artDays[a.id]=getArtDays(a.id);});
+    var body={token:sessionToken,article_days:artDays};
     if(couponData)body.coupon_code=couponData.code;
     var r=await fetch(API+'/api/vk/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     var d=await r.json();if(!r.ok||!d.url)throw new Error(d.error||'Fehler');location.href=d.url;
@@ -452,8 +433,7 @@ async function startPay(){
 }
 async function redeemFree(){
   try{
-    var artModeMap={};(sd.articles||[]).forEach(a=>{artModeMap[a.id]=getArtMode(a.id);});
-    var r=await fetch(API+'/api/vk/business-free',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:sessionToken,ai_mode:selMode,article_modes:artModeMap})});
+        var r=await fetch(API+'/api/vk/business-free',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:sessionToken})});
     var d=await r.json();if(!r.ok)throw new Error(d.error||'Fehler');
     showAnalyzing();
     var attempts=0,iv2=setInterval(async function(){attempts++;
