@@ -226,7 +226,7 @@ function render(){
 
     // Report (immer)
     html += '<div class="prod-row">';
-    html += '<div class="prod-left"><div class="prod-toggle on disabled"></div><div><div class="prod-name">📊 Analyse-Report</div><div class="prod-sub">Immer enthalten</div></div></div>';
+    html += '<div class="prod-left"><div style="width:38px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="color:var(--g);font-size:1.1rem;">✓</span></div><div><div class="prod-name">📊 Analyse-Report</div><div class="prod-sub">Immer enthalten</div></div></div>';
     html += '<div class="prod-price">'+fmt(PRICES.report)+' / 7 Tage</div>';
     html += '</div>';
 
@@ -409,12 +409,16 @@ async function delPhoto(pid){
 
 function setupDropZones(){
   document.querySelectorAll('.upload-zone').forEach(function(zone){
-    zone.ondragover = function(e){ e.preventDefault(); zone.style.borderColor='var(--g)'; };
-    zone.ondragleave = function(){ zone.style.borderColor=''; };
+    zone.ondragenter = function(e){ e.preventDefault(); e.stopPropagation(); zone.style.borderColor='var(--g)'; zone.style.background='#f0fdf4'; };
+    zone.ondragover = function(e){ e.preventDefault(); e.stopPropagation(); zone.style.borderColor='var(--g)'; zone.style.background='#f0fdf4'; };
+    zone.ondragleave = function(e){ e.stopPropagation(); zone.style.borderColor=''; zone.style.background=''; };
     zone.ondrop = async function(e){
-      e.preventDefault(); zone.style.borderColor='';
-      var artId = zone.closest('.pos-card').id.replace('art-','');
-      var files = Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith('image/'));
+      e.preventDefault(); e.stopPropagation();
+      zone.style.borderColor=''; zone.style.background='';
+      var card = zone.closest('.pos-card');
+      if(!card) return;
+      var artId = card.id.replace('art-','');
+      var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.type.startsWith('image/'); });
       if(files.length) await uploadPhotos(artId, files);
     };
   });
