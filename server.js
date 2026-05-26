@@ -364,90 +364,11 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
             });
           }
             if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
-          // Docs automatisch analysieren nach Artikel-Analyse (sequential)
-          (async function autoAnalyzeDocs() {
-            try {
-              const fetch2 = require('node-fetch');
-              const { data: artDocs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
-              if (!artDocs || !artDocs.length) return;
-              console.log('Auto-doc: analyzing', artDocs.length, 'docs for article', article.id);
-              for (const doc of artDocs) {
-                if (!doc.public_url) continue;
-                try {
-                  const docRes = await fetch2(doc.public_url);
-                  const docBuf = Buffer.from(await docRes.arrayBuffer());
-                  const base64 = docBuf.toString('base64');
-                  const ct = doc.content_type || 'application/pdf';
-                  const blocks = [
-                    { type: 'document', source: { type: 'base64', media_type: ct, data: base64 } },
-                    { type: 'text', text: 'Extrahiere ALLE technischen Fakten aus dem Dokument als JSON (kein Markdown):\n{"extracted_facts":{"q_model":"Modell/Typ oder null","q_year":"Baujahr oder null","q_hours":"Betriebsstunden oder null","q_km":"KM-Stand oder null","q_condition":"Zustand oder null","q_serial":"Seriennummer oder null"},"extra_facts":[{"key":"Bezeichnung","value":"Wert"}]}\nPFLICHT: Jeden Wert aus dem Dokument als extra_facts Eintrag erfassen.' }
-                  ];
-                  const er = await fetch2('https://api.anthropic.com/v1/messages', {
-                    method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: AI.extraction, max_tokens: 1500, messages: [{ role: 'user', content: blocks }] })
-                  });
-                  const ed = await er.json();
-                  const et = (ed.content?.[0]?.text || '{}').replace(/```json|```/g,'').trim();
-                  const parsed = JSON.parse(et.substring(et.indexOf('{'), et.lastIndexOf('}')+1));
-                  const { data: artNow } = await supabase.from('vk_articles').select('answers').eq('id', article.id).single();
-                  const ans = Object.assign({}, artNow?.answers || {});
-                  Object.entries(parsed.extracted_facts || {}).forEach(function([k,v]){ if(v && v!=='null') ans[k]=String(v); });
-                  const extras = (parsed.extra_facts || []).filter(function(e){ return e.key && e.value; });
-                  if (extras.length) {
-                    const existing = ans['q_extra'] ? ans['q_extra'].split('|||') : [];
-                    ans['q_extra'] = [...existing, ...extras.map(function(e){ return e.key+': '+e.value; })].join('|||');
-                  }
-                  await supabase.from('vk_articles').update({ answers: ans }).eq('id', article.id);
-                  console.log('Auto-doc: extracted', extras.length, 'facts from', doc.label);
-                } catch(de) { console.error('Auto-doc error:', doc.label, de.message); }
-              }
-            } catch(e) { console.error('autoAnalyzeDocs error:', e.message); }
-          })();
+
           }
           const anyExtended = (articles || []).some(a => a.extended);
           const days = anyExtended ? 7 : 3;
-          // Haiku Doc-Analyse BEVOR 'done' gesetzt wird
-      try {
-        for (const article of (articles || [])) {
-          const { data: artDocs2 } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
-          if (!artDocs2 || !artDocs2.length) continue;
-          const { data: artNow2 } = await supabase.from('vk_articles').select('answers').eq('id', article.id).single();
-          const ans2 = Object.assign({}, artNow2?.answers || {});
-          const allExtras = ans2.q_extra ? ans2.q_extra.split('|||') : [];
-          for (const doc of artDocs2) {
-            if (!doc.public_url) continue;
-            try {
-              const docRes2 = await fetch(doc.public_url);
-              const docBuf2 = Buffer.from(await docRes2.arrayBuffer());
-              const haikusRes = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: AI.grouping,
-                  max_tokens: 2000,
-                  system: 'Extrahiere ALLE Fakten aus dem Dokument. Antworte NUR mit JSON Array: [{"k":"Bezeichnung","v":"Wert"}]. Kein Markdown.',
-                  messages: [{ role: 'user', content: [
-                    { type: 'document', source: { type: 'base64', media_type: doc.content_type || 'application/pdf', data: docBuf2.toString('base64') } },
-                    { type: 'text', text: 'Liste ALLE Fakten als JSON Array [{k,v}]. Jeden Wert einzeln erfassen.' }
-                  ]}]
-                })
-              });
-              const hd = await haikusRes.json();
-              const ht = (hd.content?.[0]?.text || '[]').replace(/```json|```/g,'').trim();
-              const si = ht.indexOf('['), ei = ht.lastIndexOf(']');
-              if (si >= 0 && ei > si) {
-                JSON.parse(ht.substring(si, ei+1)).filter(p => p.k && p.v).forEach(p => allExtras.push(p.k+': '+p.v));
-              }
-            } catch(de2) { console.error('Doc haiku error:', de2.message); }
-          }
-          if (allExtras.length > 0) {
-            ans2.q_extra = allExtras.join('|||');
-            await supabase.from('vk_articles').update({ answers: ans2 }).eq('id', article.id);
-          }
-        }
-      } catch(docErr2) { console.error('Doc block error:', docErr2.message); }
-
-      await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
+          await supabase.from('vk_sessions').update({ status: 'done', analyzed_at: new Date().toISOString(), delete_at: new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString() }).eq('id', session.id);
           const link = `https://converdino.com/ergebnis.html?s=${token}`;
           const allLink = `https://converdino.com/auftraege.html?p=${encodeURIComponent(session.phone)}`;
           await vkSendWhatsApp(session.phone, `Dein Verkaufsreport ist fertig!\n\nErgebnis:\n${link}\n\nAlle Auftraege:\n${allLink}\n\nWird in ${days} Tagen geloescht.`);
