@@ -198,6 +198,19 @@ function render(){
       html += '</div>'; return;
     }
 
+    // ── FOTOS (oben) ──
+    html += '<div class="sec">';
+    html += '<div class="sec-title">📷 Fotos <span>'+(a.vk_photos||[]).length+'</span></div>';
+    html += '<div class="foto-grid" id="fg-'+a.id+'">';
+    (a.vk_photos||[]).forEach(function(p){
+      html += '<div class="foto-thumb"><img src="'+esc(p.public_url)+'" loading="lazy">';
+      html += '<button class="foto-del" onclick="delPhoto(\'' + p.id + '\',\'' + a.id + '\')">✕</button></div>';
+    });
+    html += '<button class="add-foto-btn" onclick="trigAddPhoto(\'' + a.id + '\')">📷<span>Hinzufügen</span></button>';
+    html += '</div>';
+    html += '<button class="reanalyze-btn btn-sm" onclick="reAnalyze(\'' + a.id + '\')">🔄 Neu analysieren</button>';
+    html += '</div>';
+
     // ── PREISE ──
     html += '<div class="sec">';
     html += '<div class="sec-title">💶 Preisempfehlung</div>';
@@ -363,32 +376,92 @@ async function loadQuestions(artId){
 }
 
 function renderQuestions(artId){
-  var qs = _questions[artId]||[];
-  var ans = _answers[artId]||{};
-  var el = document.getElementById('questions-'+artId);
-  var cnt = document.getElementById('qcount-'+artId);
+  var qs=_questions[artId]||[], ans=_answers[artId]||{};
+  var el=document.getElementById('questions-'+artId);
+  var cnt=document.getElementById('qcount-'+artId);
   if(!el) return;
-  if(cnt) cnt.textContent = qs.length+' Fragen';
-  if(!qs.length){ el.innerHTML='<div style="font-size:.78rem;color:var(--mu);">Keine Fragen generiert.</div>'; return; }
-  var html = '';
-  qs.forEach(function(q){
-    var val = ans[q.id]||'';
-    html += '<div class="q-item">';
-    html += '<div class="q-label">'+esc(q.label)+(q.important?'<span class="q-important">★</span>':'')+'</div>';
-    if(q.type==='yesno'){
-      html += '<select class="q-input'+(val?' filled':'')+'\" id="q-'+artId+'-'+q.id+'" onchange="setAnswer(\''+artId+'\',\''+q.id+'\',this.value)">';
-      html += '<option value="">— Auswählen</option>';
-      html += '<option value="ja"'+(val==='ja'?' selected':'')+'>Ja</option>';
-      html += '<option value="nein"'+(val==='nein'?' selected':'')+'>Nein</option>';
-      html += '</select>';
-    } else {
-      html += '<input type="'+(q.type==='number'?'number':'text')+'" class="q-input'+(val?' filled':'')+'\" id="q-'+artId+'-'+q.id+'" value="'+esc(val)+'" placeholder="'+esc(q.placeholder||'')+'" oninput="setAnswer(\''+artId+'\',\''+q.id+'\',this.value)">';
-    }
-    html += '</div>';
+
+  // Extra-Fakten parsen
+  var extraFacts=[];
+  if(ans.q_extra){ ans.q_extra.split('|||').forEach(function(p){ var s=p.indexOf(':'); if(s>0) extraFacts.push({k:p.slice(0,s).trim(),v:p.slice(s+1).trim()}); }); }
+
+  if(cnt) cnt.textContent=(qs.length+extraFacts.length)+' Einträge';
+
+  var rows='';
+  if(qs.length){
+    rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Standardfelder</div>';
+    qs.forEach(function(q){
+      var val=ans[q.id]||'';
+      var filled=val?' filled':'';
+      rows+='<div class="q-item"><div class="q-label">'+esc(q.label)+(q.important?'<span class="q-important">★</span>':'')+'</div>';
+      if(q.type==='yesno'){
+        rows+='<select class="q-input'+filled+'" data-aid="'+artId+'" data-qid="'+q.id+'">';
+        rows+='<option value="">— Auswählen</option>';
+        rows+='<option value="ja"'+(val==='ja'?' selected':'')+'>Ja</option>';
+        rows+='<option value="nein"'+(val==='nein'?' selected':'')+'>Nein</option>';
+        rows+='</select>';
+      } else {
+        rows+='<input type="'+(q.type==='number'?'number':'text')+'" class="q-input'+filled+'" data-aid="'+artId+'" data-qid="'+q.id+'" value="'+esc(val)+'" placeholder="'+esc(q.placeholder||'')+'">';
+      }
+      rows+='</div>';
+    });
+  }
+
+  rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;">Technische Daten <span style="color:#1d4ed8;font-weight:600;text-transform:none;">'+(extraFacts.length?extraFacts.length+' Einträge':'leer')+'</span></div>';
+  extraFacts.forEach(function(f,i){
+    rows+='<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">';
+    rows+='<input type="text" class="q-input" style="flex:1;background:#f0f9ff;border-color:#bfdbfe;font-size:.78rem;" data-aid="'+artId+'" data-eidx="'+i+'" data-efield="k" value="'+esc(f.k)+'" placeholder="Bezeichnung">';
+    rows+='<input type="text" class="q-input" style="flex:2;font-size:.78rem;" data-aid="'+artId+'" data-eidx="'+i+'" data-efield="v" value="'+esc(f.v)+'" placeholder="Wert">';
+    rows+='<button style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;padding:4px;" data-aid="'+artId+'" data-eidx="'+i+'" class="rm-extra-btn">✕</button>';
+    rows+='</div>';
   });
-  el.innerHTML = html;
+  rows+='<button class="add-extra-btn" data-aid="'+artId+'" style="margin-top:4px;padding:7px 14px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--mu);width:100%;">+ Feld hinzufügen</button>';
+
+  el.innerHTML=rows;
+
+  // Event Listener
+  el.querySelectorAll('[data-qid]').forEach(function(inp){
+    inp.addEventListener('input',function(){ setAnswer(inp.dataset.aid,inp.dataset.qid,inp.value); inp.classList.toggle('filled',!!inp.value); });
+    inp.addEventListener('change',function(){ setAnswer(inp.dataset.aid,inp.dataset.qid,inp.value); inp.classList.toggle('filled',!!inp.value); });
+  });
+  el.querySelectorAll('[data-efield]').forEach(function(inp){
+    inp.addEventListener('input',function(){ updateExtra(inp.dataset.aid,parseInt(inp.dataset.eidx),inp.dataset.efield,inp.value); });
+  });
+  el.querySelectorAll('.rm-extra-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){ removeExtra(btn.dataset.aid,parseInt(btn.dataset.eidx)); });
+  });
+  el.querySelector('.add-extra-btn')?.addEventListener('click',function(e){ addExtra(e.target.dataset.aid); });
 }
 
+function updateExtra(artId,idx,field,val){
+  if(!_answers[artId]) _answers[artId]={};
+  var parts=(_answers[artId].q_extra||'').split('|||').filter(Boolean);
+  while(parts.length<=idx) parts.push(':');
+  var cur=parts[idx], s=cur.indexOf(':');
+  parts[idx]=field==='k'?val+':'+(s>=0?cur.slice(s+1):''):(s>=0?cur.slice(0,s):cur)+':'+val;
+  _answers[artId].q_extra=parts.join('|||');
+}
+
+function removeExtra(artId,idx){
+  if(!_answers[artId]) return;
+  var parts=(_answers[artId].q_extra||'').split('|||').filter(Boolean);
+  parts.splice(idx,1);
+  _answers[artId].q_extra=parts.join('|||');
+  renderQuestions(artId);
+}
+
+function addExtra(artId){
+  if(!_answers[artId]) _answers[artId]={};
+  var parts=(_answers[artId].q_extra||'').split('|||').filter(Boolean);
+  parts.push(':');
+  _answers[artId].q_extra=parts.join('|||');
+  renderQuestions(artId);
+}
+
+function setAnswerById(elemId, artId, qid){
+  var el = document.getElementById(elemId);
+  if(el) setAnswer(artId, qid, el.value);
+}
 function setAnswer(artId, qid, val){
   if(!_answers[artId]) _answers[artId]={};
   _answers[artId][qid] = val;
