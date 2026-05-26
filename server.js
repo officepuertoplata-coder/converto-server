@@ -364,6 +364,51 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
             });
           }
             if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
+          // Docs automatisch verarbeiten (im Hintergrund)
+          (async function() {
+            try {
+              const { data: docs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
+              if (docs && docs.length > 0) {
+                for (const doc of docs) {
+                  if (!doc.public_url) continue;
+                  try {
+                    const docRes = await fetch(doc.public_url);
+                    const docBuf = Buffer.from(await docRes.arrayBuffer());
+                    const base64 = docBuf.toString('base64');
+                    const ct = doc.content_type || 'application/pdf';
+                    // Fakten aus Dokument extrahieren
+                    const extractRes = await fetch('https://api.anthropic.com/v1/messages', {
+                      method: 'POST',
+                      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        model: AI.extraction,
+                        max_tokens: 1000,
+                        system: 'Extrahiere alle Fakten aus dem Dokument als JSON Array: [{k:"Eigenschaft",v:"Wert"}]. Nur JSON, kein Markdown.',
+                        messages: [{ role: 'user', content: [
+                          { type: 'document', source: { type: 'base64', media_type: ct, data: base64 } },
+                          { type: 'text', text: 'Extrahiere alle relevanten Produkt-Fakten als JSON Array [{k,v}].' }
+                        ]}]
+                      })
+                    });
+                    const extractData = await extractRes.json();
+                    const extractText = extractData.content?.[0]?.text || '[]';
+                    const cleaned = extractText.replace(/```json|```/g,'').trim();
+                    const pairs = JSON.parse(cleaned.substring(cleaned.indexOf('['), cleaned.lastIndexOf(']')+1));
+                    if (pairs && pairs.length > 0) {
+                      // Fakten als Antworten speichern
+                      const answers = {};
+                      pairs.forEach(function(p,i){ answers['doc_fact_'+i] = p.k+': '+p.v; });
+                      await fetch('https://converto-server-production.up.railway.app/api/vk/article/'+article.id+'/answers', {
+                        method: 'POST', headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({answers, source:'doc_'+doc.id})
+                      });
+                      console.log('Doc facts extracted:', pairs.length, 'for article', article.id);
+                    }
+                  } catch(docErr) { console.error('Doc processing error:', docErr.message); }
+                }
+              }
+            } catch(e) { console.error('Auto-doc processing error:', e.message); }
+          })();
           }
           const anyExtended = (articles || []).some(a => a.extended);
           const days = anyExtended ? 7 : 3;
