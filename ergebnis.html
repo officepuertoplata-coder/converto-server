@@ -282,9 +282,10 @@ function render(){
 
     // ── WISSENSDATENBANK ──
     html += '<div class="sec">';
-    html += '<div class="sec-title" style="cursor:pointer;user-select:none;display:flex;align-items:center;" onclick="toggleSection(\'wb-'+a.id+'\')">';
-    html += '🧠 Wissensdatenbank <span id="qcount-'+a.id+'" style="background:var(--g2);color:#fff;font-size:.6rem;padding:2px 7px;border-radius:10px;margin-left:6px;">Lade...</span>';
-    html += '<span id="wbarr-'+a.id+'" style="margin-left:auto;font-size:.75rem;">▲</span></div>';
+    html += '<div style="cursor:pointer;user-select:none;display:flex;align-items:center;padding:16px;background:#f0fdf4;border-radius:10px;margin-bottom:12px;border:1.5px solid #86efac;" onclick="toggleSection(\'wb-'+a.id+'\')">';
+    html += '<span style="font-size:1rem;font-weight:900;color:#15803d;">🧠 Wissensdatenbank & Fragekatalog</span>';
+    html += '<span id="qcount-'+a.id+'" style="background:#15803d;color:#fff;font-size:.68rem;font-weight:700;padding:3px 10px;border-radius:10px;margin-left:10px;">Lade...</span>';
+    html += '<span id="wbarr-'+a.id+'" style="margin-left:auto;font-size:.85rem;color:#15803d;">▲</span></div>';
     html += '<div id="wb-'+a.id+'">';
     html += '<div id="questions-'+a.id+'"><div style="font-size:.78rem;color:var(--mu);">Lade Fragen...</div></div>';
     html += '<div style="margin-top:10px;">';
@@ -294,7 +295,7 @@ function render(){
     // ── DNA + LP ──
     html += '<div class="action-row">';
     if(!lp){
-      html += '<button class="btn btn-primary" id="dna-btn-'+a.id+'" onclick="generateDNA(\''+a.id+'\')">🧬 DNA generieren</button>';
+      html += '<button class="btn btn-primary" id="dna-btn-'+a.id+'" onclick="generateDNA(\''+a.id+'\')">🚀 LP & Bot erstellen</button>';
     } else {
       html += '<span class="badge badge-green">🧬 DNA aktiv</span>';
       html += '<button class="btn btn-sm btn-secondary" onclick="generateDNA(\''+a.id+'\')">🔄 DNA neu generieren</button>';
@@ -546,7 +547,7 @@ async function generateDNA(artId){
     var lpSec = document.getElementById('lp-sec-'+artId);
     if(lpSec) lpSec.style.display='block';
     if(btn){btn.textContent='🧬 DNA aktiv ✓';btn.style.background='#15803d';}
-  }catch(e){ showToast('Fehler: '+e.message); if(btn){btn.disabled=false;btn.textContent='🧬 DNA generieren';} }
+  }catch(e){ showToast('Fehler: '+e.message); if(btn){btn.disabled=false;btn.textContent='🚀 LP & Bot erstellen';} }
 }
 
 // ── LP FORM ────────────────────────────────────────────
