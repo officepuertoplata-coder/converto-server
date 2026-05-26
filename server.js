@@ -353,17 +353,6 @@ const articleUpdate = {
 };
 if (analysis.title_short) articleUpdate.title = analysis.title_short;
           if (newTitle) articleUpdate.title = newTitle;
-          // tech_specs aus Analyse als q_extra speichern (Wissensdatenbank)
-          if (analysis.tech_specs && analysis.tech_specs.length > 0) {
-            const specs = analysis.tech_specs.filter(s => s.k && s.v);
-            if (specs.length > 0) {
-              articleUpdate.answers = Object.assign({}, article.answers || {});
-              const existing = articleUpdate.answers.q_extra ? articleUpdate.answers.q_extra.split('|||') : [];
-              const newSpecs = specs.map(s => s.k + ': ' + s.v);
-              articleUpdate.answers.q_extra = [...existing, ...newSpecs].filter(Boolean).join('|||');
-            }
-          }
-
           await supabase.from('vk_articles').update(articleUpdate).eq('id', article.id);
 
           // Compliance Log
@@ -2654,30 +2643,7 @@ async function vkAnalyzeArticle(article, photos, phone) {
     } catch(imgErr) { console.error('Image download error:', imgErr.message, p.public_url); }
   }
   if (!imageBlocks.length) return { title_short: 'Analyse fehlgeschlagen', error: 'Keine Bilder ladbar' };
- 
-  // Dokumente laden und in Analyse einbeziehen
-  let docsText = '';
-  let docBlocks = [];
-  try {
-    const { data: artDocs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
-    if (artDocs && artDocs.length > 0) {
-      for (const doc of artDocs) {
-        if (!doc.public_url) continue;
-        try {
-          const docRes = await fetch(doc.public_url);
-          const docBuf = Buffer.from(await docRes.arrayBuffer());
-          const ct = doc.content_type || 'application/pdf';
-          docBlocks.push({
-            type: 'document',
-            source: { type: 'base64', media_type: ct, data: docBuf.toString('base64') }
-          });
-          docsText += '\nDokument hochgeladen: ' + (doc.label || 'Dossier');
-        } catch(de) { console.error('Doc load in analysis:', de.message); }
-      }
-    }
-  } catch(de) { console.error('Docs query in analysis:', de.message); }
-
-  const notesText = article.notes ? '\n\nZusatzinfos vom Verkaeufer: ' + article.notes : '';
+   const notesText = article.notes ? '\n\nZusatzinfos vom Verkaeufer: ' + article.notes : '';
  
  // Authentizitaet: Claude entscheidet selbst ob relevant
   const authBlock = `  "authenticity": {
@@ -2696,7 +2662,7 @@ async function vkAnalyzeArticle(article, photos, phone) {
 - warning: Warntext wenn verdaechtig, sonst null
 - Bei nicht-physischen Produkten oder unklaren Fotos: score null setzen`; 
  
-  const prompt = `Analysiere dieses Produkt anhand der Fotos${docsText ? ' UND der beigefügten Dokumente (Daten aus Dokumenten haben höchste Priorität)' : ''} und erstelle folgendes JSON:${notesText}
+  const prompt = `Analysiere dieses Produkt und erstelle folgendes JSON:${notesText}
 {
   "title_short": "Kurztitel (max 60 Zeichen, SEO-optimiert)",
   "title_long": "Ausfuehrlicher Titel mit Keywords",
@@ -2713,7 +2679,6 @@ async function vkAnalyzeArticle(article, photos, phone) {
   "keywords": ["keyword1", "keyword2"],
   "tips": ["Verkaufstipp 1", "Verkaufstipp 2"],
   "article_category": "luxury_watch ODER luxury_bag ODER jewelry ODER electronics ODER vehicle ODER medical ODER industrial ODER art ODER standard",
-  "tech_specs": [{"k": "Bezeichnung", "v": "Wert"}],
 ${authBlock}
 }${authInstructions}`;
  
@@ -2729,7 +2694,7 @@ ${authBlock}
         model: analysisModel,
         max_tokens: 2000,
 system: 'Du bist ein erfahrener Verkaufstexter fuer Online-Marktplaetze (Willhaben, eBay, Kleinanzeigen, Maschinensucher).\nAufgabe: Artikel verkaufsorientiert beschreiben - positiv, ueberzeugend, OHNE zu luegen.\n\nSCHREIBREGELN:\n- Staerken in den Vordergrund, Schwaechen konstruktiv formulieren\n- Zustand immer aus Verkaeufer-Perspektive formulieren\n\nDOKUMENT-VORRANG: Wenn Dokumente (PDF/Dossier) beigefuegt sind:\n- Alle Daten aus Dokumenten haben ABSOLUTE PRIORITAET vor Foto-Schaetzungen\n- Preis, Baujahr, KM-Stand, Ausstattung aus Dokument IMMER verwenden\n- tech_specs: ALLE technischen Daten aus Dokumenten einzeln auflisten\n\nPREISREGELN:\n- Preis aus Dokument direkt uebernehmen wenn vorhanden\n- Ohne Dokument: Neupreis NICHT schaetzen, price_unknown=true\n- Preisbegruendung nur auf ECHTEN Fakten\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
-      messages: [{ role: 'user', content: [...imageBlocks, ...docBlocks, { type: 'text', text: prompt }] }]
+      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
     })
   });
  
