@@ -170,6 +170,8 @@ async function loadAll(){
     for(var a of (sd.articles||[])){
       if(a.status==='analyzed') { loadQuestions(a.id); loadDocs(a.id); }
     }
+    // Docs automatisch analysieren wenn q_extra leer und Docs vorhanden
+    autoAnalyzeDocsIfNeeded();
   } catch(e){ showErr('Verbindungsfehler: '+e.message); }
 }
 
@@ -674,6 +676,37 @@ async function deleteDoc(docId,artId){
   if(!confirm('Dokument löschen?')) return;
   await fetch(API+'/api/vk/doc/'+docId,{method:'DELETE'});
   await loadDocs(artId);
+}
+
+async function autoAnalyzeDocsIfNeeded(){
+  var arts = sd?.articles||[];
+  var needsAnalysis = false;
+  for(var a of arts){
+    var ans = a.answers||{};
+    if(!ans.q_extra || ans.q_extra.trim()===''){
+      // Prüfe ob Docs vorhanden
+      try{
+        var r = await fetch(API+'/api/vk/article/'+a.id+'/docs');
+        var docs = await r.json();
+        if(docs && docs.length > 0){ needsAnalysis = true; break; }
+      }catch(e){}
+    }
+  }
+  if(!needsAnalysis) return;
+  // Zeige Status
+  showToast('📄 Dokumente werden ausgewertet...');
+  try{
+    var r = await fetch(API+'/api/vk/session/'+sessionToken+'/analyze-docs',{method:'POST',headers:{'Content-Type':'application/json'}});
+    var d = await r.json();
+    if(d.facts > 0){
+      showToast('✓ '+d.facts+' Fakten aus Dokumenten extrahiert');
+      // Session neu laden
+      var r2 = await fetch(API+'/api/vk/results/'+sessionToken);
+      sd = await r2.json();
+      render();
+      for(var a of (sd.articles||[])){ loadQuestions(a.id); loadDocs(a.id); }
+    }
+  }catch(e){ console.error('autoAnalyzeDocs:', e.message); }
 }
 
 function toBase64(file){return new Promise((res,rej)=>{var r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
