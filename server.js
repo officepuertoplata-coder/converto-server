@@ -364,50 +364,44 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
             });
           }
             if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
-          // Docs automatisch verarbeiten (im Hintergrund)
-          (async function() {
+          // Docs automatisch analysieren nach Artikel-Analyse (sequential)
+          await (async function autoAnalyzeDocs() {
             try {
-              const { data: docs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
-              if (docs && docs.length > 0) {
-                for (const doc of docs) {
-                  if (!doc.public_url) continue;
-                  try {
-                    const docRes = await fetch(doc.public_url);
-                    const docBuf = Buffer.from(await docRes.arrayBuffer());
-                    const base64 = docBuf.toString('base64');
-                    const ct = doc.content_type || 'application/pdf';
-                    // Fakten aus Dokument extrahieren
-                    const extractRes = await fetch('https://api.anthropic.com/v1/messages', {
-                      method: 'POST',
-                      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        model: AI.extraction,
-                        max_tokens: 1000,
-                        system: 'Extrahiere alle Fakten aus dem Dokument als JSON Array: [{k:"Eigenschaft",v:"Wert"}]. Nur JSON, kein Markdown.',
-                        messages: [{ role: 'user', content: [
-                          { type: 'document', source: { type: 'base64', media_type: ct, data: base64 } },
-                          { type: 'text', text: 'Extrahiere alle relevanten Produkt-Fakten als JSON Array [{k,v}].' }
-                        ]}]
-                      })
-                    });
-                    const extractData = await extractRes.json();
-                    const extractText = extractData.content?.[0]?.text || '[]';
-                    const cleaned = extractText.replace(/```json|```/g,'').trim();
-                    const pairs = JSON.parse(cleaned.substring(cleaned.indexOf('['), cleaned.lastIndexOf(']')+1));
-                    if (pairs && pairs.length > 0) {
-                      // Fakten als Antworten speichern
-                      const answers = {};
-                      pairs.forEach(function(p,i){ answers['doc_fact_'+i] = p.k+': '+p.v; });
-                      await fetch('https://converto-server-production.up.railway.app/api/vk/article/'+article.id+'/answers', {
-                        method: 'POST', headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({answers, source:'doc_'+doc.id})
-                      });
-                      console.log('Doc facts extracted:', pairs.length, 'for article', article.id);
-                    }
-                  } catch(docErr) { console.error('Doc processing error:', docErr.message); }
-                }
+              const fetch2 = require('node-fetch');
+              const { data: artDocs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
+              if (!artDocs || !artDocs.length) return;
+              console.log('Auto-doc: analyzing', artDocs.length, 'docs for article', article.id);
+              for (const doc of artDocs) {
+                if (!doc.public_url) continue;
+                try {
+                  const docRes = await fetch2(doc.public_url);
+                  const docBuf = Buffer.from(await docRes.arrayBuffer());
+                  const base64 = docBuf.toString('base64');
+                  const ct = doc.content_type || 'application/pdf';
+                  const blocks = [
+                    { type: 'document', source: { type: 'base64', media_type: ct, data: base64 } },
+                    { type: 'text', text: 'Extrahiere ALLE technischen Fakten aus dem Dokument als JSON (kein Markdown):\n{"extracted_facts":{"q_model":"Modell/Typ oder null","q_year":"Baujahr oder null","q_hours":"Betriebsstunden oder null","q_km":"KM-Stand oder null","q_condition":"Zustand oder null","q_serial":"Seriennummer oder null"},"extra_facts":[{"key":"Bezeichnung","value":"Wert"}]}\nPFLICHT: Jeden Wert aus dem Dokument als extra_facts Eintrag erfassen.' }
+                  ];
+                  const er = await fetch2('https://api.anthropic.com/v1/messages', {
+                    method: 'POST', headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: AI.extraction, max_tokens: 1500, messages: [{ role: 'user', content: blocks }] })
+                  });
+                  const ed = await er.json();
+                  const et = (ed.content?.[0]?.text || '{}').replace(/```json|```/g,'').trim();
+                  const parsed = JSON.parse(et.substring(et.indexOf('{'), et.lastIndexOf('}')+1));
+                  const { data: artNow } = await supabase.from('vk_articles').select('answers').eq('id', article.id).single();
+                  const ans = Object.assign({}, artNow?.answers || {});
+                  Object.entries(parsed.extracted_facts || {}).forEach(function([k,v]){ if(v && v!=='null') ans[k]=String(v); });
+                  const extras = (parsed.extra_facts || []).filter(function(e){ return e.key && e.value; });
+                  if (extras.length) {
+                    const existing = ans['q_extra'] ? ans['q_extra'].split('|||') : [];
+                    ans['q_extra'] = [...existing, ...extras.map(function(e){ return e.key+': '+e.value; })].join('|||');
+                  }
+                  await supabase.from('vk_articles').update({ answers: ans }).eq('id', article.id);
+                  console.log('Auto-doc: extracted', extras.length, 'facts from', doc.label);
+                } catch(de) { console.error('Auto-doc error:', doc.label, de.message); }
               }
-            } catch(e) { console.error('Auto-doc processing error:', e.message); }
+            } catch(e) { console.error('autoAnalyzeDocs error:', e.message); }
           })();
           }
           const anyExtended = (articles || []).some(a => a.extended);
@@ -458,7 +452,7 @@ app.get('/api/vk/pdf/:token', async (req, res) => {
     if (!session) return res.status(404).send('Session nicht gefunden');
 
     const { data: articles } = await supabase.from('vk_articles')
-      .select('*, vk_photos(*), vk_landingpages(id, slug, bot_config, has_bot, status, bot_goal, anrede)').eq('session_id', session.id).order('sort_order', { ascending: true });
+      .select('*, vk_photos(*), vk_landingpages(id, slug, bot_config, has_bot, status, bot_goal, anrede), answers, questions').eq('session_id', session.id).order('sort_order', { ascending: true });
 
     const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -498,6 +492,35 @@ app.get('/api/vk/pdf/:token', async (req, res) => {
         an.tips.forEach(t => { body += `<li>${esc(t)}</li>`; });
         body += `</ul>`;
       }
+      // Spezifische Produktdaten (Wissensdatenbank)
+      const answers = a.answers || {};
+      const questions = a.questions || [];
+      const hasAnswers = Object.values(answers).some(v => v && v !== '');
+      const extraFacts = [];
+      if (answers.q_extra) {
+        const sep = answers.q_extra.indexOf('|||') >= 0 ? '|||' : ',';
+        answers.q_extra.split(sep).forEach(function(p) {
+          const s = p.indexOf(':');
+          if (s > 0) extraFacts.push({k: p.slice(0,s).trim(), v: p.slice(s+1).trim()});
+        });
+      }
+      if (hasAnswers || extraFacts.length) {
+        body += '<h3 style="color:#1b4332;font-size:13px;margin:16px 0 8px;border-left:3px solid #25D366;padding-left:8px;">Spezifische Produktdaten</h3>';
+        body += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        // Standard-Felder
+        const fieldLabels = {q_model:'Modell/Typ',q_year:'Baujahr',q_km:'Kilometerstand',q_hours:'Betriebsstunden',q_condition:'Zustand',q_serial:'Seriennummer',q_service:'Serviceheft',q_tuev:'TÜV bis',q_owners:'Vorbesitzer',q_accident:'Unfallschäden',q_last_service:'Letzte Wartung'};
+        Object.entries(fieldLabels).forEach(function([k,label]) {
+          if (answers[k] && answers[k] !== 'null') {
+            body += '<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:5px 8px;color:#6b7280;width:40%;">'+label+'</td><td style="padding:5px 8px;font-weight:600;">'+esc(answers[k])+'</td></tr>';
+          }
+        });
+        // Extra-Fakten aus PDF
+        extraFacts.forEach(function(f) {
+          body += '<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:5px 8px;color:#6b7280;">'+esc(f.k)+'</td><td style="padding:5px 8px;font-weight:600;">'+esc(f.v)+'</td></tr>';
+        });
+        body += '</table>';
+      }
+
       body += `</div>`;
     });
 
@@ -735,8 +758,8 @@ function vkGenerateSlug(title) {
 
 // Produktseite HTML generieren
 function vkBuildAnswerFakten(answers, questions) {
-  if (!answers || !questions || !questions.length) return '';
-  const skip = ['q_sonstige', 'q_model', 'q_extra'];
+  if (!answers) return '';
+  const skip = ['q_sonstige', 'q_extra'];
   const rows = [];
   const icons = {
     'Baujahr': '📅', 'Baujahr / Erstzulassung': '📅',
@@ -765,7 +788,7 @@ function vkBuildAnswerFakten(answers, questions) {
   });
   // Extra KV Paare
   if (answers['q_extra']) {
-    answers['q_extra'].split(',').forEach(function(kv){
+    answers['q_extra'].replace(/\|\|\|/g,',').split(',').forEach(function(kv){
       var parts = kv.split(':');
       if (parts.length >= 2) {
         rows.push('<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0fdf4;">'
@@ -3064,7 +3087,15 @@ app.get('/api/vk/article/:id/questions', async (req, res) => {
     });
 
     await supabase.from('vk_articles').update({ questions }).eq('id', req.params.id);
-    res.json({ questions, answers: article.answers || {} });
+    // Aus Analyse vorbelegen
+    const prefilled = Object.assign({}, article.answers || {});
+    const anData = article.analysis || {};
+    if (!prefilled.q_condition && anData.condition) prefilled.q_condition = anData.condition;
+    if (!prefilled.q_model && anData.title_short) prefilled.q_model = anData.title_short;
+    const descTxt = (anData.short_desc||'') + ' ' + (anData.long_desc||'');
+    const kmM = descTxt.match(/([0-9]{1,3}[.,][0-9]{3})\s*km/i);
+    if (kmM && !prefilled.q_km) prefilled.q_km = kmM[1].replace('.','').replace(',','');
+    res.json({ questions, answers: prefilled });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3617,7 +3648,7 @@ function buildVerifiedFactsText(artData) {
     .forEach(q => lines.push((q.label || q.id) + ': ' + answers[q.id]));
   const extra = answers['q_extra'] || '';
   if (extra) {
-    extra.split(',').forEach(pair => {
+    extra.replace(/\|\|\|/g,',').split(',').forEach(pair => {
       const trimmed = pair.trim();
       if (trimmed.length > 3 && trimmed.includes(':')) lines.push(trimmed);
     });
@@ -3971,7 +4002,7 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
         }
       });
       if (_artFull.answers['q_extra']) {
-        _artFull.answers['q_extra'].split(',').forEach(function(kv){
+        _artFull.answers['q_extra'].replace(/\|\|\|/g,',').split(',').forEach(function(kv){
           var p = kv.split(':');
           if (p.length >= 2) _ans.push({ label: p[0].trim(), value: p.slice(1).join(':').trim() });
         });
@@ -4805,9 +4836,9 @@ PFLICHT: Jeden Wert aus dem Dokument als eigenen extra_facts Eintrag erfassen.`
     // Extra-Fakten als q_extra speichern
     const extras = (parsed.extra_facts || []).filter(e => e.key && e.value);
     if (extras.length > 0) {
-      const existingExtra = newAnswers['q_extra'] ? newAnswers['q_extra'].split(',') : [];
+      const existingExtra = newAnswers['q_extra'] ? newAnswers['q_extra'].split('|||') : [];
       const newExtras = extras.map(e => `${e.key}: ${e.value}`);
-      newAnswers['q_extra'] = [...existingExtra, ...newExtras].filter(Boolean).join(',');
+      newAnswers['q_extra'] = [...existingExtra, ...newExtras].filter(Boolean).join('|||');
     }
 
     // In DB speichern
