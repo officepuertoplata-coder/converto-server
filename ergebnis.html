@@ -421,10 +421,10 @@ function renderQuestions(artId){
     rows+='<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">';
     rows+='<input type="text" class="q-input" style="flex:1;background:#f0f9ff;border-color:#bfdbfe;font-size:.78rem;" data-aid="'+artId+'" data-eidx="'+i+'" data-efield="k" value="'+esc(f.k)+'" placeholder="Bezeichnung">';
     rows+='<input type="text" class="q-input" style="flex:2;font-size:.78rem;" data-aid="'+artId+'" data-eidx="'+i+'" data-efield="v" value="'+esc(f.v)+'" placeholder="Wert">';
-    rows+='<button style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;padding:4px;" data-aid="'+artId+'" data-eidx="'+i+'" class="rm-extra-btn">✕</button>';
+    rows+='<button onclick="removeExtra(\'' + artId + '\',' + i + ')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;padding:4px;">✕</button>';
     rows+='</div>';
   });
-  rows+='<button class="add-extra-btn" data-aid="'+artId+'" style="margin-top:4px;padding:7px 14px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--mu);width:100%;">+ Feld hinzufügen</button>';
+  rows+='<button onclick="addExtra(\'' + artId + '\')" style="margin-top:4px;padding:7px 14px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--mu);width:100%;">+ Feld hinzufügen</button>';
 
   el.innerHTML=rows;
 
@@ -436,10 +436,8 @@ function renderQuestions(artId){
   el.querySelectorAll('[data-efield]').forEach(function(inp){
     inp.addEventListener('input',function(){ updateExtra(inp.dataset.aid,parseInt(inp.dataset.eidx),inp.dataset.efield,inp.value); });
   });
-  el.querySelectorAll('.rm-extra-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){ removeExtra(btn.dataset.aid,parseInt(btn.dataset.eidx)); });
-  });
-  el.querySelector('.add-extra-btn')?.addEventListener('click',function(e){ addExtra(e.currentTarget.dataset.aid); });
+
+
 }
 
 function updateExtra(artId,idx,field,val){
