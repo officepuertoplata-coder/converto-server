@@ -2379,6 +2379,57 @@ app.post('/api/vk/freicodes/redeem', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── SESSION DOCS ANALYSIEREN ──────────────────────────────────────────
+app.post('/api/vk/session/:token/analyze-docs', async (req, res) => {
+  try {
+    const { data: session } = await supabase.from('vk_sessions').select('id').eq('token', req.params.token).single();
+    if (!session) return res.status(404).json({ error: 'Session nicht gefunden' });
+    const { data: articles } = await supabase.from('vk_articles').select('id, answers').eq('session_id', session.id);
+    if (!articles || !articles.length) return res.json({ processed: 0 });
+    let totalFacts = 0;
+    for (const article of articles) {
+      const { data: docs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
+      if (!docs || !docs.length) continue;
+      const ans = Object.assign({}, article.answers || {});
+      const allExtras = ans.q_extra ? ans.q_extra.split('|||').filter(Boolean) : [];
+      for (const doc of docs) {
+        if (!doc.public_url) continue;
+        try {
+          const docRes = await fetch(doc.public_url);
+          const docBuf = Buffer.from(await docRes.arrayBuffer());
+          const ct = doc.content_type || 'application/pdf';
+          const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-5',
+              max_tokens: 2000,
+              system: 'Extrahiere JEDEN einzelnen Fakt aus dem Dokument. Antworte NUR mit JSON Array ohne Markdown: [{"k":"Bezeichnung","v":"Wert"}]',
+              messages: [{ role: 'user', content: [
+                { type: 'document', source: { type: 'base64', media_type: ct, data: docBuf.toString('base64') } },
+                { type: 'text', text: 'JSON Array mit ALLEN Fakten. Preis, Baujahr, KM, Ausstattung, Masse - alles einzeln.' }
+              ]}]
+            })
+          });
+          const aiData = await aiRes.json();
+          const raw = (aiData.content?.[0]?.text || '[]').replace(/```json|```/g,'').trim();
+          const si = raw.indexOf('['), ei = raw.lastIndexOf(']');
+          if (si >= 0 && ei > si) {
+            const pairs = JSON.parse(raw.substring(si, ei+1));
+            pairs.filter(p => p.k && p.v).forEach(p => { allExtras.push(p.k+': '+p.v); totalFacts++; });
+          }
+        } catch(de) { console.error('Doc analyze error:', de.message); }
+      }
+      if (allExtras.length > 0) {
+        ans.q_extra = allExtras.join('|||');
+        await supabase.from('vk_articles').update({ answers: ans }).eq('id', article.id);
+      }
+    }
+    res.json({ success: true, facts: totalFacts });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.listen(PORT, async () => {
   console.log('✅ Converto API v2.2.0 läuft auf Port ' + PORT);
 
