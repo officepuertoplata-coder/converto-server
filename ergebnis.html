@@ -299,6 +299,7 @@ function render(){
   }
 
   document.getElementById('app').innerHTML = html;
+  checkPolling();
 }
 
 function editableField(artId, field, label, value, type){
@@ -596,6 +597,32 @@ async function deleteDoc(docId,artId){
 }
 
 function toBase64(file){return new Promise((res,rej)=>{var r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
+
+// Auto-Poll wenn Analyse noch läuft
+var _pollTimer = null;
+function checkPolling(){
+  var analyzing = (sd?.articles||[]).some(function(a){ return a.status!=='analyzed'; });
+  if(analyzing && !_pollTimer){
+    _pollTimer = setInterval(async function(){
+      var r = await fetch(API+'/api/vk/results/'+sessionToken).catch(()=>null);
+      if(!r||!r.ok) return;
+      var fresh = await r.json();
+      var wasAnalyzing = (sd?.articles||[]).some(function(a){ return a.status!=='analyzed'; });
+      sd = fresh;
+      var nowAnalyzing = (sd?.articles||[]).some(function(a){ return a.status!=='analyzed'; });
+      if(!nowAnalyzing){
+        clearInterval(_pollTimer); _pollTimer=null;
+        render();
+        for(var a of (sd.articles||[])){ loadQuestions(a.id); loadDocs(a.id); }
+        showToast('✓ Analyse abgeschlossen!');
+      } else if(wasAnalyzing !== nowAnalyzing) {
+        render();
+      }
+    }, 4000);
+  } else if(!analyzing && _pollTimer){
+    clearInterval(_pollTimer); _pollTimer=null;
+  }
+}
 </script>
 </body>
 </html>
