@@ -563,7 +563,7 @@ async function uploadDoc(artId,input){
     var base64=reader.result.split(',')[1];
     try{
       var r=await fetch(API+'/api/vk/article/'+artId+'/analyze-with-doc',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({label,file_base64:base64,file_name:file.name,content_type:file.type,type:'pdf',session_id:sd?.id})});
+        body:JSON.stringify({label,pdf_base64:base64,file_name:file.name,pdf_content_type:file.type,type:'pdf',session_id:sd?.id})});
       var d=await r.json();
       showToast('✓ '+(d.facts_count||0)+' Fakten extrahiert');
       await loadDocs(artId);
@@ -582,7 +582,7 @@ async function analyzeExistingDoc(artId,url,label,btn){
     var base64=btoa(String.fromCharCode(...new Uint8Array(buf)));
     var ct=res.headers.get('content-type')||'application/pdf';
     var r=await fetch(API+'/api/vk/article/'+artId+'/analyze-with-doc',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({label,file_base64:base64,content_type:ct,file_name:label+'.pdf',type:'pdf'})});
+      body:JSON.stringify({label,pdf_base64:base64,pdf_content_type:ct,file_name:label+'.pdf',type:'pdf'})});
     var d=await r.json();
     showToast('✓ '+(d.facts_count||0)+' Fakten extrahiert');
     await loadQuestions(artId);
