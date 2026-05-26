@@ -1948,9 +1948,8 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const absoluteMin = Math.max(minPrice, price - Math.round(price * aggr.maxDiscount));
 
     const botName = botConfig.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent';
-    // Context: business-Session = immer haendler, sonst aus bot_config
-    const sessionContext = session && session.ai_mode === 'abteilungsleiter' ? 'haendler' : null;
-    const autoContext = botConfig.context || sessionContext || (lp.ai_mode !== 'sachbearbeiter' ? 'haendler' : 'privat');
+    // Context: aus bot_config oder automatisch aus LP ai_mode ableiten
+    const autoContext = botConfig.context || (lp.ai_mode !== 'sachbearbeiter' ? 'haendler' : 'privat');
     const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat - du kennst es gut und hast eine persoenliche Bindung dazu.', haendler:'Du bist ein professioneller Haendler - kennst dein Sortiment, gibst aber keine Garantien die du nicht halten kannst.', geschaeft:'Du repraesentierst ein Unternehmen - professionell und kompetent.', nachlass:'Du loest einen Nachlass auf - respektvoll und sachlich.' };
 
     const catContextBot = vkGetCategoryContext(article.article_category || 'standard');
