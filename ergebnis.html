@@ -439,7 +439,7 @@ function renderQuestions(artId){
   el.querySelectorAll('.rm-extra-btn').forEach(function(btn){
     btn.addEventListener('click',function(){ removeExtra(btn.dataset.aid,parseInt(btn.dataset.eidx)); });
   });
-  el.querySelector('.add-extra-btn')?.addEventListener('click',function(e){ addExtra(e.target.dataset.aid); });
+  el.querySelector('.add-extra-btn')?.addEventListener('click',function(e){ addExtra(e.currentTarget.dataset.aid); });
 }
 
 function updateExtra(artId,idx,field,val){
