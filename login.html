@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Converdino – Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--wa:#25D366;--bg:#0a1f12;--card:#111f15;--card2:#162a1a;--border:rgba(37,211,102,0.2);--txt:#e8f5ec;--muted:#5d8a6a;--red:#ef4444;--gold:#f4a100;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 30% 30%,rgba(37,211,102,0.1) 0%,transparent 60%),radial-gradient(ellipse at 70% 70%,rgba(244,161,0,0.06) 0%,transparent 60%);pointer-events:none;}
+.card{position:relative;z-index:1;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:40px 36px;width:100%;max-width:400px;box-shadow:0 24px 64px rgba(0,0,0,0.4);}
+.logo{text-align:center;margin-bottom:28px;}
+.logo-mark{width:56px;height:56px;background:linear-gradient(135deg,#2d7a4f,#40916c);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px;box-shadow:0 8px 24px rgba(45,122,79,0.4);}
+.logo-text{font-size:1.6rem;font-weight:900;letter-spacing:-0.5px;}
+.logo-text span{color:var(--wa);}
+.logo-sub{font-size:.8rem;color:var(--muted);margin-top:4px;}
+.fgrp{margin-bottom:16px;}
+.fgrp label{display:block;font-size:.68rem;font-weight:800;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.8px;}
+.fgrp input{width:100%;padding:12px 14px;background:var(--card2);border:1.5px solid rgba(37,211,102,0.15);border-radius:10px;color:var(--txt);font-size:.95rem;font-family:'Nunito',sans-serif;outline:none;transition:border-color .2s;}
+.fgrp input:focus{border-color:var(--wa);}
+.btn{width:100%;padding:14px;background:var(--wa);color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:800;font-family:'Nunito',sans-serif;cursor:pointer;transition:all .2s;box-shadow:0 4px 16px rgba(37,211,102,0.3);}
+.btn:hover{background:#128C7E;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.err{color:var(--red);font-size:.82rem;text-align:center;margin-top:12px;min-height:20px;}
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.version{text-align:center;margin-top:20px;font-size:.72rem;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-mark">🔄</div>
+    <div class="logo-text">Con<span>verdino</span></div>
+    <div class="logo-sub">Merchant Platform</div>
+  </div>
+
+  <div class="fgrp">
+    <label>Benutzername</label>
+    <input type="text" id="username" placeholder="username" autocomplete="username" autofocus>
+  </div>
+  <div class="fgrp">
+    <label>Passwort</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter')doLogin()">
+  </div>
+
+  <button class="btn" id="loginBtn" onclick="doLogin()">Einloggen</button>
+  <div class="err" id="errMsg"></div>
+  <div class="version">Converdino v2.0 · converdino.com</div>
+</div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+const KEY = 'converto_auth_v2';
+
+// Bereits eingeloggt?
+window.onload = function() {
+  try {
+    const auth = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (auth && auth.role && auth.loggedInAt) {
+      const age = Date.now() - new Date(auth.loggedInAt).getTime();
+      if (age < 12 * 60 * 60 * 1000) {
+        // Redirect-Ziel aus URL holen
+        const params = new URLSearchParams(location.search);
+        const redirect = params.get('redirect');
+        window.location.href = redirect || 'hub.html';
+        return;
+      }
+    }
+  } catch(e) {}
+};
+
+async function doLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('errMsg');
+
+  if (!username || !password) { err.textContent = 'Bitte alle Felder ausfüllen'; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Einloggen...';
+  err.textContent = '';
+
+  try {
+    const res = await fetch(API + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      err.textContent = data.error || 'Ungültige Zugangsdaten';
+      btn.disabled = false;
+      btn.innerHTML = 'Einloggen';
+      return;
+    }
+
+    // Auth speichern
+    let authData = {
+      role: data.role,
+      userId: data.user?.id || null,
+      name: data.user?.name || username,
+      username: username,
+      loggedInAt: new Date().toISOString()
+    };
+
+    if (data.role === 'superadmin') {
+      authData.merchants = data.merchants || [];
+      // Ersten Händler als Standard
+      if (data.merchants?.length > 0) {
+        authData.merchantId = data.merchants[0].id;
+        authData.merchantName = data.merchants[0].name;
+        authData.slug = data.merchants[0].slug;
+      }
+    } else if (data.role === 'staff') {
+      authData.merchants = data.merchants || [];
+      if (data.merchants?.length > 0) {
+        authData.merchantId = data.merchants[0].id;
+        authData.merchantName = data.merchants[0].name;
+        authData.slug = data.merchants[0].slug;
+      }
+    } else if (data.role === 'merchant') {
+      const m = data.merchant;
+      authData.merchantId = m.id;
+      authData.merchantName = m.name;
+      authData.slug = m.slug;
+      authData.merchants = [m];
+    }
+
+    localStorage.setItem(KEY, JSON.stringify(authData));
+
+    // Weiterleiten
+    const params = new URLSearchParams(location.search);
+    const redirect = params.get('redirect');
+    window.location.href = redirect || 'hub.html';
+
+  } catch(e) {
+    err.textContent = 'Verbindungsfehler – Server nicht erreichbar';
+    btn.disabled = false;
+    btn.innerHTML = 'Einloggen';
+  }
+}
+</script>
+</body>
+</html>

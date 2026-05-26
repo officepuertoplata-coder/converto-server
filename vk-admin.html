@@ -1,0 +1,2466 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verkaufsreport Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--wa:#25D366;--g2:#1b4332;--bg:#f0f2f0;--card:#fff;--border:#e5e7eb;--mu:#6b7280;--txt:#1a1a1a;--gold:#f4a100;--red:#ef4444;--r:10px;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;}
+nav{background:var(--g2);color:#fff;display:flex;align-items:center;gap:6px;padding:0 20px;height:52px;position:sticky;top:0;z-index:100;}
+.nav-brand{font-weight:900;font-size:.95rem;color:var(--wa);margin-right:16px;}
+.tbtn{background:none;border:none;color:rgba(255,255,255,.75);cursor:pointer;padding:5px 10px;border-radius:6px;font-size:.8rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;transition:all .15s;}
+.tbtn:hover,.tbtn.active{background:rgba(255,255,255,.15);color:#fff;}
+.nav-right{margin-left:auto;}
+.main{max-width:1100px;margin:0 auto;padding:20px;}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;}
+.stat{background:var(--card);border-radius:var(--r);padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);border-top:3px solid var(--wa);}
+.stat.gold{border-top-color:var(--gold);}
+.stat.blue{border-top-color:#3b82f6;}
+.stat-val{font-size:1.6rem;font-weight:900;color:var(--g2);}
+.stat-lbl{font-size:.72rem;color:var(--mu);margin-top:3px;line-height:1.3;}
+.table-box{background:var(--card);border-radius:var(--r);box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;margin-bottom:20px;}
+.table-hd{background:var(--g2);color:#fff;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;}
+.table-hd h2{font-size:.92rem;font-weight:800;}
+.filters{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.filter-btn{padding:5px 12px;border-radius:6px;border:1.5px solid var(--border);background:none;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;transition:all .2s;}
+.filter-btn.active{border-color:var(--wa);color:var(--wa);background:#f0fdf4;}
+table{width:100%;border-collapse:collapse;}
+th{padding:9px 14px;text-align:left;font-size:.68rem;color:var(--mu);font-weight:700;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);}
+td{padding:10px 14px;font-size:.84rem;border-bottom:1px solid var(--border);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#f9fafb;}
+.msg{text-align:center;color:var(--mu);padding:28px;}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:700;}
+.s-open{background:#dcfce7;color:#15803d;}
+.s-paid{background:#dbeafe;color:#1d4ed8;}
+.s-analyzing{background:#fef9c3;color:#a16207;}
+.s-done{background:#dcfce7;color:#15803d;}
+.s-expired,.s-deleted{background:#f3f4f6;color:#6b7280;}
+.s-error{background:#fee2e2;color:#dc2626;}
+.btn{border:none;padding:5px 10px;border-radius:6px;font-size:.76rem;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;transition:all .15s;}
+.btn-g{background:var(--wa);color:#fff;}
+.btn-gold{background:var(--gold);color:#000;}
+.btn-red{background:transparent;color:var(--red);border:1px solid var(--red);}
+.btn-red:hover{background:var(--red);color:#fff;}
+.btn-sm{padding:3px 8px;font-size:.72rem;}
+.phone{font-family:monospace;font-size:.82rem;}
+#toast{position:fixed;bottom:24px;right:24px;background:var(--wa);color:#fff;padding:10px 16px;border-radius:10px;font-size:.85rem;font-weight:700;transform:translateY(80px);opacity:0;transition:all .3s;z-index:999;}
+#toast.show{transform:translateY(0);opacity:1;}
+@media(max-width:700px){.stats{grid-template-columns:1fr 1fr;}}
+
+/* ═══ RESPONSIVE MOBILE ═══════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* NAV */
+  nav, header { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  nav::-webkit-scrollbar { display: none; }
+  .nav-brand { font-size: .82rem !important; white-space: nowrap; }
+  .tbtn { padding: 8px 10px !important; font-size: .75rem !important; white-space: nowrap; flex-shrink: 0; }
+  nav > div { flex-wrap: nowrap !important; overflow-x: auto; }
+
+  /* MAIN CONTENT */
+  .main-wrap { padding: 10px 10px; }
+
+  /* STATS GRID */
+  .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .stat-card { padding: 12px !important; }
+
+  /* SANDBOX TABS */
+  .sandbox-tabs { overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; flex-wrap: nowrap !important; gap: 6px; padding-bottom: 4px; }
+  .sandbox-tabs::-webkit-scrollbar { display: none; }
+  .sandbox-tabs button { flex-shrink: 0; padding: 8px 12px; font-size: .75rem; }
+
+  /* BOT TRAINING GRIDS → STACK */
+  .tr-grid-2 { grid-template-columns: 1fr !important; }
+
+  /* TABLES → SCROLLABLE */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 600px; }
+
+  /* MODALS → FULLSCREEN */
+  #refine-modal > div,
+  #ki-list-modal > div {
+    max-width: 100% !important;
+    max-height: 90vh;
+    overflow-y: auto;
+    margin: 0;
+    border-radius: 16px 16px 0 0 !important;
+  }
+  #refine-modal,
+  #ki-list-modal {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  /* BUTTONS → TOUCH FRIENDLY */
+  .btn-primary { padding: 13px !important; font-size: .88rem !important; }
+  button { min-height: 36px; }
+
+  /* FEATURE→NUTZEN / FOMO ROWS → STACK ON MOBILE */
+  [id="tr-fn-list"] > div,
+  [id="tr-fomo-list"] > div,
+  [id="tr-values-list"] > div {
+    grid-template-columns: 1fr 28px !important;
+    grid-template-rows: auto auto;
+  }
+  [id="tr-fn-list"] > div input:first-child,
+  [id="tr-fomo-list"] > div input:first-child,
+  [id="tr-values-list"] > div input:first-child {
+    grid-column: 1 / 2;
+    grid-row: 1;
+  }
+  [id="tr-fn-list"] > div input:nth-child(3),
+  [id="tr-fomo-list"] > div input:nth-child(3),
+  [id="tr-values-list"] > div input:nth-child(3) {
+    grid-column: 1 / 2;
+    grid-row: 2;
+  }
+  [id="tr-fn-list"] > div button,
+  [id="tr-fomo-list"] > div button,
+  [id="tr-values-list"] > div button {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+  /* Values/FOMO rows - make readable on mobile */
+  [style*="grid-template-columns:140px 1fr 28px"],
+  [style*="grid-template-columns:130px 1fr 28px"] {
+    grid-template-columns: 1fr 28px !important;
+    grid-template-rows: auto auto !important;
+  }
+  [style*="grid-template-columns:140px 1fr 28px"] > input:first-child,
+  [style*="grid-template-columns:130px 1fr 28px"] > input:first-child {
+    grid-column: 1; grid-row: 1;
+  }
+  [style*="grid-template-columns:140px 1fr 28px"] > input:last-of-type,
+  [style*="grid-template-columns:130px 1fr 28px"] > input:last-of-type {
+    grid-column: 1; grid-row: 2;
+  }
+  [style*="grid-template-columns:140px 1fr 28px"] > button,
+  [style*="grid-template-columns:130px 1fr 28px"] > button {
+    grid-column: 2; grid-row: 1 / 3; align-self: center;
+  }
+
+  /* VERHANDLUNG GRID */
+  [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+
+  /* KI ASSISTENT BUTTONS */
+  [id="ki-analyze-btn"] { font-size: .8rem !important; }
+
+  /* SAVE BUTTONS */
+  [onclick="saveBotConfig()"] { font-size: .82rem !important; }
+  [onclick^="testBot"] { padding: 13px 14px !important; font-size: .82rem !important; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">📊 Verkaufsreport Admin</div>
+  <a href="hub.html" class="tbtn">← Hub</a>
+  <button class="tbtn" onclick="loadAll()">↺ Aktualisieren</button>
+  <button class="tbtn active" onclick="showSection('orders')" id="btnOrders">📋 Aufträge</button>
+  <button class="tbtn" onclick="showSection('verkaeufe')" id="btnVerkaeufe">💰 Verkäufe</button>
+  <button class="tbtn" onclick="showSection('botsandbox')" id="btnBotsandbox">🧪 Sandbox</button>
+  <button class="tbtn" onclick="showSection('coupons')" id="btnCoupons">🎟️ Gutscheine</button>
+  <button class="tbtn" onclick="showSection('business')" id="btnBusiness">🏢 Business</button>
+  <button class="tbtn" onclick="showSection('aiconfig')" id="btnAiconfig">⚙️ KI Config</button>
+  <button class="tbtn" onclick="showSection('escalations')" id="btnEscalations">📞 Anfragen</button>
+  <button class="tbtn" onclick="showSection('freicodes')" id="btnFreicodes">🔓 Freicodes</button><div class="nav-right"><button class="tbtn" onclick="doLogout()">Ausloggen</button></div>
+</nav>
+
+<div class="main">
+
+  <div id="section-orders">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+      <button class="btn btn-sm" id="btnCleanup" onclick="runCleanup()" style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;">🧹 Cleanup jetzt ausführen</button>
+      <span id="cleanupStatus" style="font-size:.75rem;color:var(--mu);margin-left:10px;line-height:28px;"></span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-val" id="s-valid">—</div><div class="stat-lbl">Derzeit gültige Aufträge</div></div>
+      <div class="stat blue"><div class="stat-val" id="s-24h">—</div><div class="stat-lbl">Aufträge letzte 24 Std.</div></div>
+      <div class="stat gold"><div class="stat-val" id="s-rev-24h">—</div><div class="stat-lbl">Umsatz letzte 24 Std.</div></div>
+      <div class="stat gold"><div class="stat-val" id="s-rev-30d">—</div><div class="stat-lbl">Umsatz letzter Monat<br><span style="font-size:.65rem;opacity:.7;">rollierend 30 Tage</span></div></div>
+      <div class="stat gold"><div class="stat-val" id="s-rev-365d">—</div><div class="stat-lbl">Umsatz letztes Jahr<br><span style="font-size:.65rem;opacity:.7;">rollierend 365 Tage</span></div></div>
+    </div>
+    <div class="table-box">
+      <div class="table-hd">
+        <h2>📋 Alle Aufträge</h2>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="loadAll()">↺</button>
+      </div>
+      <div class="filters">
+        <button class="filter-btn active" onclick="setFilter('all',this)">Alle</button>
+        <button class="filter-btn" onclick="setFilter('open',this)">🟢 Offen</button>
+        <button class="filter-btn" onclick="setFilter('analyzing',this)">🟡 Analyse</button>
+        <button class="filter-btn" onclick="setFilter('done',this)">✅ Fertig</button>
+        <button class="filter-btn" onclick="setFilter('expired',this)">⛔ Abgelaufen</button>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Erstellt</th><th>Telefon</th><th>Artikel</th>
+          <th>Preis</th><th>Status</th><th>Löschen</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody id="sessionsTable"><tr><td colspan="7" class="msg">Lade...</td></tr></tbody>
+      </table></div>
+    </div>
+
+  <!-- VERKÄUFE -->
+  <div id="section-verkaeufe" style="display:none;">
+  <div class="card" style="margin:16px 0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="card-title" style="font-size:1rem;font-weight:800;">Verkäufe &amp; Provisionen</div>
+      <button onclick="loadVerkaeufe()" style="padding:6px 14px;background:var(--wa);color:#fff;border:none;border-radius:7px;font-size:.8rem;cursor:pointer;font-weight:700;">Aktualisieren</button>
+    </div>
+    <div id="verkaeufe-summary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;"></div>
+    <div id="verkaeufe-list"><div style="text-align:center;padding:40px;color:var(--mu);">Lade Verkäufe...</div></div>
+  </div>
+</div>
+
+<div id="section-botsandbox" style="display:none;">
+  <!-- Sub-Tab Navigation -->
+  <div class="sandbox-tabs" style="display:flex;gap:6px;margin-bottom:16px;">
+    <button id="stab-bot" onclick="switchSandboxTab('bot')"
+      style="padding:8px 18px;border-radius:8px;border:2px solid var(--wa);background:var(--wa);color:#fff;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit;">
+      🤖 Bot Test
+    </button>
+    <button id="stab-report" onclick="switchSandboxTab('report')"
+      style="padding:8px 18px;border-radius:8px;border:2px solid var(--border);background:#f9fafb;color:var(--mu);font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit;">
+      📦 Report Test
+    </button>
+    <button id="stab-lps" onclick="switchSandboxTab('lps')"
+      style="padding:8px 18px;border-radius:8px;border:2px solid var(--border);background:#f9fafb;color:var(--mu);font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit;">
+      🌐 Landingpages
+    </button>
+    <button id="stab-training" onclick="switchSandboxTab('training')"
+      style="padding:8px 18px;border-radius:8px;border:2px solid var(--border);background:#f9fafb;color:var(--mu);font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit;">
+      ⚙️ Bot Training
+    </button>
+  </div>
+
+  <!-- BOT TEST -->
+  <div id="sandbox-bot-content">
+    <div class="table-box" style="padding:18px;">
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <label style="font-size:.72rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">LANDINGPAGE</label>
+          <select id="sandbox-slug" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;" onchange="resetSandbox(); updateSandboxModeBadge()">
+            <option value="">-- LP auswählen --</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <label style="font-size:.72rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">VERHANDLUNGS-LEVEL</label>
+          <select id="sandbox-level" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;">
+            <option value="friendly">😊 Freundlich</option>
+            <option value="professional" selected>💼 Professionell</option>
+            <option value="hard">🔥 Hart</option>
+          </select>
+        </div>
+      </div>
+      <div id="sandbox-mode-badge" style="margin-bottom:12px;display:none;">
+        <span id="sandbox-mode-label" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:.78rem;font-weight:700;background:#f0fdf4;border:1.5px solid #86efac;color:#15803d;">
+          🤖 KI-Modus: <span id="sandbox-mode-text">—</span>
+        </span>
+      </div>
+      <div id="sandbox-chat" style="height:380px;overflow-y:auto;background:#f9fafb;border:1.5px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;display:flex;flex-direction:column;gap:10px;">
+        <div style="text-align:center;color:var(--mu);font-size:.82rem;padding:20px;">LP auswählen und Nachricht senden.</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input id="sandbox-input" placeholder="Schreibe eine Nachricht als Käufer..." style="flex:1;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:.9rem;font-family:inherit;" onkeydown="if(event.keyCode===13)sendSandboxMsg()">
+        <button onclick="sendSandboxMsg()" style="padding:10px 20px;background:var(--wa);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer;font-family:inherit;">Senden</button>
+        <button onclick="resetSandbox()" style="padding:10px 14px;background:var(--border);color:var(--txt);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LANDINGPAGES -->
+  <div id="sandbox-lps-content" style="display:none;">
+    <div class="table-box">
+      <div class="table-hd">
+        <h2>🌐 Aktive Landingpages</h2>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="loadLPsList()">&#8635; Aktualisieren</button>
+      </div>
+      <div id="lps-list-content" style="padding:16px;">
+        <div style="text-align:center;color:var(--mu);padding:20px;">Lade Landingpages...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOT TRAINING -->
+  <div id="sandbox-training-content" style="display:none;">
+    <div class="table-box" style="padding:20px;">
+      <div style="font-size:.82rem;color:var(--mu);margin-bottom:16px;">Konfiguriere den Bot für eine Landingpage — je mehr Kontext du gibst, desto besser antwortet er.</div>
+
+      <div style="margin-bottom:16px;">
+        <label style="font-size:.72rem;font-weight:800;color:var(--mu);display:block;margin-bottom:6px;">LANDINGPAGE AUSWÄHLEN</label>
+        <select id="tr-slug" onchange="loadBotConfig()" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;">
+          <option value="">-- LP auswählen --</option>
+        </select>
+      </div>
+
+        <!-- KI ASSISTENT -->
+        <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:12px;padding:16px;margin-bottom:12px;border:1.5px solid #3b82f6;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div>
+              <div style="font-weight:800;font-size:.88rem;color:#fff;margin-bottom:2px;">🤖 KI-Assistent</div>
+              <div style="font-size:.72rem;color:#93c5fd;">Befüllt alle Felder automatisch aus der Produktanalyse</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <button id="ki-analyze-btn" onclick="kiAnalyzeLP()" style="flex:1;padding:11px;background:#3b82f6;border:none;color:#fff;border-radius:8px;font-weight:800;font-size:.85rem;cursor:pointer;font-family:inherit;">
+              ⚡ Aus Artikelanalyse befüllen
+            </button>
+          </div>
+          <div id="ki-preview" style="display:none;">
+            <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:12px;margin-bottom:10px;">
+              <div style="font-size:.72rem;font-weight:700;color:#93c5fd;margin-bottom:8px;">VORSCHAU — bitte prüfen vor Übernahme:</div>
+              <div id="ki-preview-content" style="font-size:.78rem;color:#e2e8f0;line-height:1.7;"></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button onclick="kiApply()" style="flex:1;padding:10px;background:#22c55e;border:none;color:#fff;border-radius:8px;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit;">✅ Übernehmen</button>
+              <button onclick="document.getElementById('ki-preview').style.display='none'" style="padding:10px 16px;background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;font-family:inherit;">✕</button>
+            </div>
+          </div>
+          <div id="ki-status" style="font-size:.75rem;color:#93c5fd;margin-top:4px;"></div>
+        </div>
+
+        <!-- VORLAGEN BIBLIOTHEK -->
+        <div style="background:linear-gradient(135deg,#1e3a5f,#2d6a9f);border-radius:10px;padding:14px 16px;margin-bottom:16px;color:#fff;">
+          <div style="font-weight:800;font-size:.82rem;margin-bottom:10px;">📚 Vorlagen-Bibliothek</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <select id="tr-template-sel" style="flex:1;padding:8px 12px;border:none;border-radius:8px;font-size:.82rem;font-family:inherit;background:#fff;color:#1a1a1a;">
+              <option value="">-- Vorlage auswählen --</option>
+            </select>
+            <button onclick="loadTemplate()" style="padding:8px 14px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;font-family:inherit;">Laden</button>
+            <button onclick="loadTemplatesList()" title="Vorlagen neu laden" style="padding:8px 10px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;font-family:inherit;">🔄</button>
+            <button onclick="deleteTemplate()" style="padding:8px 10px;background:rgba(239,68,68,.3);border:1px solid rgba(239,68,68,.4);color:#fff;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;font-family:inherit;">🗑</button>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <input id="tr-template-name" placeholder="Name der neuen Vorlage..." style="flex:1;padding:8px 12px;border:none;border-radius:8px;font-size:.82rem;font-family:inherit;background:rgba(255,255,255,.15);color:#fff;">
+            <button onclick="saveTemplate()" style="padding:8px 14px;background:#25D366;border:none;color:#fff;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;font-family:inherit;">💾 Als Vorlage speichern</button>
+          </div>
+          <div id="tr-template-status" style="font-size:.72rem;margin-top:6px;opacity:.8;"></div>
+        </div>
+
+
+      <div id="tr-form" style="display:none;">
+
+        <!-- ── BOT PERSONA ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;"><div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;">🤖 Bot Persona</div>
+        <div class="tr-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Bot Name</label><input id="tr-botname" type="text" placeholder="z.B. Max, Sarah..." style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;">
+          </div>
+          <div>
+            <label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Verkaufskontext</label>
+            <select id="tr-context" style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;">
+              <option value="privat">👤 Privat – eigenes Stück</option>
+              <option value="haendler">🏪 Händler</option>
+              <option value="geschaeft">💼 Geschäftlich</option>
+              <option value="nachlass">🏠 Nachlass</option>
+            </select>
+          </div>
+        <        <label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Sprachen (Käufer-Sprache erkennen &amp; antworten)</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:5px;font-size:.83rem;cursor:pointer;"><input type="checkbox" id="tr-lang-de" checked style="accent-color:#16a34a;"> 🇩🇪 Deutsch</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.83rem;cursor:pointer;"><input type="checkbox" id="tr-lang-en" checked style="accent-color:#16a34a;"> 🇬🇧 English</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.83rem;cursor:pointer;"><input type="checkbox" id="tr-lang-es" checked style="accent-color:#16a34a;"> 🇪🇸 Español</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.83rem;cursor:pointer;"><input type="checkbox" id="tr-lang-fr" style="accent-color:#16a34a;"> 🇫🇷 Français</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.83rem;cursor:pointer;"><input type="checkbox" id="tr-lang-it" style="accent-color:#16a34a;"> 🇮🇹 Italiano</label>
+        </div></div>
+
+        <!-- ── STANDORT ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;"><div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;">📍 Standort &amp; Zugang</div>
+        <div style="margin-bottom:10px;"><label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Adresse &amp; Anfahrt</label><textarea id="tr-location" rows="2" placeholder="z.B. Wien 3, Erdbergstraße 12. U3 Erdberg 5 Min zu Fuß." style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;resize:none;"></textarea></div>
+        <label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Parken</label><input id="tr-parking" type="text" placeholder="z.B. Kostenlos direkt vor dem Haus" style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;"></div>
+
+        <!-- ── VERFÜGBARKEIT ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;"><div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;">🕐 Verfügbarkeit</div><label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Wann bist du erreichbar?</label><input id="tr-availability" type="text" placeholder="z.B. Wochentags ab 18h, Samstag ganztags" style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;"></div>
+
+        <!-- ── PRODUKTINFO ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;"><div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;">📖 Produktinfo</div>
+        <div style="margin-bottom:10px;"><label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Geschichte &amp; Zustand</label><textarea id="tr-story" rows="3" placeholder="z.B. Gekauft 2019, nur selten genutzt, Originalrechnung und Box vorhanden, keine Kratzer." style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;resize:none;"></textarea><button class="refine-pill" style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;" onclick="openRefineModal('tr-story','product_story','Geschichte & Zustand')">✨ Mit KI verfeinern</button></div>
+        <label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Transport &amp; Logistik</label><input id="tr-logistics" type="text" placeholder="z.B. Passt in jeden Kofferraum, 2 Personen empfohlen" style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;"></div>
+
+        <!-- ── VERHANDLUNG ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;"><div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;">💰 Verhandlung</div>
+        <div class="tr-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div><label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Absolute Untergrenze (privat)</label><input id="tr-minprice" type="number" placeholder="z.B. 2500" style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;"><div style="font-size:.68rem;color:#9ca3af;margin-top:3px;">Der Bot kennt diesen Wert — der Käufer nie</div></div>
+          <div>
+            <label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Verhandlungston</label>
+            <select id="tr-tone" style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;">
+              <option value="freundlich">😊 Freundlich – gibt etwas nach</option>
+              <option value="professionell" selected>💼 Professionell – moderat</option>
+              <option value="hart">🔥 Hart – kaum Nachlass</option>
+            </select>
+          </div>
+        </div></div>
+
+        <!-- ── EMOTIONALER PITCH ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;"><div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;">🎯 Emotionaler Verkaufspitch</div>
+        <div style="font-size:.75rem;color:#6b7280;margin-bottom:12px;">Der Bot setzt das taktisch ein wenn der Käufer zögert — nie als Script, immer natürlich.</div>
+        <div style="margin-bottom:10px;"><label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Wofür steht dieses Produkt?</label><textarea id="tr-emotion" rows="3" placeholder="z.B. Ein Breitling ist nicht einfach eine Uhr — das ist das Ding das du anschaust bevor du ins Meeting gehst." style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;resize:none;"></textarea><button class="refine-pill" style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;" onclick="openRefineModal('tr-emotion','emotion','Emotionaler Pitch')">✨ Mit KI verfeinern</button></div>
+        <label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Zielgruppe — Wer kauft das?</label><input id="tr-persona" type="text" placeholder="z.B. Erfolgreiche Männer 35-55, die wissen was sie wollen." style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;"><button class="refine-pill" style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;" onclick="openRefineModal('tr-persona','persona','Zielgruppe')">✨ Mit KI verfeinern</button>
+
+          <!-- Produktwerte Tabelle -->
+          <div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <div>
+                <div style="font-weight:800;font-size:.82rem;color:#1a1a1a;margin-bottom:2px;">🏆 Produktwerte</div>
+                <div style="font-size:.72rem;color:#6b7280;">Bot erkennt welchen Wert der Käufer sucht und spricht ihn gezielt an.</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button onclick="openKiListModal('values')" style="padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">🤖 KI generiert</button>
+                <button onclick="addValue()" style="padding:5px 14px;background:#2d7a4f;border:none;color:#fff;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">+ Hinzufügen</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:140px 1fr 28px;gap:6px;margin-bottom:6px;">
+              <div style="font-size:.68rem;font-weight:700;color:#6b7280;text-transform:uppercase;">Begriff / Wert</div>
+              <div style="font-size:.68rem;font-weight:700;color:#16a34a;text-transform:uppercase;">Bedeutung für dieses Produkt</div>
+              <div></div>
+            </div>
+            <div id="tr-values-list"><div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:10px;">Noch keine Werte definiert</div></div>
+          </div>
+
+          <!-- FOMO Tabelle -->
+          <div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <div>
+                <div style="font-weight:800;font-size:.82rem;color:#1a1a1a;margin-bottom:2px;">⏰ FOMO Argumente</div>
+                <div style="font-size:.72rem;color:#6b7280;">Bot wählt das passende Argument je nach Gesprächssituation.</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button onclick="openKiListModal('fomo_list')" style="padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">🤖 KI generiert</button>
+                <button onclick="addFOMO()" style="padding:5px 14px;background:#2d7a4f;border:none;color:#fff;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">+ Hinzufügen</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:140px 1fr 28px;gap:6px;margin-bottom:6px;">
+              <div style="font-size:.68rem;font-weight:700;color:#6b7280;text-transform:uppercase;">Situation</div>
+              <div style="font-size:.68rem;font-weight:700;color:#16a34a;text-transform:uppercase;">Argument</div>
+              <div></div>
+            </div>
+            <div id="tr-fomo-list"><div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:10px;">Noch keine FOMO Argumente</div></div>
+          </div><button class="refine-pill" style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;" onclick="openRefineModal('tr-persona','persona','Zielgruppe')">✨ Mit KI verfeinern</button></div>
+
+        <!-- ── EXIT-STRATEGIE ── -->
+        <div style="background:#fff7ed;border:1.5px solid #fb923c;border-radius:10px;padding:16px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <div style="font-weight:800;font-size:.85rem;color:#9a3412;margin-bottom:2px;">🚪 Exit-Strategie</div>
+              <div style="font-size:.72rem;color:#c2410c;">Argumente wenn Käufer unter Mindestpreis bleibt → Weiterleitung an Verkaufsleiter.</div>
+            </div>
+            <button onclick="addExitArg()" style="padding:5px 14px;background:#ea580c;border:none;color:#fff;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">+ Argument</button>
+          </div>
+          <div style="font-size:.72rem;color:#9a3412;background:#ffedd5;border-radius:6px;padding:8px 10px;margin-bottom:10px;">
+            💡 Der Bot setzt diese Argumente ein bevor er an den Verkaufsleiter übergibt. Reihenfolge = Priorität.
+          </div>
+          <div id="tr-exit-args"><div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:10px;">Noch keine Exit-Argumente</div></div>
+        </div>
+
+        <!-- ── HINWEISE ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;"><div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;">📝 Sonstige Hinweise</div><label style="font-size:.72rem;font-weight:700;color:#6b7280;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;">Wichtige Infos für den Bot</label><textarea id="tr-notes" rows="2" placeholder="z.B. Bitte vor Besuch per WhatsApp ankündigen. Keine Barzahlung unter €500." style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;box-sizing:border-box;background:#fff;color:#1a1a1a;resize:none;"></textarea><button class="refine-pill" style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;" onclick="openRefineModal('tr-notes','notes','Hinweise')">✨ Mit KI verfeinern</button></div>
+
+        <!-- ── FEATURE → NUTZEN ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div>
+              <div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;margin-bottom:2px;">🔄 Feature → Nutzen</div>
+              <div style="font-size:.72rem;color:#6b7280;">Bot nennt NIEMALS Features — nur den Nutzen für den Käufer.</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button onclick="openKiListModal('fn')" style="padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">🤖 KI generiert</button>
+              <button onclick="addFN()" style="padding:5px 14px;background:#2d7a4f;border:none;color:#fff;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">+ Hinzufügen</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 16px 1fr 32px;gap:6px;margin-bottom:8px;padding:0 2px;">
+            <div style="font-size:.68rem;font-weight:700;color:#6b7280;text-transform:uppercase;">Eigenschaft</div>
+            <div></div>
+            <div style="font-size:.68rem;font-weight:700;color:#16a34a;text-transform:uppercase;">Nutzen für Käufer</div>
+            <div></div>
+          </div>
+          <div id="tr-fn-list"><div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:12px;">Noch keine Einträge</div></div>
+
+        </div>
+
+        <!-- ── Q&A ── -->
+        <div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div>
+              <div style="font-weight:800;font-size:.85rem;margin-bottom:12px;color:#1a1a1a;margin-bottom:2px;">💬 Eigene Fragen &amp; Antworten</div>
+              <div style="font-size:.72rem;color:#6b7280;">Definiere wie der Bot auf spezifische Fragen antwortet.</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button onclick="openKiListModal('qa')" style="padding:5px 14px;background:#dcfce7;border:1.5px solid #16a34a;color:#14532d;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">🤖 KI generiert</button>
+              <button onclick="addQA()" style="padding:5px 14px;background:#2d7a4f;border:none;color:#fff;border-radius:20px;font-size:.73rem;font-weight:700;cursor:pointer;font-family:inherit;">+ Hinzufügen</button>
+            </div>
+          </div>
+          <div id="tr-qa-list"><div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:12px;">Noch keine Q&As definiert</div></div>
+        </div>
+
+        <!-- ── PROMPT PREVIEW ── -->
+        <div style="margin-bottom:14px;">
+          <button onclick="togglePromptPreview()" style="font-size:.75rem;color:#6b7280;background:none;border:none;cursor:pointer;font-family:inherit;padding:0;">🔍 System-Prompt Vorschau anzeigen</button>
+          <div id="tr-prompt-preview" style="display:none;margin-top:8px;background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px;font-size:.72rem;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow-y:auto;"></div>
+        </div>
+
+        <!-- ── ACTIONS ── -->
+        <div style="display:flex;gap:10px;margin-bottom:8px;">
+          <button onclick="saveBotConfig()" style="flex:1;padding:14px;background:#1b4332;color:#fff;border:none;border-radius:10px;font-size:.92rem;font-weight:800;cursor:pointer;font-family:inherit;">💾 Konfiguration speichern</button>
+          <button onclick="testBotWithConfig()" style="padding:14px 20px;background:#f0fdf4;border:1.5px solid #86efac;color:#15803d;border-radius:10px;font-size:.92rem;font-weight:800;cursor:pointer;font-family:inherit;">🧪 Sofort testen →</button>
+        </div>
+        <div id="tr-save-status" style="font-size:.78rem;text-align:center;min-height:20px;"></div>
+
+
+      <div id="tr-empty" style="text-align:center;color:var(--mu);padding:30px;">Wähle eine Landingpage aus um den Bot zu konfigurieren.</div>
+    </div>
+  </div>
+
+  <!-- REPORT TEST -->
+  <div id="sandbox-report-content" style="display:none;">
+    <div class="table-box" style="padding:20px;">
+      <div style="font-size:.82rem;color:var(--mu);margin-bottom:16px;">Vollständiger Test ohne WhatsApp — Business-Nummer mit 100% Rabatt.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div>
+          <label style="font-size:.72rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">BUSINESS-TELEFON (100% Rabatt)</label>
+          <div style="display:flex;gap:8px;">
+            <input id="rt-biz-phone" placeholder="4367684949610" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;">
+            <button onclick="rtSavePhone()" style="padding:9px 14px;background:#f0fdf4;border:1.5px solid #86efac;color:#15803d;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer;font-family:inherit;">Merken</button>
+          </div>
+          <div id="rt-phone-status" style="font-size:.72rem;margin-top:4px;color:var(--mu);"></div>
+        </div>
+        <div>
+          <label style="font-size:.72rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">ANALYSEMODUS</label>
+          <select id="rt-mode" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;">
+            <option value="sachbearbeiter">👤 Sachbearbeiter ×1</option>
+            <option value="abteilungsleiter">📊 Abteilungsleiter ×2</option>
+            <option value="experte">🎯 Experte ×4</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.72rem;font-weight:800;color:var(--mu);display:block;margin-bottom:8px;">PRODUKTFOTOS</label>
+        <div id="rt-dropzone"
+          style="border:2.5px dashed #86efac;border-radius:12px;background:#f0fdf4;padding:28px;text-align:center;cursor:pointer;margin-bottom:12px;"
+          onclick="rtTriggerUpload()"
+          ondragover="event.preventDefault();this.style.background='#dcfce7'"
+          ondragleave="this.style.background='#f0fdf4'"
+          ondrop="rtHandleDrop(event)">
+          <div style="font-size:2rem;margin-bottom:8px;">📸</div>
+          <div style="font-weight:800;color:#15803d;margin-bottom:4px;">Fotos hier ablegen oder klicken</div>
+          <div style="font-size:.78rem;color:var(--mu);">Beliebig viele Fotos — JPG, PNG</div>
+        </div>
+        <div id="rt-photo-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;min-height:0;"></div>
+        <div id="rt-upload-progress" style="display:none;margin-bottom:12px;">
+          <div style="background:#e5e7eb;border-radius:6px;height:6px;overflow:hidden;">
+            <div id="rt-progress-bar" style="height:6px;background:var(--wa);border-radius:6px;transition:width .3s;width:0%"></div>
+          </div>
+          <div id="rt-progress-label" style="font-size:.75rem;color:var(--mu);margin-top:4px;"></div>
+        </div>
+      </div>
+      <button id="rt-analyze-btn" onclick="rtAnalyze()"
+        style="width:100%;padding:16px;background:#1b4332;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:800;cursor:pointer;font-family:inherit;margin-bottom:12px;">
+        🚀 Jetzt analysieren
+      </button>
+      <div id="rt-result" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:1.1rem;font-weight:800;color:#15803d;margin-bottom:8px;">✅ Session erstellt!</div>
+        <div id="rt-result-link" style="margin-bottom:8px;"></div>
+        <div style="font-size:.78rem;color:var(--mu);">Kein WhatsApp nötig — direkt im Browser testen</div>
+      </div>
+      <div id="rt-error" style="display:none;background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px;font-size:.82rem;color:#dc2626;margin-top:8px;"></div>
+    </div>
+  </div>
+</div>
+</div><!-- close botsandbox inner -->
+</div><!-- close botsandbox -->
+
+<div id="section-coupons" style="display:none;">
+    <div class="table-box">
+      <div class="table-hd">
+        <h2>🎟️ Gutschein-Codes</h2>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="toggleNewCoupon()">+ Neu</button>
+      </div>
+      <div id="newCouponForm" style="display:none;padding:18px;background:#f9fafb;border-bottom:1px solid var(--border);">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">CODE (leer = zufällig)</label>
+            <input id="nc-code" placeholder="z.B. SUMMER25" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;text-transform:uppercase;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">TYP</label>
+            <select id="nc-type" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;">
+              <option value="free">🎁 100% Gratis</option>
+              <option value="percent">% Prozent</option>
+              <option value="fixed">€ Fixbetrag</option>
+            </select></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">WERT (% oder €)</label>
+            <input id="nc-value" type="number" value="100" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">MAX. VERWENDUNGEN</label>
+            <input id="nc-uses" type="number" placeholder="leer = unbegrenzt" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">GÜLTIG BIS</label>
+            <input id="nc-expires" type="date" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">BESCHREIBUNG</label>
+            <input id="nc-desc" placeholder="Interne Notiz" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" onclick="toggleNewCoupon()">Abbrechen</button>
+          <button class="btn btn-g" onclick="createCoupon()">✅ Erstellen</button>
+        </div>
+        <div id="nc-err" style="color:var(--red);font-size:.78rem;margin-top:6px;"></div>
+      </div>
+      <table>
+        <thead><tr><th>Code</th><th>Typ</th><th>Wert</th><th>Verwendet</th><th>Max</th><th>Gültig bis</th><th>Status</th><th>Aktionen</th></tr></thead>
+        <tbody id="couponsList"><tr><td colspan="8" class="msg">Lade...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+    <!-- Edit Modal -->
+    <div id="editBusinessModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-width:540px;box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto;">
+        <h3 style="margin-bottom:16px;font-size:.95rem;">✏️ Firmenrabatt bearbeiten</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">FIRMENNAME</label>
+            <input id="eb-company" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">TELEFON</label>
+            <input id="eb-phone" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">RABATT %</label>
+            <input id="eb-discount" type="number" min="1" max="100" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">GÜLTIG BIS</label>
+            <input id="eb-until" type="date" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">MAX. AUFTRÄGE</label>
+            <input id="eb-maxuses" type="number" placeholder="leer = unbegrenzt" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">NOTIZ</label>
+            <input id="eb-notes" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">PROVISION % (Verkauf)</label>
+            <input id="eb-commission" type="number" min="0" max="50" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">WISE E-MAIL</label>
+            <input id="eb-wise" type="email" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div style="display:flex;align-items:center;gap:10px;background:#f9fafb;border:1.5px solid var(--border);border-radius:7px;padding:10px;grid-column:span 2;">
+            <input type="checkbox" id="eb-lp-enabled" style="width:16px;height:16px;accent-color:var(--wa);">
+            <label for="eb-lp-enabled" style="font-size:.82rem;font-weight:700;cursor:pointer;">🌐 Landingpage + Bot aktivieren</label>
+          </div>
+          <div style="grid-column:span 2;"><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">KI ROLLE / ANALYSEMODUS</label>
+            <select id="eb-upload-mode" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;">
+              <option value="sachbearbeiter">👤 Sachbearbeiter ×1 – Basis, kein LP</option>
+              <option value="abteilungsleiter">📊 Abteilungsleiter ×2 – Standard + LP</option>
+              <option value="experte">🎯 Experte ×4 – Vollgutachten + LP</option>
+            </select>
+          </div>
+          <div style="grid-column:1/-1;"><label style="font-size:.7rem;font-weight:800;color:#9a3412;display:block;margin-bottom:4px;">E-MAIL VERKÄUFER + ESKALATION</label>
+            <input id="eb-seller-email" type="email" placeholder="verkauf@firma.at" style="width:100%;padding:8px 10px;border:1.5px solid #fb923c;border-radius:7px;font-size:.85rem;">
+            <div style="font-size:.68rem;color:#9a3412;margin-top:3px;">📧 An diese Adresse wird der Interessent weitergeleitet wenn der Bot keinen Deal erzielt.</div></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:#9a3412;display:block;margin-bottom:4px;">TITEL ESKALATIONS-KONTAKT</label>
+            <select id="eb-escalation-title" style="width:100%;padding:8px 10px;border:1.5px solid #fb923c;border-radius:7px;font-size:.85rem;">
+              <option value="unseren Verkaufsexperten">Verkaufsexperte (Standard)</option>
+              <option value="unseren Verkaufsleiter">Verkaufsleiter</option>
+              <option value="unser Beratungsteam">Beratungsteam</option>
+              <option value="unseren Kundenberater">Kundenberater</option>
+            </select></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:#9a3412;display:block;margin-bottom:4px;">ERREICHBARKEIT</label>
+            <input id="eb-escalation-availability" placeholder="z.B. Mo-Fr 9-17 Uhr" style="width:100%;padding:8px 10px;border:1.5px solid #fb923c;border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">STRASSE + NR</label>
+            <input id="eb-seller-address" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">PLZ</label>
+            <input id="eb-seller-zip" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">ORT</label>
+            <input id="eb-seller-city" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">UID-NUMMER (optional)</label>
+            <input id="eb-seller-uid" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" onclick="closeEditModal()">Abbrechen</button>
+          <button class="btn btn-g" onclick="saveBusinessDiscount()">✅ Speichern</button>
+        </div>
+        <div id="eb-err" style="color:var(--red);font-size:.78rem;margin-top:6px;"></div>
+      </div>
+    </div>
+
+  <!-- FIRMENRABATTE -->
+  <div id="section-business" style="display:none;">
+    <div class="table-box">
+      <div class="table-hd">
+        <h2>🏢 Business</h2>
+        <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="toggleNewBusiness()">+ Neu</button>
+      </div>
+      <div id="newBusinessForm" style="display:none;padding:18px;background:#f9fafb;border-bottom:1px solid var(--border);">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">FIRMENNAME</label>
+            <input id="nb-company" placeholder="z.B. IKEA Österreich" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">TELEFONNUMMER (mit Ländercode)</label>
+            <input id="nb-phone" placeholder="z.B. 436761234567" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">RABATT %</label>
+            <input id="nb-discount" type="number" min="1" max="100" value="20" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">PROVISION % (Verkauf)</label>
+            <input id="nb-commission" type="number" min="0" max="50" value="0" placeholder="z.B. 8" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">WISE E-MAIL (Auszahlung)</label>
+            <input id="nb-wise" type="email" placeholder="firma@wise.com" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">GÜLTIG BIS</label>
+            <input id="nb-until" type="date" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">MAX. AUFTRÄGE (leer = unbegrenzt)</label>
+            <input id="nb-maxuses" type="number" placeholder="leer = unbegrenzt" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">NOTIZ</label>
+            <input id="nb-notes" placeholder="Interne Notiz" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--wa);border-radius:7px;padding:10px;">
+            <input type="checkbox" id="nb-lp-enabled" style="width:16px;height:16px;accent-color:var(--wa);">
+            <label for="nb-lp-enabled" style="font-size:.82rem;font-weight:700;cursor:pointer;color:var(--wa);">🌐 Landingpage + Bot</label>
+          </div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">KI ROLLE / ANALYSEMODUS</label>
+            <select id="nb-upload-mode" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;">
+              <option value="sachbearbeiter">👤 Sachbearbeiter ×1 – Basis, kein LP</option>
+              <option value="abteilungsleiter">📊 Abteilungsleiter ×2 – Standard + LP</option>
+              <option value="experte">🎯 Experte ×4 – Vollgutachten + LP</option>
+            </select>
+          </div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">E-MAIL (Verkäufer)</label>
+            <input id="nb-seller-email" type="email" placeholder="firma@beispiel.at" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">STRASSE + NR</label>
+            <input id="nb-seller-address" placeholder="Musterstraße 1" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">PLZ</label>
+            <input id="nb-seller-zip" placeholder="1010" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">ORT</label>
+            <input id="nb-seller-city" placeholder="Wien" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+          <div><label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">UID-NUMMER (optional)</label>
+            <input id="nb-seller-uid" placeholder="ATU12345678" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:.85rem;"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" onclick="toggleNewBusiness()">Abbrechen</button>
+          <button class="btn btn-g" onclick="createBusinessDiscount()">✅ Erstellen</button>
+        </div>
+        <div id="nb-err" style="color:var(--red);font-size:.78rem;margin-top:6px;"></div>
+      </div>
+      <table>
+        <thead><tr><th>Firma</th><th>Telefon</th><th>Rabatt</th><th>Provision</th><th>LP/Bot</th><th>Verwendet</th><th>Gültig bis</th><th>Status</th><th>Aktionen</th></tr></thead>
+        <tbody id="businessList"><tr><td colspan="8" class="msg">Lade...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── KI KONFIGURATION ── -->
+  <div id="section-escalations" style="display:none;">
+    <div style="max-width:920px;margin:0 auto;padding:16px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div><div style="font-size:1.1rem;font-weight:800;">📞 Kaufanfragen</div><div style="font-size:.8rem;color:#6b7280;margin-top:2px;">Interessenten die an den Verkaufsexperten weitergeleitet wurden</div></div>
+        <button onclick="loadEscalations()" style="padding:8px 16px;background:#f3f4f6;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;">↻ Aktualisieren</button>
+      </div>
+      <div id="esc-table-wrap"><div style="text-align:center;padding:40px;color:#9ca3af;">Wird geladen...</div></div>
+    </div>
+  </div>
+
+  <div id="section-aiconfig" style="display:none;">
+    <div class="table-box">
+      <div class="table-hd">
+        <h2>⚙️ KI Konfiguration</h2>
+        <span id="aiconfig-status" style="font-size:.75rem;color:rgba(255,255,255,.7);"></span>
+      </div>
+      <div style="padding:14px 18px;background:#f9fafb;border-bottom:1px solid var(--border);">
+        <div style="font-size:.82rem;color:var(--mu);margin-bottom:6px;">Wähle das KI-Modell pro Aufgabe und Rolle. Jede Zeile einzeln speichern.</div>
+        <div style="display:flex;gap:20px;font-size:.78rem;font-weight:700;">
+          <span>⚡ <strong>Haiku</strong> — schnell, günstig</span>
+          <span>💡 <strong>Sonnet</strong> — ausgewogen</span>
+          <span>🏆 <strong>Opus</strong> — premium, teuer</span>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th style="width:220px;">Aufgabe</th>
+          <th style="background:#f0fdf4;color:#15803d;">👤 Sachbearbeiter<br><span style="font-size:.65rem;font-weight:600;">×1 Preis</span></th>
+          <th style="background:#eff6ff;color:#1d4ed8;">📊 Abteilungsleiter<br><span style="font-size:.65rem;font-weight:600;">×2 Preis</span></th>
+          <th style="background:#fef9c3;color:#a16207;">🎯 Experte<br><span style="font-size:.65rem;font-weight:600;">×4 Preis</span></th>
+          <th style="width:60px;"></th>
+        </tr></thead>
+        <tbody id="aiconfig-tbody">
+          <tr><td colspan="5" class="msg">Lade...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+const KEY = 'converto_auth_v2';
+let sessions = [];
+let currentFilter = 'all';
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ESKALATIONEN
+async function loadEscalations() {
+  var wrap = document.getElementById('esc-table-wrap');
+  if (!wrap) return;
+  try {
+    var r = await fetch(API + '/api/vk/admin/escalations');
+    var data = await r.json();
+    if (!data.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af;font-size:.88rem;">Noch keine Anfragen</div>'; return; }
+    var sColors = { new:'#fef9c3', contacted:'#dbeafe', done:'#dcfce7', closed:'#f3f4f6' };
+    var sLabels = { new:'🟡 Neu', contacted:'🔵 Kontaktiert', done:'✅ Erledigt', closed:'⚫ Geschlossen' };
+    var html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:.82rem;">'
+      + '<thead><tr style="border-bottom:2px solid #e5e7eb;">'
+      + '<th style="text-align:left;padding:10px 8px;color:#6b7280;font-weight:800;white-space:nowrap;">ARTIKEL</th>'
+      + '<th style="text-align:left;padding:10px 8px;color:#6b7280;font-weight:800;">KONTAKT</th>'
+      + '<th style="text-align:left;padding:10px 8px;color:#6b7280;font-weight:800;">ERREICHBAR</th>'
+      + '<th style="text-align:left;padding:10px 8px;color:#6b7280;font-weight:800;">DATUM</th>'
+      + '<th style="text-align:left;padding:10px 8px;color:#6b7280;font-weight:800;">STATUS</th>'
+      + '</tr></thead><tbody>';
+    data.forEach(function(e) {
+      var d = new Date(e.created_at).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+      var icon = e.buyer_contact_type === 'Telefon' ? '📞' : '✉️';
+      html += '<tr style="border-bottom:1px solid #f3f4f6;">'
+        + '<td style="padding:12px 8px;"><div style="font-weight:700;">' + esc(e.article_title||e.lp_slug||'-') + '</div>'
+        + (e.lp_slug?'<a href="https://p.converdino.com/p/'+esc(e.lp_slug)+'" target="_blank" style="font-size:.72rem;color:#25D366;">LP ansehen</a>':'') + '</td>'
+        + '<td style="padding:12px 8px;">' + icon + ' <strong>' + esc(e.buyer_contact) + '</strong><br><span style="font-size:.72rem;color:#9ca3af;">via ' + esc(e.buyer_contact_type) + '</span></td>'
+        + '<td style="padding:12px 8px;">' + esc(e.buyer_availability||'-') + '</td>'
+        + '<td style="padding:12px 8px;color:#9ca3af;white-space:nowrap;">' + d + '</td>'
+        + '<td style="padding:12px 8px;"><select data-esc-id="'+e.id+'" onchange="updateEscStatus(this.dataset.escId,this.value)" style="padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:.75rem;font-family:inherit;background:'+sColors[e.status||'new']+';cursor:pointer;">'
+        + ['new','contacted','done','closed'].map(function(s){return '<option value="'+s+'"'+(e.status===s?' selected':'')+'>'+sLabels[s]+'</option>';}).join('')
+        + '</select></td></tr>';
+    });
+    wrap.innerHTML = html + '</tbody></table></div>';
+  } catch(err) { wrap.innerHTML = '<div style="color:#ef4444;padding:16px;">Fehler: ' + err.message + '</div>'; }
+}
+async function updateEscStatus(id, status) {
+  try {
+    await fetch(API + '/api/vk/admin/escalations/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status}) });
+    showToast('Status aktualisiert');
+  } catch(e) { showToast('Fehler'); }
+}
+
+function showToast(msg, duration) {
+  var t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function() { t.classList.remove('show'); }, duration || 2500);
+}
+
+(function() {
+  let auth = null;
+  try { auth = JSON.parse(localStorage.getItem(KEY)||'null'); } catch(e){}
+  if (!auth || auth.role !== 'superadmin') { location.href = 'login.html'; return; }
+})();
+
+function doLogout() { localStorage.removeItem(KEY); location.href = 'login.html'; }
+
+window.onload = loadAll;
+
+async function loadAll() {
+  await Promise.all([loadStats(), loadSessions()]);
+  runCleanup(true);
+}
+
+async function runCleanup(silent) {
+  var btn = document.getElementById('btnCleanup');
+  var status = document.getElementById('cleanupStatus');
+  if (!silent) { if (btn) btn.textContent = '⏳ Läuft...'; }
+  try {
+    var r = await fetch(API + '/api/vk/cron/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-cron-secret': 'converdino-cron-2026-xyz' }
+    });
+    var d = await r.json();
+    if (d.success) {
+      var msg = '✅ ' + d.deleted + ' gelöscht, ' + d.fixed + ' repariert';
+      if (status) status.textContent = msg;
+      if (!silent) showToast(msg);
+      if (d.deleted > 0 || d.fixed > 0) { await Promise.all([loadStats(), loadSessions()]); }
+    }
+  } catch(e) { if (!silent) showToast('❌ Cleanup Fehler: ' + e.message); }
+  if (btn) btn.textContent = '🧹 Cleanup jetzt ausführen';
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch(API + '/api/vk/admin/stats');
+    const d = await r.json();
+    document.getElementById('s-valid').textContent   = d.valid ?? 0;
+    document.getElementById('s-24h').textContent     = d.last_24h ?? 0;
+    document.getElementById('s-rev-24h').textContent  = '€' + (d.revenue_24h  || 0).toFixed(2);
+    document.getElementById('s-rev-30d').textContent  = '€' + (d.revenue_30d  || 0).toFixed(2);
+    document.getElementById('s-rev-365d').textContent = '€' + (d.revenue_365d || 0).toFixed(2);
+  } catch(e) { console.error('Stats Fehler:', e); }
+}
+
+async function loadSessions() {
+  try {
+    const r = await fetch(API + '/api/vk/admin/sessions');
+    sessions = await r.json() || [];
+    renderSessions();
+  } catch(e) {
+    document.getElementById('sessionsTable').innerHTML = '<tr><td colspan="7" class="msg" style="color:var(--red);">Fehler beim Laden</td></tr>';
+  }
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSessions();
+}
+
+function renderSessions() {
+  const list = currentFilter === 'all' ? sessions : sessions.filter(s => s.status === currentFilter);
+  const tbody = document.getElementById('sessionsTable');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="7" class="msg">Keine Aufträge</td></tr>'; return; }
+  const statusLabels = {open:'Offen',paid:'Bezahlt',analyzing:'Analyse',done:'Fertig',expired:'Abgelaufen',deleted:'Gelöscht',error:'Fehler'};
+  tbody.innerHTML = list.map(function(s) {
+    const articles = s.vk_articles || [];
+    const created = new Date(s.created_at).toLocaleString('de-AT', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const deleteAt = s.delete_at ? new Date(s.delete_at).toLocaleDateString('de-AT') : '—';
+    const daysLeft = s.delete_at ? Math.ceil((new Date(s.delete_at)-Date.now())/(1000*60*60*24)) : null;
+    const deleteDisplay = daysLeft !== null
+      ? (daysLeft <= 1 ? '<span style="color:var(--red);font-weight:800;">'+deleteAt+' ('+daysLeft+'d)</span>' : deleteAt + ' (' + daysLeft + 'd)')
+      : '—';
+    const badge = '<span class="badge s-'+s.status+'">'+(statusLabels[s.status]||s.status)+'</span>';
+    return '<tr>' +
+      '<td style="font-size:.78rem;">' + created + '</td>' +
+      '<td><span class="phone">' + s.phone + '</span></td>' +
+      '<td style="text-align:center;">' + articles.length + '</td>' +
+      '<td>€' + (s.total_price||0).toFixed(2) + '</td>' +
+      '<td>' + badge + '</td>' +
+      '<td style="font-size:.78rem;">' + deleteDisplay + '</td>' +
+      '<td style="white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap;">' +
+        '<a href="bericht.html?s=' + s.token + '" target="_blank" class="btn btn-sm" style="background:#f3f4f6;">🔗</a>' +
+        (s.status === 'done' ? '<a href="ergebnis.html?s=' + s.token + '" target="_blank" class="btn btn-sm btn-g">📋</a>' : '') +
+        (['open','paid','error','done'].includes(s.status) ? '<button class="btn btn-sm btn-gold" onclick="analyzeSession(\''+s.id+'\')">🔍 Analysieren</button>' : '') +
+        '<button class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8;" onclick="extendSession(\''+s.id+'\')">+7d</button>' +
+        '<button class="btn btn-sm btn-red" onclick="deleteSession(\''+s.id+'\',\''+s.phone+'\')">🗑️</button>' +
+      '</td></tr>' +
+      articles.filter(function(a) { return a.compliance_status === 'blocked' || a.compliance_status === 'needs_review'; }).map(function(a) {
+        var compColor = a.compliance_status === 'blocked' ? '#fef2f2' : '#fefce8';
+        var compIcon = a.compliance_status === 'blocked' ? '🔒' : '⚠️';
+        var compLabel = a.compliance_status === 'blocked' ? 'GESPERRT' : 'PRÜFUNG';
+        var authBadge = a.authenticity_score ? ' | Auth: ' + a.authenticity_score + '/100' : '';
+        return '<tr style="background:' + compColor + ';border-top:1px solid #fecaca;">' +
+          '<td colspan="3" style="padding:6px 16px;font-size:.78rem;">' + compIcon + ' <strong>' + esc(a.title || 'Unbekannt') + '</strong> – ' + compLabel + (a.compliance_blocked_reason ? ': ' + esc(a.compliance_blocked_reason) : '') + authBadge + '</td>' +
+          '<td colspan="4" style="padding:6px 8px;">' +
+            '<button onclick="complianceAction(\'' + a.id + '\', \'approve\')" style="padding:3px 8px;background:#15803d;color:#fff;border:none;border-radius:5px;font-size:.72rem;cursor:pointer;margin-right:4px;">Freigeben</button>' +
+            '<button onclick="complianceReject(\'' + a.id + '\')" style="padding:3px 8px;background:#dc2626;color:#fff;border:none;border-radius:5px;font-size:.72rem;cursor:pointer;margin-right:4px;">Ablehnen</button>' +
+            (a.authenticity_score >= 70 && !a.admin_verified ? '<button onclick="verifyAuth(\'' + a.id + '\')" style="padding:3px 8px;background:#7c3aed;color:#fff;border:none;border-radius:5px;font-size:.72rem;cursor:pointer;">🏆 Verifizieren</button>' : '') +
+          '</td></tr>';
+      }).join('');
+  }).join('');
+}
+
+async function complianceAction(articleId, action) {
+  try {
+    await fetch(API + '/api/vk/admin/compliance/' + articleId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action }) });
+    showToast(action === 'approve' ? '✅ Freigegeben' : '❌ Abgelehnt');
+    loadSessions();
+  } catch(e) { alert('Fehler: ' + e.message); }
+}
+
+function complianceReject(articleId) {
+  var reason = prompt('Begründung für Ablehnung (wird an Verkäufer gesendet):');
+  if (!reason) return;
+  fetch(API + '/api/vk/admin/compliance/' + articleId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ action: 'reject', reason }) })
+    .then(function() { showToast('❌ Abgelehnt – Verkäufer wird informiert'); loadSessions(); })
+    .catch(function(e) { alert('Fehler: ' + e.message); });
+}
+
+async function verifyAuth(articleId) {
+  try { await fetch(API + '/api/vk/admin/verify/' + articleId, { method: 'PUT' }); showToast('🏆 Authentizität verifiziert'); loadSessions(); }
+  catch(e) { alert('Fehler: ' + e.message); }
+}
+
+async function analyzeSession(id) {
+  if (!confirm('Analyse jetzt starten?')) return;
+  showToast('⏳ Analyse gestartet...');
+  await fetch(API + '/api/vk/admin/analyze/' + id, {method:'POST'});
+  showToast('✅ Analyse läuft');
+  setTimeout(loadAll, 3000);
+}
+
+async function extendSession(id) {
+  await fetch(API + '/api/vk/admin/session/' + id + '/extend', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ days: 7 }) });
+  showToast('✅ Session um 7 Tage verlängert');
+  loadSessions();
+}
+
+async function deleteSession(id, phone) {
+  if (!confirm('Session von ' + phone + ' wirklich löschen?')) return;
+  await fetch(API + '/api/vk/admin/session/' + id, {method:'DELETE'});
+  showToast('✅ Gelöscht');
+  loadSessions(); loadStats();
+}
+
+function showSection(name) {
+  if (document.getElementById('section-freicodes')) document.getElementById('section-freicodes').style.display = name === 'freicodes' ? 'block' : 'none';
+  document.getElementById('section-coupons').style.display  = name === 'coupons'   ? 'block' : 'none';
+  document.getElementById('section-business').style.display = name === 'business'  ? 'block' : 'none';
+  document.getElementById('section-orders').style.display   = name === 'orders'    ? 'block' : 'none';
+  document.getElementById('section-aiconfig').style.display = name === 'aiconfig'  ? 'block' : 'none';
+  var escEl = document.getElementById('section-escalations');
+  if (escEl) { escEl.style.display = name === 'escalations' ? 'block' : 'none'; if (name === 'escalations') loadEscalations(); }
+  var ve = document.getElementById('section-verkaeufe');
+  if (ve) ve.style.display = name === 'verkaeufe' ? 'block' : 'none';
+  var bs = document.getElementById('section-botsandbox');
+  if (bs) bs.style.display = name === 'botsandbox' ? 'block' : 'none';
+  document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
+  if (name === 'freicodes')      { if(document.getElementById('btnFreicodes')) document.getElementById('btnFreicodes').classList.add('active'); loadFreicodes(); }
+  else if (name === 'coupons') { document.getElementById('btnCoupons').classList.add('active');   loadCoupons(); }
+  else if (name === 'business')  { document.getElementById('btnBusiness').classList.add('active');  loadBusinessDiscounts(); }
+  else if (name === 'verkaeufe') { document.getElementById('btnVerkaeufe').classList.add('active'); loadVerkaeufe(); }
+  else if (name === 'botsandbox'){ document.getElementById('btnBotsandbox').classList.add('active'); loadSandboxLPs(); switchSandboxTab('bot'); }
+  else if (name === 'aiconfig')  { document.getElementById('btnAiconfig').classList.add('active');  loadAiConfig(); }
+  else { document.getElementById('btnOrders').classList.add('active'); loadAll(); }
+}
+
+function toggleNewCoupon() {
+  var f = document.getElementById('newCouponForm');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+async function loadCoupons() {
+  try {
+    var r = await fetch(API + '/api/vk/admin/coupons');
+    var coupons = await r.json() || [];
+    var tbody = document.getElementById('couponsList');
+    if (!coupons.length) { tbody.innerHTML = '<tr><td colspan="8" class="msg">Keine Gutscheine</td></tr>'; return; }
+    tbody.innerHTML = coupons.map(function(c) {
+      var typeLabel = {free:'🎁 Gratis', percent:'% '+c.value, fixed:'€ '+c.value}[c.type] || c.type;
+      var expires = c.expires_at ? new Date(c.expires_at).toLocaleDateString('de-AT') : '∞';
+      var isExpired = c.expires_at && new Date(c.expires_at) < new Date();
+      var isFull = c.max_uses && c.used_count >= c.max_uses;
+      var isActive = c.active && !isExpired && !isFull;
+      return '<tr>' +
+        '<td><strong style="font-family:monospace;">' + esc(c.code) + '</strong>' + (c.description ? '<br><small style="color:var(--mu)">' + esc(c.description) + '</small>' : '') + '</td>' +
+        '<td>' + typeLabel + '</td>' +
+        '<td>' + (c.type==='free'?'—':c.type==='percent'?c.value+'%':c.value+'€') + '</td>' +
+        '<td style="text-align:center;">' + (c.used_count||0) + '</td>' +
+        '<td style="text-align:center;">' + (c.max_uses||'∞') + '</td>' +
+        '<td>' + expires + '</td>' +
+        '<td><span class="badge ' + (isActive?'s-open':'s-expired') + '">' + (isActive?'Aktiv':'Inaktiv') + '</span></td>' +
+        '<td style="white-space:nowrap;">' +
+          '<button class="btn btn-sm ' + (c.active?'':'btn-g') + '" onclick="toggleCoupon(\'' + c.id + '\',' + c.active + ')">' + (c.active?'⏸':'▶') + '</button> ' +
+          '<button class="btn btn-sm btn-red" onclick="deleteCoupon(\'' + c.id + '\',\'' + esc(c.code) + '\')">🗑️</button>' +
+        '</td></tr>';
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function createCoupon() {
+  var code = document.getElementById('nc-code').value.trim().toUpperCase();
+  var type = document.getElementById('nc-type').value;
+  var value = parseFloat(document.getElementById('nc-value').value)||100;
+  var maxUses = parseInt(document.getElementById('nc-uses').value)||null;
+  var expires = document.getElementById('nc-expires').value||null;
+  var desc = document.getElementById('nc-desc').value.trim()||null;
+  document.getElementById('nc-err').textContent = '';
+  try {
+    var r = await fetch(API + '/api/vk/admin/coupons', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code, type, value, max_uses: maxUses, expires_at: expires, description: desc }) });
+    var d = await r.json();
+    if (!d.success) { document.getElementById('nc-err').textContent = d.error; return; }
+    showToast('✅ Code "' + d.coupon.code + '" erstellt!');
+    document.getElementById('newCouponForm').style.display = 'none';
+    loadCoupons();
+  } catch(e) { document.getElementById('nc-err').textContent = e.message; }
+}
+
+async function toggleCoupon(id, active) {
+  await fetch(API + '/api/vk/admin/coupons/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active: !active }) });
+  showToast(!active ? '▶ Aktiv' : '⏸ Pausiert');
+  loadCoupons();
+}
+
+async function deleteCoupon(id, code) {
+  if (!confirm('Code "' + code + '" löschen?')) return;
+  await fetch(API + '/api/vk/admin/coupons/' + id, { method:'DELETE' });
+  showToast('Gelöscht');
+  loadCoupons();
+}
+
+function toggleNewBusiness() {
+  var f = document.getElementById('newBusinessForm');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+async function loadVerkaeufe() {
+  try {
+    const r = await fetch(API + '/api/vk/admin/verkaeufe');
+    const data = await r.json();
+    if (!Array.isArray(data)) throw new Error(data.error || 'Server Fehler');
+    const totalOffen    = data.filter(v => v.payout_status === 'open').reduce((s,v) => s + (v.commission_amount||0), 0);
+    const totalErledigt = data.filter(v => v.payout_status === 'done').reduce((s,v) => s + (v.commission_amount||0), 0);
+    const totalSusp     = data.filter(v => v.payout_status === 'suspended').reduce((s,v) => s + (v.commission_amount||0), 0);
+    document.getElementById('verkaeufe-summary').innerHTML = [
+      '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:1.3rem;font-weight:900;color:#15803d;">€' + totalOffen.toFixed(2) + '</div><div style="font-size:.72rem;color:var(--mu);font-weight:700;margin-top:2px;">OFFEN</div></div>',
+      '<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:1.3rem;font-weight:900;color:#059669;">€' + totalErledigt.toFixed(2) + '</div><div style="font-size:.72rem;color:var(--mu);font-weight:700;margin-top:2px;">AUSBEZAHLT</div></div>',
+      '<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px;text-align:center;"><div style="font-size:1.3rem;font-weight:900;color:#ef4444;">€' + totalSusp.toFixed(2) + '</div><div style="font-size:.72rem;color:var(--mu);font-weight:700;margin-top:2px;">SUSPENDIERT</div></div>'
+    ].join('');
+    if (!data.length) { document.getElementById('verkaeufe-list').innerHTML = '<div style="text-align:center;padding:40px;color:var(--mu);">Noch keine Verkäufe</div>'; return; }
+    const now = new Date();
+    let html = '<div style="overflow-x:auto;"><div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:.82rem;"><thead><tr style="border-bottom:2px solid var(--border);text-align:left;"><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">VERKÄUFER</th><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">PRODUKT</th><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">VK-WERT</th><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">PROVISION</th><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">AUSZAHLUNG</th><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">STATUS</th><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">FÄLLIGKEIT</th><th style="padding:8px 10px;color:var(--mu);font-size:.7rem;">AKTION</th></tr></thead><tbody>';
+    data.forEach(function(v) {
+      const saleAmt = parseFloat(v.sale_amount||0), commAmt = parseFloat(v.commission_amount||0), payoutAmt = saleAmt - commAmt;
+      const dueAt = v.payout_due_at ? new Date(v.payout_due_at) : null;
+      const isOverdue = dueAt && dueAt < now && v.payout_status === 'open';
+      const daysDue = dueAt ? Math.ceil((now - dueAt)/(1000*60*60*24)) : 0;
+      const statusBadge = {'open':'<span style="background:#fef9c3;color:#a16207;padding:3px 8px;border-radius:12px;font-weight:700;font-size:.7rem;">Offen</span>','suspended':'<span style="background:#fee2e2;color:#dc2626;padding:3px 8px;border-radius:12px;font-weight:700;font-size:.7rem;">Suspendiert</span>','done':'<span style="background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:12px;font-weight:700;font-size:.7rem;">Erledigt</span>'}[v.payout_status]||'';
+      html += '<tr style="border-bottom:1px solid var(--border);'+(isOverdue?'background:#fff7f7;':'')+'">';
+      html += '<td style="padding:10px;">'+esc(v.seller_name||v.company_name||'-')+'</td>';
+      html += '<td style="padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(v.product_title||'-')+'</td>';
+      html += '<td style="padding:10px;font-weight:700;">€'+saleAmt.toFixed(2)+'</td>';
+      html += '<td style="padding:10px;font-weight:700;color:#15803d;">€'+commAmt.toFixed(2)+'</td>';
+      html += '<td style="padding:10px;'+(isOverdue?'color:#dc2626;font-weight:800;':'font-weight:700;')+'">€'+payoutAmt.toFixed(2)+(isOverdue?' ⚠️ '+daysDue+'d':'')+'</td>';
+      html += '<td style="padding:10px;">'+statusBadge+'</td>';
+      html += '<td style="padding:10px;font-size:.75rem;color:var(--mu);">'+(dueAt?dueAt.toLocaleDateString('de-AT'):'-')+'</td>';
+      html += '<td style="padding:10px;">';
+      if (v.payout_status==='open') { html += '<button data-lpid="'+v.id+'" data-status="done" data-action="payout" style="padding:4px 8px;background:#15803d;color:#fff;border:none;border-radius:5px;font-size:.72rem;cursor:pointer;margin-right:4px;">Erledigt</button><button data-lpid="'+v.id+'" data-status="suspended" data-action="payout" style="padding:4px 8px;background:#dc2626;color:#fff;border:none;border-radius:5px;font-size:.72rem;cursor:pointer;">Suspendieren</button>'; }
+      else if (v.payout_status!=='done') { html += '<button data-lpid="'+v.id+'" data-status="open" data-action="payout" style="padding:4px 8px;background:var(--wa);color:#fff;border:none;border-radius:5px;font-size:.72rem;cursor:pointer;">Reaktivieren</button>'; }
+      html += '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('verkaeufe-list').innerHTML = html;
+    document.getElementById('verkaeufe-list').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action="payout"]');
+      if (btn) setPayoutStatus(btn.dataset.lpid, btn.dataset.status);
+    });
+  } catch(e) { document.getElementById('verkaeufe-list').innerHTML = '<div style="color:red;">Fehler: '+e.message+'</div>'; }
+}
+
+async function setPayoutStatus(lpId, status) {
+  try { await fetch(API+'/api/vk/admin/verkaeufe/'+lpId+'/payout',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({payout_status:status})}); loadVerkaeufe(); }
+  catch(e) { alert('Fehler: '+e.message); }
+}
+
+var sandboxMessages = [];
+
+async function sendSandboxMsg() {
+  var input = document.getElementById('sandbox-input');
+  var slug = document.getElementById('sandbox-slug').value.trim();
+  var msg = input.value.trim();
+  if (!msg || !slug) { alert('Bitte LP Slug und Nachricht eingeben'); return; }
+  input.value = '';
+  appendSandboxMsg(msg, 'buyer');
+  sandboxMessages.push({ role: 'user', content: msg });
+  var typingId = 'typing-' + Date.now();
+  var chat = document.getElementById('sandbox-chat');
+  chat.innerHTML += '<div id="' + typingId + '" style="align-self:flex-start;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-size:.82rem;color:var(--mu);">⏳ Bot tippt...</div>';
+  chat.scrollTop = chat.scrollHeight;
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-sandbox', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lp_slug: slug, messages: sandboxMessages, negotiation_level: document.getElementById('sandbox-level').value }) });
+    var data = await r.json();
+    document.getElementById(typingId)?.remove();
+    if (!r.ok) { appendSandboxMsg('Fehler: ' + (data.error || 'Unbekannt'), 'error'); return; }
+    var reply = data.reply;
+    sandboxMessages.push({ role: 'assistant', content: reply });
+    var typingDelay = Math.min(4000, Math.max(1000, reply.length * 40));
+    await new Promise(function(r) { setTimeout(r, typingDelay); });
+    if (data.payment_link) {
+      appendSandboxMsg(reply.replace(/ZAHLUNG_LINK:\d+(\.\d+)?/, '').trim(), 'bot');
+      appendSandboxMsg('✅ EINIGUNG – Bot würde Payment Link senden: EUR ' + data.payment_link.amount.toFixed(2), 'system');
+    } else if (data.vk_leiter) {
+      appendSandboxMsg(reply.replace(/VERKAUFSLEITER_ANFRAGE:[^\n]+/, '').trim(), 'bot');
+      appendSandboxMsg('📞 VERKAUFSLEITER – Bot würde Anfrage weiterleiten an: ' + data.vk_leiter.email + ' | Termin: ' + data.vk_leiter.zeitpunkt, 'system');
+    } else {
+      appendSandboxMsg(reply, 'bot');
+    }
+    var mName = data.model || '';
+    var modelBadge = mName.includes('opus') ? '🔮 Opus (Preisverhandlung)' : mName.includes('sonnet') ? '⚡ Sonnet (Verhandlung)' : '⚡ Haiku (Produktfrage)';
+    // VK-Modus aus LP ai_mode ableiten
+    var lpMode = (_sandboxLPs && _sandboxLPs.find ? (_sandboxLPs.find(function(l){ return l.slug === document.getElementById('sandbox-lp-select')?.value; }) || {}) : {});
+    var vkMode = lpMode.ai_mode || 'sachbearbeiter';
+    var vkModeLabel = { sachbearbeiter: '👤 Sachbearbeiter', abteilungsleiter: '📊 Abteilungsleiter', experte: '🎯 Experte' }[vkMode] || vkMode;
+    var vkModeColor = { sachbearbeiter: '#6b7280', abteilungsleiter: '#2563eb', experte: '#7c3aed' }[vkMode] || '#6b7280';
+    chat.innerHTML += '<div style="text-align:center;font-size:.68rem;color:var(--mu);margin-top:-4px;">' + modelBadge + ' &nbsp;·&nbsp; <span style="color:' + vkModeColor + ';font-weight:700;">' + vkModeLabel + '</span></div>';
+  } catch(e) { document.getElementById(typingId)?.remove(); appendSandboxMsg('Fehler: ' + (e.message || JSON.stringify(e)), 'error'); console.error('Sandbox error:', e); }
+}
+
+function appendSandboxMsg(text, type) {
+  var chat = document.getElementById('sandbox-chat');
+  var styles = { buyer:'align-self:flex-end;background:var(--wa);color:#fff;', bot:'align-self:flex-start;background:#fff;border:1.5px solid var(--border);color:var(--txt);', system:'align-self:center;background:#fef9c3;border:1px solid #fef08a;color:#a16207;font-size:.78rem;', error:'align-self:center;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:.78rem;' };
+  chat.innerHTML += '<div style="' + (styles[type]||styles.bot) + 'border-radius:10px;padding:9px 13px;font-size:.85rem;max-width:85%;white-space:pre-wrap;">' + esc(text) + '</div>';
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function resetSandbox() {
+  sandboxMessages = [];
+  var chat = document.getElementById('sandbox-chat');
+  chat.innerHTML = '<div style="text-align:center;color:var(--mu);font-size:.82rem;padding:20px;">Konversation zurückgesetzt.</div>';
+}
+
+var _sandboxLPs = [];
+async function loadSandboxLPs() {
+  try {
+    var r = await fetch(API + '/api/vk/admin/active-lps');
+    var lps = await r.json();
+    _sandboxLPs = lps || [];
+    var sel = document.getElementById('sandbox-slug');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- LP auswählen --</option>';
+    _sandboxLPs.forEach(function(lp) {
+      var opt = document.createElement('option');
+      opt.value = lp.slug;
+      opt.textContent = (lp.title || lp.slug) + ' – EUR ' + (lp.sale_price || 0);
+      sel.appendChild(opt);
+    });
+  } catch(e) { console.error('LP load error:', e); }
+}
+
+function updateSandboxModeBadge() {
+  var slug = document.getElementById('sandbox-slug')?.value;
+  var badge = document.getElementById('sandbox-mode-badge');
+  var modeText = document.getElementById('sandbox-mode-text');
+  if (!slug || !badge) return;
+  var lp = _sandboxLPs.find(function(l) { return l.slug === slug; });
+  var mode = lp?.ai_mode || 'sachbearbeiter';
+  var modeLabels = { sachbearbeiter: '👤 Sachbearbeiter (Haiku)', abteilungsleiter: '📊 Abteilungsleiter (Sonnet)', experte: '🎯 Experte (Opus)' };
+  if (modeText) modeText.textContent = modeLabels[mode] || mode;
+  if (badge) badge.style.display = 'block';
+}
+
+async function loadBusinessDiscounts() {
+  try {
+    var r = await fetch(API + '/api/vk/admin/business-discounts');
+    var list = await r.json() || [];
+    var tbody = document.getElementById('businessList');
+    if (!list.length) { tbody.innerHTML = '<tr><td colspan="8" class="msg">Keine Business</td></tr>'; return; }
+    tbody.innerHTML = '';
+    list.forEach(function(b) {
+      var until = b.valid_until ? new Date(b.valid_until).toLocaleDateString('de-AT') : '∞';
+      var isExpired = b.valid_until && new Date(b.valid_until) < new Date();
+      var isFull = b.max_uses && b.used_count >= b.max_uses;
+      var isActive = b.active && !isExpired && !isFull;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><strong>' + esc(b.company_name) + '</strong>' + (b.notes ? '<br><small style="color:var(--mu)">' + esc(b.notes) + '</small>' : '') + (b.wise_email ? '<br><small style="color:var(--mu)">💳 ' + esc(b.wise_email) + '</small>' : '') + '</td>' +
+        '<td><span class="phone">' + esc(b.phone) + '</span></td>' +
+        '<td style="font-weight:800;color:#059669;">' + b.discount_percent + '%</td>' +
+        '<td style="text-align:center;">' + (b.sales_commission_percent||0) + '%</td>' +
+        '<td style="text-align:center;">' + (b.landingpage_enabled ? '✅' : '—') + '</td>' +
+        '<td style="text-align:center;">' + (b.used_count||0) + '</td>' +
+        '<td>' + until + '</td>' +
+        '<td><span class="badge ' + (isActive?'s-open':'s-expired') + '">' + (isActive?'Aktiv':'Inaktiv') + '</span></td>' +
+        '<td style="white-space:nowrap;">' +
+          '<button class="btn btn-sm" style="background:#eff6ff;color:#1d4ed8;margin-right:4px;">✏️</button>' +
+          '<button class="btn btn-sm" style="margin-right:4px;">' + (b.active?'⏸':'▶') + '</button>' +
+          '<button class="btn btn-sm btn-red">🗑️</button>' +
+        '</td>';
+      var btns = tr.querySelectorAll('button');
+      btns[0].addEventListener('click', function() { editBusinessDiscount(b); });
+      btns[1].addEventListener('click', function() { toggleBusinessDiscount(b.id, b.active); });
+      btns[2].addEventListener('click', function() { deleteBusinessDiscount(b.id, b.company_name); });
+      tbody.appendChild(tr);
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function createBusinessDiscount() {
+  var company = document.getElementById('nb-company').value.trim();
+  var phone = document.getElementById('nb-phone').value.trim().replace(/[^0-9+]/g,'');
+  var discount = parseInt(document.getElementById('nb-discount').value)||20;
+  var until = document.getElementById('nb-until').value||null;
+  var maxUses = parseInt(document.getElementById('nb-maxuses').value)||null;
+  var notes = document.getElementById('nb-notes').value.trim()||null;
+  var commission = parseInt(document.getElementById('nb-commission').value)||0;
+  var wiseEmail = document.getElementById('nb-wise').value.trim()||null;
+  var lpEnabled = document.getElementById('nb-lp-enabled').checked;
+  var sellerEmail = document.getElementById('nb-seller-email').value.trim()||null;
+  var sellerAddr = document.getElementById('nb-seller-address').value.trim()||null;
+  var sellerZip = document.getElementById('nb-seller-zip').value.trim()||null;
+  var sellerCity = document.getElementById('nb-seller-city').value.trim()||null;
+  var sellerUid = document.getElementById('nb-seller-uid').value.trim()||null;
+  document.getElementById('nb-err').textContent = '';
+  if (!company || !phone) { document.getElementById('nb-err').textContent = 'Firma und Telefon erforderlich'; return; }
+  try {
+    var r = await fetch(API + '/api/vk/admin/business-discounts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ company_name: company, phone, discount_percent: discount, valid_until: until, max_uses: maxUses, notes, sales_commission_percent: commission, wise_email: wiseEmail, landingpage_enabled: lpEnabled, seller_email: sellerEmail, seller_address: sellerAddr, seller_zip: sellerZip, seller_city: sellerCity, seller_uid: sellerUid, upload_mode: document.getElementById('nb-upload-mode').value || 'standard' }) });
+    var d = await r.json();
+    if (!d.success) { document.getElementById('nb-err').textContent = d.error; return; }
+    showToast('✅ Firmenrabatt für "' + company + '" erstellt!');
+    document.getElementById('newBusinessForm').style.display = 'none';
+    loadBusinessDiscounts();
+  } catch(e) { document.getElementById('nb-err').textContent = e.message; }
+}
+
+async function toggleBusinessDiscount(id, active) {
+  await fetch(API + '/api/vk/admin/business-discounts/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active: !active }) });
+  showToast(!active ? '▶ Aktiv' : '⏸ Pausiert');
+  loadBusinessDiscounts();
+}
+
+async function deleteBusinessDiscount(id, name) {
+  if (!confirm('Firmenrabatt für "' + name + '" löschen?')) return;
+  await fetch(API + '/api/vk/admin/business-discounts/' + id, { method:'DELETE' });
+  showToast('Gelöscht');
+  loadBusinessDiscounts();
+}
+
+var _editingBusinessId = null;
+
+function editBusinessDiscount(b) {
+  _editingBusinessId = b.id;
+  document.getElementById('eb-company').value    = b.company_name || '';
+  document.getElementById('eb-phone').value      = b.phone || '';
+  document.getElementById('eb-discount').value   = b.discount_percent || 20;
+  document.getElementById('eb-until').value      = b.valid_until ? b.valid_until.split('T')[0] : '';
+  document.getElementById('eb-maxuses').value    = b.max_uses || '';
+  document.getElementById('eb-notes').value      = b.notes || '';
+  document.getElementById('eb-commission').value    = b.sales_commission_percent || 0;
+  document.getElementById('eb-wise').value           = b.wise_email || '';
+  document.getElementById('eb-lp-enabled').checked   = !!b.landingpage_enabled;
+  var modeMap = { 'standard': 'sachbearbeiter', 'expert': 'experte' };
+  var modeVal = b.upload_mode || 'sachbearbeiter';
+  document.getElementById('eb-upload-mode').value = modeMap[modeVal] || modeVal;
+  document.getElementById('eb-seller-email').value   = b.seller_email || '';
+  if(document.getElementById('eb-escalation-title')) document.getElementById('eb-escalation-title').value = b.escalation_title || 'unseren Verkaufsexperten';
+  if(document.getElementById('eb-escalation-availability')) document.getElementById('eb-escalation-availability').value = b.escalation_availability || '';
+  document.getElementById('eb-seller-address').value = b.seller_address || '';
+  document.getElementById('eb-seller-zip').value     = b.seller_zip || '';
+  document.getElementById('eb-seller-city').value    = b.seller_city || '';
+  document.getElementById('eb-seller-uid').value     = b.seller_uid || '';
+  document.getElementById('eb-err').textContent = '';
+  document.getElementById('editBusinessModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('editBusinessModal').style.display = 'none';
+  _editingBusinessId = null;
+}
+
+async function saveBusinessDiscount() {
+  if (!_editingBusinessId) return;
+  var company = document.getElementById('eb-company').value.trim();
+  var phone = document.getElementById('eb-phone').value.trim().replace(/[^0-9+]/g,'');
+  var discount = parseInt(document.getElementById('eb-discount').value)||20;
+  var until = document.getElementById('eb-until').value || null;
+  var maxUses = parseInt(document.getElementById('eb-maxuses').value)||null;
+  var notes = document.getElementById('eb-notes').value.trim()||null;
+  var commission = parseInt(document.getElementById('eb-commission').value)||0;
+  var wiseEmail = document.getElementById('eb-wise').value.trim()||null;
+  var lpEnabled = document.getElementById('eb-lp-enabled').checked;
+  var sellerEmail = document.getElementById('eb-seller-email').value.trim()||null;
+  var sellerAddr = document.getElementById('eb-seller-address').value.trim()||null;
+  var sellerZip = document.getElementById('eb-seller-zip').value.trim()||null;
+  var sellerCity = document.getElementById('eb-seller-city').value.trim()||null;
+  var sellerUid = document.getElementById('eb-seller-uid').value.trim()||null;
+  document.getElementById('eb-err').textContent = '';
+  try {
+    var r = await fetch(API + '/api/vk/admin/business-discounts/' + _editingBusinessId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ company_name: company, phone, discount_percent: discount, valid_until: until, max_uses: maxUses, notes, sales_commission_percent: commission, wise_email: wiseEmail, landingpage_enabled: lpEnabled, seller_email: sellerEmail, seller_address: sellerAddr, seller_zip: sellerZip, seller_city: sellerCity, seller_uid: sellerUid, escalation_title: (document.getElementById('eb-escalation-title')||{}).value||'unseren Verkaufsexperten', escalation_availability: (document.getElementById('eb-escalation-availability')||{}).value||'' }) });
+    var d = await r.json();
+    if (!d.success) { document.getElementById('eb-err').textContent = d.error; return; }
+    showToast('✅ Gespeichert');
+    closeEditModal();
+    loadBusinessDiscounts();
+  } catch(e) { document.getElementById('eb-err').textContent = e.message; }
+}
+
+// -- KI KONFIGURATION -----------------------------------------
+var _aiConfig = [];
+var AI_DEFAULTS = [
+  {id:'',task_key:'photo_grouping',         task_label:'Foto-Gruppierung',          sachbearbeiter_model:'claude-haiku-4-5', abteilungsleiter_model:'claude-haiku-4-5',  experte_model:'claude-sonnet-4-6'},
+  {id:'',task_key:'sales_analysis_basic',   task_label:'Verkaufsanalyse Basis',     sachbearbeiter_model:'claude-haiku-4-5', abteilungsleiter_model:'claude-haiku-4-5',  experte_model:'claude-sonnet-4-6'},
+  {id:'',task_key:'sales_analysis_complex', task_label:'Verkaufsanalyse Komplex',   sachbearbeiter_model:'claude-haiku-4-5', abteilungsleiter_model:'claude-sonnet-4-6', experte_model:'claude-opus-4-6'},
+  {id:'',task_key:'whatsapp_bot_l1',        task_label:'WhatsApp Bot Ebene 1',      sachbearbeiter_model:'claude-haiku-4-5', abteilungsleiter_model:'claude-haiku-4-5',  experte_model:'claude-sonnet-4-6'},
+  {id:'',task_key:'whatsapp_bot_l2',        task_label:'WhatsApp Bot Ebene 2',      sachbearbeiter_model:'claude-haiku-4-5', abteilungsleiter_model:'claude-sonnet-4-6', experte_model:'claude-opus-4-6'}
+];
+
+async function loadAiConfig() {
+  var status = document.getElementById('aiconfig-status');
+  try {
+    var r = await fetch(API + '/api/vk/admin/ai-config');
+    if (r.ok) {
+      var data = await r.json();
+      _aiConfig = data.length ? data : AI_DEFAULTS;
+      status.textContent = data.length ? '✅ Live' : '📋 Standardwerte';
+    } else { throw new Error(); }
+  } catch(e) {
+    _aiConfig = AI_DEFAULTS;
+    status.textContent = '📋 Vorschau (API folgt)';
+  }
+  renderAiConfig();
+}
+
+function modelOptions(selected) {
+  return [
+    ['claude-haiku-4-5',  '⚡ Haiku (schnell)'],
+    ['claude-sonnet-4-6', '💡 Sonnet (standard)'],
+    ['claude-opus-4-6',   '🏆 Opus (premium)']
+  ].map(function(o) {
+    return '<option value="' + o[0] + '"' + (selected === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('');
+}
+
+function renderAiConfig() {
+  var tbody = document.getElementById('aiconfig-tbody');
+  if (!_aiConfig.length) { tbody.innerHTML = '<tr><td colspan="5" class="msg">Keine Daten</td></tr>'; return; }
+  tbody.innerHTML = _aiConfig.map(function(c) {
+    return '<tr id="airow-' + c.task_key + '">' +
+      '<td style="font-weight:700;font-size:.85rem;">' + esc(c.task_label) + '</td>' +
+      '<td style="background:#f0fdf4;">' +
+        '<select data-key="' + c.task_key + '" data-role="sachbearbeiter_model" style="width:100%;padding:6px 8px;border:1.5px solid #86efac;border-radius:6px;font-size:.78rem;font-family:inherit;background:#f0fdf4;cursor:pointer;">' +
+        modelOptions(c.sachbearbeiter_model) + '</select></td>' +
+      '<td style="background:#eff6ff;">' +
+        '<select data-key="' + c.task_key + '" data-role="abteilungsleiter_model" style="width:100%;padding:6px 8px;border:1.5px solid #bfdbfe;border-radius:6px;font-size:.78rem;font-family:inherit;background:#eff6ff;cursor:pointer;">' +
+        modelOptions(c.abteilungsleiter_model) + '</select></td>' +
+      '<td style="background:#fef9c3;">' +
+        '<select data-key="' + c.task_key + '" data-role="experte_model" style="width:100%;padding:6px 8px;border:1.5px solid #fde68a;border-radius:6px;font-size:.78rem;font-family:inherit;background:#fef9c3;cursor:pointer;">' +
+        modelOptions(c.experte_model) + '</select></td>' +
+      '<td><button onclick="saveAiRow(\'' + c.task_key + '\',\'' + (c.id || '') + '\')" class="btn btn-g btn-sm" title="Speichern">💾</button></td>' +
+    '</tr>';
+  }).join('');
+}
+
+async function saveAiRow(taskKey, id) {
+  var row = document.getElementById('airow-' + taskKey);
+  var updates = {};
+  row.querySelectorAll('select').forEach(function(s) { updates[s.getAttribute('data-role')] = s.value; });
+  updates.updated_at = new Date().toISOString();
+  try {
+    var url = id
+      ? API + '/api/vk/admin/ai-config/' + id
+      : API + '/api/vk/admin/ai-config/key/' + taskKey;
+    var r = await fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(updates) });
+    if (r.ok) {
+      showToast('✅ ' + taskKey + ' gespeichert');
+    } else { throw new Error(); }
+  } catch(e) {
+    _aiConfig.forEach(function(c) { if (c.task_key === taskKey) Object.assign(c, updates); });
+    showToast('⚠️ Lokal gespeichert – API folgt in Kürze');
+  }
+}
+
+
+// -- SANDBOX SUB-TAB SWITCH ------------------------------------
+function switchSandboxTab(tab) {
+  document.getElementById('sandbox-bot-content').style.display = tab==='bot' ? 'block' : 'none';
+  document.getElementById('sandbox-report-content').style.display = tab==='report' ? 'block' : 'none';
+  document.getElementById('sandbox-lps-content').style.display = tab==='lps' ? 'block' : 'none';
+  document.getElementById('sandbox-training-content').style.display = tab==='training' ? 'block' : 'none';
+  var tabs = {bot:'stab-bot', report:'stab-report', lps:'stab-lps', training:'stab-training'};
+  Object.keys(tabs).forEach(function(t) {
+    var btn = document.getElementById(tabs[t]);
+    if (!btn) return;
+    var active = t === tab;
+    btn.style.background = active ? 'var(--wa)' : '#f9fafb';
+    btn.style.borderColor = active ? 'var(--wa)' : 'var(--border)';
+    btn.style.color = active ? '#fff' : 'var(--mu)';
+  });
+  if (tab === 'report') rtInit();
+  if (tab === 'lps') loadLPsList();
+  if (tab === 'training') initBotTraining();
+}
+
+// -- REPORT TEST -----------------------------------------------
+var rtPhotos = [];
+
+function rtInit() {
+  // Business-Nummer aus localStorage laden
+  var saved = localStorage.getItem('rt_biz_phone');
+  if (saved) {
+    var el = document.getElementById('rt-biz-phone');
+    if (el) { el.value = saved; rtCheckPhone(saved); }
+  }
+}
+
+function rtSavePhone() {
+  var phone = (document.getElementById('rt-biz-phone').value || '').trim().replace(/[^0-9]/g, '');
+  if (!phone) { showToast('Bitte Telefonnummer eingeben'); return; }
+  localStorage.setItem('rt_biz_phone', phone);
+  document.getElementById('rt-biz-phone').value = phone;
+  document.getElementById('rt-phone-status').textContent = '✅ Gespeichert';
+  document.getElementById('rt-phone-status').style.color = '#15803d';
+  showToast('✅ Nummer gespeichert');
+}
+
+function rtCheckPhone(val) {
+  var status = document.getElementById('rt-phone-status');
+  if (!status) return;
+  var clean = (val || '').replace(/[^0-9]/g, '');
+  if (clean.length >= 10) {
+    status.textContent = 'Format OK';
+    status.style.color = '#15803d';
+  } else {
+    status.textContent = 'Ohne + und Leerzeichen eingeben (z.B. 4367684949610)';
+    status.style.color = 'var(--mu)';
+  }
+}
+
+function rtTriggerUpload() {
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+  inp.onchange = function() { if (inp.files) rtAddPhotos(Array.from(inp.files)); };
+  inp.click();
+}
+
+function rtHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('rt-dropzone').style.background = '#f0fdf4';
+  var files = Array.from(e.dataTransfer.files).filter(function(f) { return f.type.startsWith('image/'); });
+  if (files.length) rtAddPhotos(files);
+}
+
+function rtAddPhotos(files) {
+  rtPhotos = rtPhotos.concat(files);
+  rtRenderPhotoPreview();
+  document.getElementById('rt-dropzone').querySelector('div:nth-child(2)').textContent = rtPhotos.length + ' Foto(s) bereit';
+}
+
+function rtRenderPhotoPreview() {
+  var preview = document.getElementById('rt-photo-preview');
+  if (!preview) return;
+  preview.innerHTML = rtPhotos.map(function(f, i) {
+    var url = URL.createObjectURL(f);
+    return '<div style="position:relative;">' +
+      '<img src="' + url + '" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1.5px solid var(--border);">' +
+      '<div onclick="rtRemovePhoto(' + i + ')" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;background:#ef4444;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;border:2px solid #fff;">✕</div>' +
+      '</div>';
+  }).join('');
+}
+
+function rtRemovePhoto(idx) {
+  rtPhotos.splice(idx, 1);
+  rtRenderPhotoPreview();
+}
+
+async function rtAnalyze() {
+  var phone = (document.getElementById('rt-biz-phone').value || '').trim().replace(/[^0-9]/g, '');
+  var mode = document.getElementById('rt-mode').value;
+  var btn = document.getElementById('rt-analyze-btn');
+  var errEl = document.getElementById('rt-error');
+  var resultEl = document.getElementById('rt-result');
+
+  errEl.style.display = 'none'; resultEl.style.display = 'none';
+
+  if (!phone) { errEl.textContent = 'Business-Telefon fehlt'; errEl.style.display = 'block'; return; }
+  if (!rtPhotos.length) { errEl.textContent = 'Mindestens 1 Foto hochladen'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = '⏳ Session wird erstellt...';
+
+  try {
+    // Session erstellen via Sandbox-Endpoint
+    var startRes = await fetch(API + '/api/vk/sandbox/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone, ai_mode: mode })
+    });
+
+    var token, sessionId;
+
+    if (startRes.ok) {
+      var startData = await startRes.json();
+      token = startData.token;
+      sessionId = startData.session_id || startData.id;
+    } else {
+      // Fallback: direkte Session-Erstellung über bekannte Endpoints
+      throw new Error('Sandbox-Endpoint nicht verfügbar. Bitte server.js ergänzen.');
+    }
+
+    // Fotos hochladen
+    btn.textContent = '⏳ ' + rtPhotos.length + ' Fotos werden hochgeladen...';
+    var prog = document.getElementById('rt-upload-progress');
+    var bar = document.getElementById('rt-progress-bar');
+    var lbl = document.getElementById('rt-progress-label');
+    if (prog) prog.style.display = 'block';
+
+    // Ersten Artikel erstellen
+    var artRes = await fetch(API + '/api/vk/article', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token, title: 'Artikel 1' })
+    });
+    var artData = await artRes.json();
+    var articleId = artData.article?.id;
+
+    if (!articleId) throw new Error('Artikel konnte nicht erstellt werden');
+
+    for (var i = 0; i < rtPhotos.length; i++) {
+      var base64 = await new Promise(function(res, rej) {
+        var reader = new FileReader();
+        reader.onload = function() { res(reader.result.split(',')[1]); };
+        reader.onerror = rej;
+        reader.readAsDataURL(rtPhotos[i]);
+      });
+      await fetch(API + '/api/vk/photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article_id: articleId, session_id: sessionId, image_base64: base64, content_type: rtPhotos[i].type || 'image/jpeg' })
+      });
+      var pct = Math.round(((i + 1) / rtPhotos.length) * 100);
+      if (bar) bar.style.width = pct + '%';
+      if (lbl) lbl.textContent = (i + 1) + ' / ' + rtPhotos.length + ' hochgeladen';
+    }
+
+    // Ergebnis anzeigen
+    var berichtUrl = 'https://converdino.com/bericht.html?s=' + token;
+    resultEl.style.display = 'block';
+    document.getElementById('rt-result-link').innerHTML =
+      '<a href="' + berichtUrl + '" target="_blank" style="color:#15803d;font-weight:800;word-break:break-all;">→ ' + berichtUrl + '</a>';
+
+    showToast('✅ Session bereit!');
+    rtPhotos = []; rtRenderPhotoPreview();
+    if (prog) prog.style.display = 'none';
+
+  } catch(e) {
+    errEl.textContent = '❌ ' + e.message;
+    errEl.style.display = 'block';
+  }
+
+  btn.disabled = false; btn.textContent = '🚀 Jetzt analysieren';
+}
+
+
+
+// -- LANDINGPAGES LIST --------------------------------------
+async function loadLPsList() {
+  var container = document.getElementById('lps-list-content');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;color:var(--mu);padding:20px;">Lade...</div>';
+  try {
+    var r = await fetch(API + '/api/vk/admin/active-lps');
+    var lps = await r.json();
+    if (!lps || !lps.length) {
+      container.innerHTML = '<div style="text-align:center;color:var(--mu);padding:30px;">Keine aktiven Landingpages</div>';
+      return;
+    }
+    var html = '<div style="display:grid;gap:12px;">';
+    lps.forEach(function(lp) {
+      var slug = lp.slug || '';
+      var title = lp.title || slug;
+      var url = 'https://p.converdino.com/p/' + slug;
+      var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=' + encodeURIComponent(url) + '&color=1b4332&bgcolor=ffffff&margin=6';
+      var priceTag = lp.sale_price ? ' &bull; <strong style="color:#15803d">&euro;' + parseFloat(lp.sale_price).toFixed(2) + '</strong>' : '';
+      var botTag = lp.has_bot ? ' &bull; &#129302; Bot' : '';
+      html += '<div style="display:flex;align-items:center;gap:14px;background:#f9fafb;border:1.5px solid var(--border);border-radius:10px;padding:14px;">';
+      html += '<img src="' + qrUrl + '" style="width:64px;height:64px;border-radius:6px;border:1px solid var(--border);flex-shrink:0;" alt="QR">';
+      html += '<div style="flex:1;min-width:0;">';
+      html += '<div style="font-weight:800;font-size:.88rem;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(title) + '</div>';
+      html += '<div style="font-size:.75rem;color:var(--mu);margin-bottom:6px;">' + esc(slug) + priceTag + botTag + '</div>';
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      html += '<a href="' + url + '" target="_blank" style="padding:4px 10px;background:var(--wa);color:#fff;border-radius:6px;font-size:.72rem;font-weight:700;text-decoration:none;">&#128279; &Ouml;ffnen</a>';
+      var escapedSlug = slug.replace(/'/g, "\'");
+      html += '<button onclick="navigator.clipboard.writeText(\'' + url + '\').then(function(){showToast(\'&#10003; Kopiert!\');})" style="padding:4px 10px;background:#f0fdf4;border:1px solid #86efac;color:#15803d;border-radius:6px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit;">Kopieren</button>';
+      html += '<button onclick="document.getElementById(\'sandbox-slug\').value=\'' + escapedSlug + '\';switchSandboxTab(\'bot\');resetSandbox();" style="padding:4px 10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:6px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit;">&#129302; Bot testen</button>';
+      html += '</div></div></div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--red);padding:16px;">Fehler: ' + e.message + '</div>';
+  }
+}
+
+// -- BOT TRAINING ---------------------------------------------
+var _botQAs = [];
+var _botFNs = []; // Feature → Nutzen pairs
+var _currentTrainingSlug = null;
+
+async function initBotTraining() {
+  var sel = document.getElementById('tr-slug');
+  if (!sel) return;
+  // Load LPs - reuse same endpoint as Bot Test tab
+  try {
+    var r = await fetch(API + '/api/vk/admin/active-lps');
+    var lps = r.ok ? await r.json() : [];
+    sel.innerHTML = '<option value="">-- LP auswählen --</option>';
+    (lps || []).forEach(function(lp) {
+      var label = (lp.title || lp.slug) + (lp.sale_price ? ' – EUR ' + lp.sale_price : '');
+      sel.innerHTML += '<option value="' + lp.slug + '">' + label + '</option>';
+    });
+    // Also sync to sandbox-slug if empty
+    var src = document.getElementById('sandbox-slug');
+    if (src && src.options.length <= 1) src.innerHTML = sel.innerHTML;
+  } catch(e) {
+    // Fallback: copy from sandbox-slug
+    var src = document.getElementById('sandbox-slug');
+    if (src && src.options.length > 1) sel.innerHTML = src.innerHTML;
+  }
+  var params = new URLSearchParams(location.search);
+  if (params.get('slug')) { sel.value = params.get('slug'); loadBotConfig(); }
+  loadTemplatesList();
+}
+
+async function loadBotConfig() {
+  var slug = document.getElementById('tr-slug').value;
+  if (!slug) {
+    document.getElementById('tr-form').style.display = 'none';
+    document.getElementById('tr-empty').style.display = 'block';
+    return;
+  }
+  _currentTrainingSlug = slug;
+  document.getElementById('tr-form').style.display = 'block';
+  document.getElementById('tr-empty').style.display = 'none';
+  if (!_templates.length) loadTemplatesList();
+
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-config/' + slug);
+    var cfg = r.ok ? await r.json() : {};
+    document.getElementById('tr-botname').value = cfg.bot_name || '';
+    document.getElementById('tr-context').value = cfg.context || 'privat';
+    var langs = cfg.languages || ['Deutsch','English','Español'];
+    document.getElementById('tr-lang-de').checked = langs.includes('Deutsch');
+    document.getElementById('tr-lang-en').checked = langs.includes('English');
+    document.getElementById('tr-lang-es').checked = langs.includes('Español');
+    document.getElementById('tr-lang-fr').checked = langs.includes('Français');
+    document.getElementById('tr-lang-it').checked = langs.includes('Italiano');
+    document.getElementById('tr-location').value = cfg.location || '';
+    document.getElementById('tr-parking').value = cfg.parking || '';
+    document.getElementById('tr-availability').value = cfg.availability || '';
+    document.getElementById('tr-story').value = cfg.product_story || '';
+    document.getElementById('tr-logistics').value = cfg.logistics || '';
+    document.getElementById('tr-minprice').value = cfg.min_price || '';
+    document.getElementById('tr-tone').value = cfg.tone || 'professionell';
+    document.getElementById('tr-notes').value = cfg.notes || '';
+    document.getElementById('tr-emotion').value = cfg.emotion || '';
+    document.getElementById('tr-persona').value = cfg.persona || '';
+    _botFNs = cfg.feature_benefits || [];
+    renderFNs();
+    _botValues = cfg.product_values || [];
+    renderValues();
+    _botFOMOs = cfg.fomo_list || [];
+    renderFOMOs();
+    _botExitArgs = cfg.exit_strategy_args || [];
+    renderExitArgs();
+    _botQAs = cfg.qa_pairs || [];
+    renderQAs();
+    updatePromptPreview();
+  } catch(e) {
+    _botQAs = [];
+    _botExitArgs = [];
+    renderExitArgs();
+    renderQAs();
+  }
+}
+
+function getBotConfigFromForm() {
+  var langs = [];
+  if (document.getElementById('tr-lang-de') && document.getElementById('tr-lang-de').checked) langs.push('Deutsch');
+  if (document.getElementById('tr-lang-en') && document.getElementById('tr-lang-en').checked) langs.push('English');
+  if (document.getElementById('tr-lang-es') && document.getElementById('tr-lang-es').checked) langs.push('Español');
+  if (document.getElementById('tr-lang-fr') && document.getElementById('tr-lang-fr').checked) langs.push('Français');
+  if (document.getElementById('tr-lang-it') && document.getElementById('tr-lang-it').checked) langs.push('Italiano');
+  return {
+    bot_name: (document.getElementById('tr-botname') || {}).value || '',
+    context: (document.getElementById('tr-context') || {}).value || 'privat',
+    languages: langs,
+    location: (document.getElementById('tr-location') || {}).value || '',
+    parking: (document.getElementById('tr-parking') || {}).value || '',
+    availability: (document.getElementById('tr-availability') || {}).value || '',
+    product_story: (document.getElementById('tr-story') || {}).value || '',
+    logistics: (document.getElementById('tr-logistics') || {}).value || '',
+    min_price: parseFloat((document.getElementById('tr-minprice') || {}).value) || null,
+    tone: (document.getElementById('tr-tone') || {}).value || 'professionell',
+    notes: (document.getElementById('tr-notes') || {}).value || '',
+    emotion: (document.getElementById('tr-emotion') || {}).value || '',
+    persona: (document.getElementById('tr-persona') || {}).value || '',
+    feature_benefits: _botFNs.filter(function(fn) { return fn.feature && fn.benefit; }),
+    qa_pairs: _botQAs.filter(function(qa) { return qa.q && qa.a; }),
+    product_values: _botValues.filter(function(v) { return v.label && v.meaning; }),
+    fomo_list: _botFOMOs.filter(function(f) { return f.argument; }),
+    exit_strategy_args: _botExitArgs.filter(function(a) { return a.argument; })
+  };
+}
+
+async function saveBotConfig() {
+  var status = document.getElementById('tr-save-status');
+  if (!_currentTrainingSlug) {
+    status.textContent = '⚠️ Keine LP ausgewählt!';
+    status.style.color = '#dc2626';
+    return;
+  }
+  var cfg = getBotConfigFromForm();
+  status.textContent = '⏳ Speichere für: ' + _currentTrainingSlug;
+  status.style.color = 'var(--mu)';
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-config/' + _currentTrainingSlug, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg)
+    });
+    var d = await r.json();
+    if (r.ok) {
+      status.textContent = '✅ Gespeichert für: ' + _currentTrainingSlug;
+      status.style.color = '#15803d';
+      setTimeout(function() { status.textContent = ''; }, 4000);
+    } else {
+      status.textContent = '❌ Server: ' + (d.error || r.status);
+      status.style.color = '#dc2626';
+    }
+  } catch(e) {
+    status.textContent = '❌ Netzwerkfehler: ' + e.message;
+    status.style.color = '#dc2626';
+  }
+}
+
+function testBotWithConfig() {
+  if (!_currentTrainingSlug) return;
+  saveBotConfig();
+  // Switch to Bot Test and select this LP
+  setTimeout(function() {
+    switchSandboxTab('bot');
+    var sel = document.getElementById('sandbox-slug');
+    if (sel) {
+      sel.value = _currentTrainingSlug;
+      resetSandbox();
+    }
+  }, 800);
+}
+
+function addFN() {
+  _botFNs.unshift({ feature: '', benefit: '' });
+  renderFNs();
+}
+
+function removeFN(idx) {
+  _botFNs.splice(idx, 1);
+  renderFNs();
+}
+
+function renderFNs() {
+  var list = document.getElementById('tr-fn-list');
+  if (!list) return;
+  if (!_botFNs.length) {
+    list.innerHTML = '<div style="font-size:.78rem;color:var(--mu);text-align:center;padding:10px;">Noch keine Einträge</div>';
+    return;
+  }
+  list.innerHTML = _botFNs.map(function(fn, i) {
+    return '<div style="display:grid;grid-template-columns:1fr 16px 1fr 32px;gap:6px;margin-bottom:6px;align-items:center;">' +
+      '<input value="' + esc(fn.feature) + '" placeholder="z.B. Automatikwerk" oninput="_botFNs[' + i + '].feature=this.value" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:.78rem;font-family:inherit;">' +
+      '<div style="text-align:center;font-size:.85rem;color:var(--mu);">→</div>' +
+      '<input value="' + esc(fn.benefit) + '" placeholder="z.B. Läuft von selbst" oninput="_botFNs[' + i + '].benefit=this.value" style="padding:6px 10px;border:1.5px solid #86efac;border-radius:6px;font-size:.78rem;font-family:inherit;background:#f0fdf4;">' +
+      '<button onclick="removeFN(' + i + ')" style="padding:4px 8px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit;">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+function addQA() {
+  _botQAs.unshift({ q: '', a: '' });
+  renderQAs();
+}
+
+function removeQA(idx) {
+  _botQAs.splice(idx, 1);
+  renderQAs();
+}
+
+function renderQAs() {
+  var list = document.getElementById('tr-qa-list');
+  if (!list) return;
+  if (!_botQAs.length) {
+    list.innerHTML = '<div style="font-size:.78rem;color:var(--mu);text-align:center;padding:10px;">Noch keine Q&amp;As definiert</div>';
+    return;
+  }
+  list.innerHTML = _botQAs.map(function(qa, i) {
+    return '<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">' +
+      '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center;">' +
+        '<span style="font-size:.68rem;font-weight:700;color:var(--mu);width:24px;flex-shrink:0;">F:</span>' +
+        '<input value="' + esc(qa.q) + '" placeholder="Wenn Käufer fragt..." oninput="_botQAs[' + i + '].q=this.value" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:.82rem;font-family:inherit;">' +
+        '<button onclick="removeQA(' + i + ')" style="padding:4px 8px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit;">✕</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;align-items:flex-start;">' +
+        '<span style="font-size:.68rem;font-weight:700;color:#15803d;width:24px;flex-shrink:0;padding-top:7px;">A:</span>' +
+        '<textarea placeholder="Bot antwortet..." oninput="_botQAs[' + i + '].a=this.value" rows="2" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:.82rem;font-family:inherit;resize:none;">' + esc(qa.a) + '</textarea>' +
+      '</div></div>';
+  }).join('');
+}
+
+function buildPromptPreview(cfg) {
+  var lines = [];
+  lines.push('Du bist ein Verkaufsassistent.');
+  lines.push('Verhandlungston: ' + (cfg.tone || 'professionell'));
+  if (cfg.min_price) lines.push('Untergrenze (INTERN, NIEMALS nennen): €' + cfg.min_price);
+  if (cfg.location) lines.push('STANDORT: ' + cfg.location);
+  if (cfg.parking) lines.push('PARKEN: ' + cfg.parking);
+  if (cfg.availability) lines.push('VERFÜGBARKEIT: ' + cfg.availability);
+  if (cfg.product_story) lines.push('PRODUKT: ' + cfg.product_story);
+  if (cfg.logistics) lines.push('TRANSPORT: ' + cfg.logistics);
+  if (cfg.notes) lines.push('HINWEISE: ' + cfg.notes);
+  if (cfg.emotion || cfg.fomo || cfg.persona) {
+    lines.push('EMOTIONAL SELLING:');
+    if (cfg.emotion) lines.push('Produkt steht für: ' + cfg.emotion);
+    if (cfg.fomo) lines.push('FOMO: ' + cfg.fomo);
+    if (cfg.persona) lines.push('Zielgruppe: ' + cfg.persona);
+  }
+  if (cfg.feature_benefits && cfg.feature_benefits.length) {
+    lines.push('FEATURE → NUTZEN:');
+    cfg.feature_benefits.forEach(function(fn) {
+      if (fn.feature && fn.benefit) lines.push('- ' + fn.feature + ' → ' + fn.benefit);
+    });
+  }
+  if (cfg.qa_pairs && cfg.qa_pairs.length) {
+    lines.push('HÄUFIGE FRAGEN:');
+    cfg.qa_pairs.forEach(function(qa) {
+      if (qa.q && qa.a) lines.push('F: ' + qa.q + ' → A: ' + qa.a);
+    });
+  }
+  return lines.join('\n');
+}
+
+function togglePromptPreview() {
+  var el = document.getElementById('tr-prompt-preview');
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    el.textContent = buildPromptPreview(getBotConfigFromForm());
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function updatePromptPreview() {
+  var el = document.getElementById('tr-prompt-preview');
+  if (el && el.style.display !== 'none') {
+    el.textContent = buildPromptPreview(getBotConfigFromForm());
+  }
+}
+
+
+
+// -- VORLAGEN BIBLIOTHEK ---------------------------------------
+var _templates = [];
+
+async function loadTemplatesList() {
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-templates');
+    if (!r.ok) return;
+    _templates = await r.json();
+    populateTemplatesList();
+    // Retry after 300ms in case DOM not ready
+    setTimeout(populateTemplatesList, 300);
+  } catch(e) { console.error('loadTemplatesList error:', e); }
+}
+
+function populateTemplatesList() {
+  var sel = document.getElementById('tr-template-sel');
+  if (!sel) { setTimeout(populateTemplatesList, 200); return; }
+  sel.innerHTML = '';
+  var def = document.createElement('option');
+  def.value = ''; def.textContent = '-- Vorlage auswählen --';
+  sel.appendChild(def);
+  (_templates || []).forEach(function(t) {
+    var opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.name;
+    sel.appendChild(opt);
+  });
+}
+
+function loadTemplate() {
+  var sel = document.getElementById('tr-template-sel');
+  var status = document.getElementById('tr-template-status');
+  if (!sel || !sel.value) {
+    if (status) status.textContent = '⚠️ Bitte Vorlage auswählen';
+    return;
+  }
+  var tpl = _templates.find(function(t) { return t.id === sel.value; });
+  if (!tpl) {
+    if (status) status.textContent = '❌ Vorlage nicht gefunden';
+    return;
+  }
+  var cfg = tpl.bot_config || {};
+  // Populate all form fields
+  if (document.getElementById('tr-botname')) document.getElementById('tr-botname').value = cfg.bot_name || '';
+  if (document.getElementById('tr-context')) document.getElementById('tr-context').value = cfg.context || 'privat';
+  var langs = cfg.languages || ['Deutsch','English','Español'];
+  ['de','en','es','fr','it'].forEach(function(l) {
+    var el = document.getElementById('tr-lang-' + l);
+    if (el) el.checked = langs.includes({de:'Deutsch',en:'English',es:'Español',fr:'Français',it:'Italiano'}[l]);
+  });
+  if (document.getElementById('tr-location')) document.getElementById('tr-location').value = cfg.location || '';
+  if (document.getElementById('tr-parking')) document.getElementById('tr-parking').value = cfg.parking || '';
+  if (document.getElementById('tr-availability')) document.getElementById('tr-availability').value = cfg.availability || '';
+  if (document.getElementById('tr-story')) document.getElementById('tr-story').value = cfg.product_story || '';
+  if (document.getElementById('tr-logistics')) document.getElementById('tr-logistics').value = cfg.logistics || '';
+  if (document.getElementById('tr-minprice')) document.getElementById('tr-minprice').value = cfg.min_price || '';
+  if (document.getElementById('tr-tone')) document.getElementById('tr-tone').value = cfg.tone || 'professionell';
+  if (document.getElementById('tr-notes')) document.getElementById('tr-notes').value = cfg.notes || '';
+  if (document.getElementById('tr-emotion')) document.getElementById('tr-emotion').value = cfg.emotion || '';
+  if (document.getElementById('tr-fomo')) document.getElementById('tr-fomo').value = cfg.fomo || '';
+  if (document.getElementById('tr-persona')) document.getElementById('tr-persona').value = cfg.persona || '';
+  _botFNs = cfg.feature_benefits || [];
+  _botQAs = cfg.qa_pairs || [];
+  renderFNs();
+  renderQAs();
+  if (status) {
+    var fields = Object.values(cfg).filter(function(v){return v && v !== '' && v !== null && !(Array.isArray(v)&&v.length===0);}).length;
+    status.textContent = '✅ "' + tpl.name + '" geladen (' + fields + ' Felder). Jetzt speichern!';
+    status.style.color = '#15803d';
+  }
+  showToast('📚 Vorlage geladen — jetzt speichern!');
+}
+
+async function saveTemplate() {
+  var nameEl = document.getElementById('tr-template-name');
+  var status = document.getElementById('tr-template-status');
+  var name = nameEl ? nameEl.value.trim() : '';
+  if (!name) { if (status) { status.textContent = '⚠️ Bitte Namen eingeben'; } return; }
+  var cfg = getBotConfigFromForm();
+  status.textContent = '⏳ Speichere Vorlage...';
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, bot_config: cfg })
+    });
+    var d = await r.json();
+    if (r.ok) {
+      if (nameEl) nameEl.value = '';
+      status.textContent = '✅ Vorlage "' + name + '" gespeichert! Felder: ' + Object.keys(cfg).filter(function(k){return cfg[k]&&cfg[k]!==''&&cfg[k]!==null;}).length;
+      showToast('💾 Vorlage gespeichert!');
+      loadTemplatesList();
+    } else {
+      status.textContent = '❌ Server: ' + (d.error || r.status);
+    }
+  } catch(e) {
+    status.textContent = '❌ Netzwerkfehler: ' + e.message;
+  }
+}
+
+async function deleteTemplate() {
+  var sel = document.getElementById('tr-template-sel');
+  var status = document.getElementById('tr-template-status');
+  if (!sel || !sel.value) return;
+  var tpl = _templates.find(function(t) { return t.id === sel.value; });
+  if (!tpl) return;
+  if (!confirm('Vorlage "' + tpl.name + '" löschen?')) return;
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-templates/' + sel.value, { method: 'DELETE' });
+    if (r.ok) {
+      if (status) { status.textContent = '🗑 Vorlage gelöscht'; }
+      showToast('🗑 Vorlage gelöscht');
+      await loadTemplatesList();
+    }
+  } catch(e) {}
+}
+
+
+// -- KI ASSISTENT ----------------------------------------------
+var _kiResult = null;
+
+async function kiAnalyzeLP() {
+  var slug = _currentTrainingSlug;
+  if (!slug) {
+    // Try to get from dropdown
+    var sel = document.getElementById('tr-slug');
+    slug = sel ? sel.value : null;
+  }
+  if (!slug) {
+    document.getElementById('ki-status').textContent = '⚠️ Bitte zuerst eine Landingpage auswählen';
+    return;
+  }
+  var btn = document.getElementById('ki-analyze-btn');
+  var status = document.getElementById('ki-status');
+  btn.textContent = '⏳ KI analysiert...';
+  btn.disabled = true;
+  status.textContent = 'Claude liest Produktdaten...';
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-ai-analyze/' + slug, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Fehler');
+    _kiResult = d;
+    showKiPreview(d);
+    status.textContent = '✅ Analyse fertig — bitte prüfen';
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+  } finally {
+    btn.textContent = '⚡ Aus Artikelanalyse befüllen';
+    btn.disabled = false;
+  }
+}
+
+function showKiPreview(d) {
+  var html = '';
+  if (d.product_story) html += '<div style="margin-bottom:6px;"><span style="color:#93c5fd;font-weight:700;">📖 Geschichte:</span> ' + esc(d.product_story) + '</div>';
+  if (d.emotion) html += '<div style="margin-bottom:6px;"><span style="color:#93c5fd;font-weight:700;">🎯 Emotion:</span> ' + esc(d.emotion) + '</div>';
+  if (d.fomo) html += '<div style="margin-bottom:6px;"><span style="color:#93c5fd;font-weight:700;">⏰ FOMO:</span> ' + esc(d.fomo) + '</div>';
+  if (d.persona) html += '<div style="margin-bottom:6px;"><span style="color:#93c5fd;font-weight:700;">👤 Zielgruppe:</span> ' + esc(d.persona) + '</div>';
+  if (d.feature_benefits && d.feature_benefits.length) {
+    html += '<div style="margin-bottom:6px;"><span style="color:#93c5fd;font-weight:700;">🔄 Features→Nutzen:</span>';
+    d.feature_benefits.forEach(function(fb) {
+      html += '<div style="margin-left:12px;">• ' + esc(fb.feature) + ' → ' + esc(fb.benefit) + '</div>';
+    });
+    html += '</div>';
+  }
+  if (d.notes) html += '<div><span style="color:#93c5fd;font-weight:700;">📝 Hinweise:</span> ' + esc(d.notes) + '</div>';
+  document.getElementById('ki-preview-content').innerHTML = html || 'Keine Daten verfügbar';
+  document.getElementById('ki-preview').style.display = 'block';
+}
+
+function kiApply() {
+  if (!_kiResult) return;
+  var d = _kiResult;
+  if (d.product_story && document.getElementById('tr-story')) document.getElementById('tr-story').value = d.product_story;
+  if (d.emotion && document.getElementById('tr-emotion')) document.getElementById('tr-emotion').value = d.emotion;
+  if (d.persona && document.getElementById('tr-persona')) document.getElementById('tr-persona').value = d.persona;
+  if (d.notes && document.getElementById('tr-notes')) document.getElementById('tr-notes').value = d.notes;
+  if (d.feature_benefits && d.feature_benefits.length) {
+    _botFNs = d.feature_benefits;
+    renderFNs();
+  }
+  if (d.product_values && d.product_values.length) {
+    _botValues = d.product_values;
+    renderValues();
+  }
+  if (d.fomo_list && d.fomo_list.length) {
+    _botFOMOs = d.fomo_list;
+    renderFOMOs();
+    if (d.exit_strategy_args) { _botExitArgs = d.exit_strategy_args; renderExitArgs(); }
+  }
+  document.getElementById('ki-preview').style.display = 'none';
+  document.getElementById('ki-status').textContent = '✅ Felder befüllt — jetzt speichern!';
+  showToast('✅ KI-Daten übernommen!');
+}
+
+
+// -- REFINE MODAL ---------------------------------------------
+var _refineFieldId = null;
+var _refineKey = null;
+var _refineResult = null;
+
+var _refinePresets = {
+  emotion:       ['Emotionaler','Status-Fokus','Lifestyle','Prestige','Abenteuer'],
+  fomo:          ['Mehr Dringlichkeit','Knappheit','Preisanstieg','Andere Interessenten'],
+  persona:       ['Jünger','Älter','Frauen','Männer','Geschäftlich'],
+  product_story: ['Ausführlicher','Kürzer','Persönlicher','Professioneller'],
+  notes:         ['Kürzer','Wichtiger','Detaillierter'],
+};
+
+function openRefineModal(fieldId, key, label) {
+  _refineFieldId = fieldId;
+  _refineKey = key;
+  _refineResult = null;
+  var el = document.getElementById(fieldId);
+  var currentVal = el ? (el.value || el.textContent || '') : '';
+  document.getElementById('rm-label').textContent = label;
+  document.getElementById('rm-current').textContent = currentVal || '(leer)';
+  document.getElementById('rm-input').value = '';
+  var resultEl = document.getElementById('rm-result');
+  resultEl.style.display = 'none';
+  document.getElementById('rm-apply-btn').style.display = 'none';
+  // Build presets
+  var presetsEl = document.getElementById('rm-presets');
+  var presets = _refinePresets[key] || ['Stärker','Kürzer','Emotionaler','Professioneller'];
+  presetsEl.innerHTML = presets.map(function(p) {
+    return '<button onclick="selectRefinePreset(this)" style="padding:5px 12px;border:1.5px solid #86efac;background:#f0fdf4;color:#14532d;border-radius:20px;font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit;">' + p + '</button>';
+  }).join('');
+  var modal = document.getElementById('refine-modal');
+  modal.style.display = 'flex';
+}
+
+function selectRefinePreset(btn) {
+  btn.closest('div').querySelectorAll('button').forEach(function(b) {
+    b.style.background = '#f0fdf4'; b.style.color = '#14532d';
+  });
+  btn.style.background = '#2d7a4f'; btn.style.color = '#fff';
+  document.getElementById('rm-input').value = btn.textContent;
+}
+
+function closeRefineModal() {
+  document.getElementById('refine-modal').style.display = 'none';
+}
+
+async function runRefineModal() {
+  var instruction = document.getElementById('rm-input').value.trim() || 'Verbessere und verstärke diesen Text';
+  var currentVal = document.getElementById('rm-current').textContent;
+  var genBtn = document.getElementById('rm-gen-btn');
+  var resultEl = document.getElementById('rm-result');
+  genBtn.textContent = '⏳ Generiert...'; genBtn.disabled = true;
+  resultEl.style.display = 'none';
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-ai-refine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field: _refineKey, current_value: currentVal, instruction: instruction })
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Fehler');
+    _refineResult = d.result;
+    resultEl.textContent = d.result;
+    resultEl.style.display = 'block';
+    document.getElementById('rm-apply-btn').style.display = 'block';
+  } catch(e) {
+    resultEl.textContent = '❌ ' + e.message;
+    resultEl.style.display = 'block';
+  } finally {
+    genBtn.textContent = '🤖 Generieren'; genBtn.disabled = false;
+  }
+}
+
+function applyRefineModal() {
+  if (!_refineResult || !_refineFieldId) return;
+  var el = document.getElementById(_refineFieldId);
+  if (el) el.value = _refineResult;
+  closeRefineModal();
+  showToast('✅ Übernommen!');
+}
+
+// -- KI LIST MODAL ---------------------------------------------
+var _kiListType = null;
+var _kiListData = null;
+
+function openKiListModal(type) {
+  _kiListType = type;
+  _kiListData = null;
+  var titleEl = document.getElementById('klm-title');
+  var subEl = document.getElementById('klm-sub');
+  var resultEl = document.getElementById('klm-result');
+  var applyBtn = document.getElementById('klm-apply-btn');
+  if (type === 'fn') {
+    titleEl.textContent = '🔄 Feature → Nutzen generieren';
+    subEl.textContent = 'KI erstellt automatisch Paare für dein Produkt';
+  } else if (type === 'values') {
+    titleEl.textContent = '🏆 Produktwerte generieren';
+    subEl.textContent = 'KI ermittelt welche Werte dieses Produkt verkörpert';
+  } else if (type === 'fomo_list') {
+    titleEl.textContent = '⏰ FOMO Argumente generieren';
+    subEl.textContent = 'KI erstellt situative Dringlichkeitsargumente';
+  } else {
+    titleEl.textContent = '💬 FAQ generieren';
+    subEl.textContent = 'KI erstellt typische Käufer-Fragen & Antworten';
+  }
+  document.getElementById('klm-hint').value = '';
+  resultEl.style.display = 'none';
+  applyBtn.style.display = 'none';
+  document.getElementById('ki-list-modal').style.display = 'flex';
+}
+
+function closeKiListModal() {
+  document.getElementById('ki-list-modal').style.display = 'none';
+}
+
+async function runKiList() {
+  var hint = document.getElementById('klm-hint').value.trim();
+  var genBtn = document.getElementById('klm-gen-btn');
+  var resultEl = document.getElementById('klm-result');
+  genBtn.textContent = '⏳ Generiert...'; genBtn.disabled = true;
+  resultEl.style.display = 'none';
+  try {
+    var r = await fetch(API + '/api/vk/admin/bot-ai-list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: _kiListType,
+        hint: hint,
+        slug: _currentTrainingSlug || ''
+      })
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Fehler');
+    _kiListData = d.items;
+    // Render preview
+    resultEl.innerHTML = (_kiListData || []).map(function(item, i) {
+      if (_kiListType === 'values') {
+        return '<div style="padding:7px 0;border-bottom:1px solid #d1fae5;display:grid;grid-template-columns:120px 1fr;gap:8px;">' +
+          '<span style="font-weight:700;color:#374151;">' + esc(item.label||'') + '</span>' +
+          '<span style="color:#065f46;">' + esc(item.meaning||'') + '</span></div>';
+      } else if (_kiListType === 'fomo_list') {
+        return '<div style="padding:7px 0;border-bottom:1px solid #d1fae5;display:grid;grid-template-columns:120px 1fr;gap:8px;">' +
+          '<span style="font-weight:700;color:#374151;">' + esc(item.situation||'Allgemein') + '</span>' +
+          '<span style="color:#065f46;">' + esc(item.argument||'') + '</span></div>';
+      } else if (_kiListType === 'fn') {
+        return '<div style="padding:7px 0;border-bottom:1px solid #d1fae5;display:flex;gap:8px;align-items:flex-start;">' +
+          '<span style="font-weight:700;color:#374151;flex:1;">' + esc(item.feature || '') + '</span>' +
+          '<span style="color:#6b7280;font-size:.78rem;">→</span>' +
+          '<span style="color:#065f46;font-weight:600;flex:1.5;">' + esc(item.benefit || '') + '</span></div>';
+      } else {
+        return '<div style="padding:7px 0;border-bottom:1px solid #d1fae5;">' +
+          '<div style="font-weight:700;color:#374151;font-size:.82rem;margin-bottom:3px;">❓ ' + esc(item.q || '') + '</div>' +
+          '<div style="color:#065f46;font-size:.8rem;">💬 ' + esc(item.a || '') + '</div></div>';
+      }
+    }).join('');
+    resultEl.style.display = 'block';
+    document.getElementById('klm-apply-btn').style.display = 'block';
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:#dc2626;">❌ ' + e.message + '</span>';
+    resultEl.style.display = 'block';
+  } finally {
+    genBtn.textContent = '🤖 KI Liste generieren'; genBtn.disabled = false;
+  }
+}
+
+var _botValues = [];
+var _botFOMOs  = [];
+var _botExitArgs = [];
+
+function addExitArg() {
+  _botExitArgs.push({ label: '', argument: '' });
+  renderExitArgs();
+}
+function removeExitArg(i) {
+  _botExitArgs.splice(i, 1);
+  renderExitArgs();
+}
+function renderExitArgs() {
+  var el = document.getElementById('tr-exit-args');
+  if (!el) return;
+  if (!_botExitArgs.length) {
+    el.innerHTML = '<div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:10px;">Noch keine Exit-Argumente</div>';
+    return;
+  }
+  el.innerHTML = _botExitArgs.map(function(a, i) {
+    return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start;">'
+      + '<input value="' + esc(a.label) + '" placeholder="Bezeichnung (z.B. Provenienz)" oninput="_botExitArgs[' + i + '].label=this.value" style="width:140px;flex-shrink:0;padding:6px 10px;border:1.5px solid #fed7aa;border-radius:6px;font-size:.78rem;font-family:inherit;background:#fff;color:#1a1a1a;">'
+      + '<input value="' + esc(a.argument) + '" placeholder="z.B. Diese Dokumentation ist bei günstigeren Angeboten oft nicht lückenlos..." oninput="_botExitArgs[' + i + '].argument=this.value" style="flex:1;padding:6px 10px;border:1.5px solid #fb923c;border-radius:6px;font-size:.78rem;font-family:inherit;background:#fff7ed;color:#1a1a1a;">'
+      + '<button onclick="removeExitArg(' + i + ')" style="flex-shrink:0;padding:4px 7px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;font-size:.75rem;cursor:pointer;">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
+function addValue() { _botValues.unshift({label:'',meaning:''}); renderValues(); }
+function removeValue(i) { _botValues.splice(i,1); renderValues(); }
+function addFOMO() { _botFOMOs.unshift({situation:'',argument:''}); renderFOMOs(); }
+function removeFOMO(i) { _botFOMOs.splice(i,1); renderFOMOs(); }
+
+function renderValues() {
+  var el = document.getElementById('tr-values-list');
+  if (!el) return;
+  if (!_botValues.length) { el.innerHTML='<div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:10px;">Noch keine Werte</div>'; return; }
+  el.innerHTML = _botValues.map(function(v,i){
+    return '<div style="display:grid;grid-template-columns:140px 1fr 28px;gap:6px;margin-bottom:6px;align-items:center;">'
+      +'<input value="'+esc(v.label)+'" placeholder="z.B. Exklusivität" oninput="_botValues['+i+'].label=this.value" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:.78rem;font-family:inherit;background:#fff;color:#1a1a1a;">'
+      +'<input value="'+esc(v.meaning)+'" placeholder="Bedeutung für dieses Produkt" oninput="_botValues['+i+'].meaning=this.value" style="padding:6px 10px;border:1.5px solid #86efac;border-radius:6px;font-size:.78rem;font-family:inherit;background:#f0fdf4;color:#1a1a1a;">'
+      +'<button onclick="removeValue('+i+')" style="padding:4px 6px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;font-size:.75rem;cursor:pointer;">✕</button>'
+      +'</div>';
+  }).join('');
+}
+
+function renderFOMOs() {
+  var el = document.getElementById('tr-fomo-list');
+  if (!el) return;
+  if (!_botFOMOs.length) { el.innerHTML='<div style="font-size:.8rem;color:#9ca3af;text-align:center;padding:10px;">Noch keine FOMO Argumente</div>'; return; }
+  el.innerHTML = _botFOMOs.map(function(f,i){
+    return '<div style="display:grid;grid-template-columns:130px 1fr 28px;gap:6px;margin-bottom:6px;align-items:center;">'
+      +'<input value="'+esc(f.situation)+'" placeholder="z.B. Käufer zögert" oninput="_botFOMOs['+i+'].situation=this.value" style="padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:.78rem;font-family:inherit;background:#fff;color:#1a1a1a;">'
+      +'<input value="'+esc(f.argument)+'" placeholder="z.B. Noch 2 andere Interessenten" oninput="_botFOMOs['+i+'].argument=this.value" style="padding:6px 10px;border:1.5px solid #86efac;border-radius:6px;font-size:.78rem;font-family:inherit;background:#f0fdf4;color:#1a1a1a;">'
+      +'<button onclick="removeFOMO('+i+')" style="padding:4px 6px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:6px;font-size:.75rem;cursor:pointer;">✕</button>'
+      +'</div>';
+  }).join('');
+}
+
+function applyKiList() {
+  if (!_kiListData) return;
+  if (_kiListType === 'fn') {
+    _botFNs = _kiListData.map(function(item) { return { feature: item.feature || '', benefit: item.benefit || '' }; });
+    renderFNs();
+  } else if (_kiListType === 'values') {
+    _botValues = _kiListData.map(function(item) { return { label: item.label || '', meaning: item.meaning || '' }; });
+    renderValues();
+  } else if (_kiListType === 'fomo_list') {
+    _botFOMOs = _kiListData.map(function(item) { return { situation: item.situation || '', argument: item.argument || '' }; });
+    renderFOMOs();
+  } else {
+    _botQAs = _kiListData.map(function(item) { return { q: item.q || '', a: item.a || '' }; });
+    renderQAs();
+  }
+  closeKiListModal();
+  showToast('✅ ' + _kiListData.length + ' Einträge übernommen!');
+}
+
+// Close modal on backdrop click
+document.addEventListener('click', function(e) {
+  var modal = document.getElementById('refine-modal');
+  if (e.target === modal) closeRefineModal();
+});
+
+// FREICODES
+function copyCode(el){navigator.clipboard.writeText(el.textContent.trim());showToast(el.textContent.trim()+" kopiert");}
+async function loadFreicodes() {
+  var tbody = document.getElementById('fc-table-body');
+  if (!tbody) return;
+  try {
+    var r = await fetch(API + '/api/vk/freicodes');
+    var d = await r.json();
+    if (d.error) { tbody.innerHTML = '<tr><td colspan="5" class="msg" style="color:var(--red);">' + esc(d.error) + '</td></tr>'; return; }
+    var list = d.freicodes || [];
+    if (!list.length) { tbody.innerHTML = '<tr><td colspan="5" class="msg">Noch keine Codes</td></tr>'; return; }
+    tbody.innerHTML = list.map(function(fc) {
+      var usedAt = fc.used_at ? new Date(fc.used_at).toLocaleDateString('de-AT',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+      var isActive = fc.status === 'active';
+      var phone = fc.redeemed_by_phone || '—';
+      return '<tr>' +
+        '<td><span class="phone" style="font-weight:900;cursor:pointer;color:' + (isActive?'#15803d':'#9ca3af') + ';" onclick="navigator.clipboard.writeText(this.textContent.trim());showToast(this.textContent.trim()+\'  kopiert\')" title="Kopieren">' + esc(fc.code) + '</span></td>' +
+        '<td style="color:var(--mu);">' + esc(fc.note||'—') + '</td>' +
+        '<td><span class="badge ' + (isActive?'s-open':'s-expired') + '">' + (isActive?'✅ Aktiv':'⬜ Eingelöst') + '</span></td>' +
+        '<td style="font-size:.82rem;">' + (phone!=='—'?'<span class="phone">+'+esc(phone)+'</span>':'<span style="color:var(--mu);">—</span>') + '</td>' +
+        '<td style="font-size:.82rem;color:var(--mu);">' + usedAt + '</td></tr>';
+    }).join('');
+  } catch(e) { tbody.innerHTML = '<tr><td colspan="5" class="msg" style="color:var(--red);">Fehler: ' + e.message + '</td></tr>'; }
+}
+
+async function generateFreicode() {
+  var note = (document.getElementById('fc-note').value||'').trim();
+  var err = document.getElementById('fc-err');
+  var res = document.getElementById('fc-gen-result');
+  var cod = document.getElementById('fc-new-code');
+  err.textContent = ''; res.style.display = 'none';
+  try {
+    var r = await fetch(API + '/api/vk/freicodes/generate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:note})});
+    var d = await r.json();
+    if (d.success && d.freicode) { cod.textContent = d.freicode.code; res.style.display = 'block'; document.getElementById('fc-note').value = ''; showToast('✅ Freicode erstellt!'); loadFreicodes(); }
+    else err.textContent = d.error || 'Fehler';
+  } catch(e) { err.textContent = e.message; }
+}
+</script>
+
+<!-- ═══ REFINE MODAL ═══ -->
+<div id="refine-modal" onclick="if(event.target===this)closeRefineModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:500px;box-shadow:0 20px 60px rgba(0,0,0,.35);">
+    <div style="background:linear-gradient(135deg,#1b4332,#2d7a4f);padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;">
+      <div><div style="color:#fff;font-weight:800;font-size:.95rem;">✨ Mit KI verfeinern</div><div id="rm-label" style="color:rgba(255,255,255,.8);font-size:.72rem;margin-top:1px;"></div></div>
+      <button onclick="closeRefineModal()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:.95rem;font-family:inherit;line-height:1;">✕</button>
+    </div>
+    <div style="padding:18px 20px;">
+      <div style="font-size:.72rem;font-weight:700;color:#9ca3af;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">Aktueller Text</div>
+      <div id="rm-current" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;font-size:.82rem;color:#374151;margin-bottom:14px;line-height:1.6;max-height:72px;overflow-y:auto;"></div>
+      <div style="font-size:.72rem;font-weight:700;color:#9ca3af;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Anweisung</div>
+      <div id="rm-presets" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"></div>
+      <input id="rm-input" placeholder="Eigene Anweisung..." style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit;margin-bottom:14px;box-sizing:border-box;color:#1a1a1a;">
+      <div id="rm-result" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:11px 14px;font-size:.83rem;color:#1a1a1a;margin-bottom:14px;line-height:1.7;font-weight:500;"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="runRefineModal()" id="rm-gen-btn" style="flex:1;padding:11px;background:#2d7a4f;border:none;color:#fff;border-radius:8px;font-weight:800;font-size:.83rem;cursor:pointer;font-family:inherit;">🤖 Generieren</button>
+        <button onclick="applyRefineModal()" id="rm-apply-btn" style="flex:1;padding:11px;background:#22c55e;border:none;color:#fff;border-radius:8px;font-weight:800;font-size:.83rem;cursor:pointer;font-family:inherit;display:none;">✅ Übernehmen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ KI LIST MODAL ═══ -->
+<div id="ki-list-modal" onclick="if(event.target===this)closeKiListModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,.35);">
+    <div style="background:linear-gradient(135deg,#1b4332,#2d7a4f);padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;">
+      <div><div id="klm-title" style="color:#fff;font-weight:800;font-size:.95rem;"></div><div id="klm-sub" style="color:rgba(255,255,255,.8);font-size:.72rem;margin-top:1px;"></div></div>
+      <button onclick="closeKiListModal()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:.95rem;font-family:inherit;line-height:1;">✕</button>
+    </div>
+    <div style="padding:18px 20px;">
+      <input id="klm-hint" placeholder="Optionaler Hinweis (z.B. Fokus auf Luxus, Zielgruppe 40+...)" style="width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit;margin-bottom:14px;box-sizing:border-box;color:#1a1a1a;">
+      <div id="klm-result" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px 14px;margin-bottom:14px;max-height:280px;overflow-y:auto;"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="runKiList()" id="klm-gen-btn" style="flex:1;padding:11px;background:#2d7a4f;border:none;color:#fff;border-radius:8px;font-weight:800;font-size:.83rem;cursor:pointer;font-family:inherit;">🤖 KI Liste generieren</button>
+        <button onclick="applyKiList()" id="klm-apply-btn" style="flex:1;padding:11px;background:#22c55e;border:none;color:#fff;border-radius:8px;font-weight:800;font-size:.83rem;cursor:pointer;font-family:inherit;display:none;">✅ Alle übernehmen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <div id="section-freicodes" style="display:none;">
+    <div class="table-box" style="margin-bottom:16px;">
+      <div class="table-hd"><h2>🔓 Freicode generieren</h2></div>
+      <div style="padding:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <label style="font-size:.7rem;font-weight:800;color:var(--mu);display:block;margin-bottom:4px;">NOTIZ (Kundenname)</label>
+          <input id="fc-note" placeholder="z.B. Max Mustermann" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.88rem;font-family:inherit;">
+        </div>
+        <button class="btn btn-g" onclick="generateFreicode()">+ Code generieren</button>
+      </div>
+      <div id="fc-gen-result" style="display:none;margin:0 16px 16px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:20px;text-align:center;">
+        <div style="font-size:.72rem;color:var(--mu);margin-bottom:8px;font-weight:700;">NEUER FREICODE — KLICKEN ZUM KOPIEREN</div>
+        <div id="fc-new-code" onclick="this.select&&this.select();navigator.clipboard&&navigator.clipboard.writeText(this.textContent.trim()).then(function(){showToast('Kopiert!')})" style="font-family:monospace;font-size:2.2rem;font-weight:900;letter-spacing:.25em;color:#15803d;cursor:pointer;padding:10px;user-select:all;">—</div>
+        <div style="font-size:.75rem;color:var(--mu);">Einmalig verwendbar</div>
+      </div>
+      <div id="fc-err" style="color:var(--red);font-size:.78rem;padding:0 16px 12px;"></div>
+    </div>
+    <div class="table-box">
+      <div class="table-hd"><h2>📋 Alle Freicodes</h2><button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="loadFreicodes()">↺</button></div>
+      <table><thead><tr><th>Code</th><th>Notiz</th><th>Status</th><th>Eingelöst von</th><th>Eingelöst am</th></tr></thead>
+      <tbody id="fc-table-body"><tr><td colspan="5" class="msg">Lade...</td></tr></tbody></table>
+    </div>
+  </div>
+
+</div><!-- end div.main -->
+</body>
+</html>
