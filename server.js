@@ -2478,10 +2478,13 @@ app.post('/api/vk/freicodes/generate', async (req, res) => {
 app.get('/api/vk/freicodes', async (req, res) => {
   try {
     const { data, error } = await supabase.from('vk_freicodes')
-      .select('*')
+      .select('*, vk_sessions(phone)')
       .order('created_at', { ascending: false });
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ freicodes: data || [] });
+    const enriched = (data || []).map(function(fc) {
+      return Object.assign({}, fc, { redeemed_by_phone: fc.vk_sessions ? fc.vk_sessions.phone : null });
+    });
+    res.json({ freicodes: enriched });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
