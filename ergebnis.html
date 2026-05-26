@@ -275,7 +275,10 @@ function render(){
 
     // ── WISSENSDATENBANK ──
     html += '<div class="sec">';
-    html += '<div class="sec-title">🧠 Wissensdatenbank <span id="qcount-'+a.id+'">Lade...</span></div>';
+    html += '<div class="sec-title" style="cursor:pointer;user-select:none;display:flex;align-items:center;" onclick="toggleSection(\'wb-'+a.id+'\')">';
+    html += '🧠 Wissensdatenbank <span id="qcount-'+a.id+'" style="background:var(--g2);color:#fff;font-size:.6rem;padding:2px 7px;border-radius:10px;margin-left:6px;">Lade...</span>';
+    html += '<span id="wbarr-'+a.id+'" style="margin-left:auto;font-size:.75rem;">▲</span></div>';
+    html += '<div id="wb-'+a.id+'">';
     html += '<div id="questions-'+a.id+'"><div style="font-size:.78rem;color:var(--mu);">Lade Fragen...</div></div>';
     html += '<div style="margin-top:10px;">';
     html += '<button class="btn btn-sm" style="background:#eff6ff;color:var(--blue);border:1.5px solid #bfdbfe;" onclick="saveAnswers(\''+a.id+'\')">💾 Antworten speichern</button>';
@@ -398,7 +401,8 @@ function renderQuestions(artId){
 
   var rows='';
   if(qs.length){
-    rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Standardfelder</div>';
+    rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;cursor:pointer;user-select:none;" onclick="toggleSection(\'sf-'+artId+'\')">&nbsp;Standardfelder ▲</div>';
+    rows+='<div id="sf-'+artId+'">';
     qs.forEach(function(q){
       var val=ans[q.id]||'';
       var filled=val?' filled':'';
@@ -416,15 +420,24 @@ function renderQuestions(artId){
     });
   }
 
-  rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;">Technische Daten <span style="color:#1d4ed8;font-weight:600;text-transform:none;">'+(extraFacts.length?extraFacts.length+' Einträge':'leer')+'</span></div>';
+  rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;">Technische Daten ▲ <span style="color:#1d4ed8;font-weight:600;text-transform:none;font-size:.65rem;">'+(extraFacts.length?extraFacts.length+' Einträge':'leer')+'</span></div>';
+  rows+='<div id="td-'+artId+'">';
   extraFacts.forEach(function(f,i){
     rows+='<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">';
     rows+='<input type="text" class="q-input" style="flex:1;background:#f0f9ff;border-color:#bfdbfe;font-size:.78rem;" data-aid="'+artId+'" data-eidx="'+i+'" data-efield="k" value="'+esc(f.k)+'" placeholder="Bezeichnung">';
     rows+='<input type="text" class="q-input" style="flex:2;font-size:.78rem;" data-aid="'+artId+'" data-eidx="'+i+'" data-efield="v" value="'+esc(f.v)+'" placeholder="Wert">';
-    rows+='<button onclick="removeExtra(\'' + artId + '\',' + i + ')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;padding:4px;">✕</button>';
+    rows+='<button class="rm-extra" data-artid="'+artId+'" data-idx="'+i+'" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;padding:4px;flex-shrink:0;">✕</button>';
     rows+='</div>';
   });
+  rows += '</div>'; // close td
   el.innerHTML=rows;
+
+  // Remove buttons
+  el.querySelectorAll('.rm-extra').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      removeExtra(btn.dataset.artid, parseInt(btn.dataset.idx));
+    });
+  });
 
   // Add button separat mit echtem Event Listener
   var addBtn = document.createElement('button');
@@ -718,6 +731,20 @@ async function autoAnalyzeDocsIfNeeded(){
       for(var a of (sd.articles||[])){ loadQuestions(a.id); loadDocs(a.id); }
     }
   }catch(e){ console.error('autoAnalyzeDocs:', e.message); }
+}
+
+function toggleSection(id){
+  var el = document.getElementById(id);
+  if(!el) return;
+  var arrowId = id.startsWith('wb-') ? id.replace('wb-','wbarr-') : id.startsWith('sf-') ? id.replace('sf-','sfarr-') : id.replace('td-','tdarr-');
+  var arrow = document.getElementById(arrowId);
+  if(el.style.display === 'none'){
+    el.style.display = 'block';
+    if(arrow) arrow.textContent = '▲';
+  } else {
+    el.style.display = 'none';
+    if(arrow) arrow.textContent = '▼';
+  }
 }
 
 function toBase64(file){return new Promise((res,rej)=>{var r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});}
