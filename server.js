@@ -2696,6 +2696,21 @@ ${authBlock}
 }${authInstructions}`;
  
  const analysisModel = AI.analysis;
+
+  // PDFs laden
+  const docBlocks = [];
+  try {
+    const { data: artDocs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
+    if (artDocs && artDocs.length > 0) {
+      for (const doc of artDocs) {
+        if (!doc.public_url) continue;
+        const dr = await fetch(doc.public_url);
+        const db = Buffer.from(await dr.arrayBuffer());
+        docBlocks.push({ type: 'document', source: { type: 'base64', media_type: doc.content_type || 'application/pdf', data: db.toString('base64') } });
+      }
+    }
+  } catch(de) { console.error('Doc load:', de.message); }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -2707,7 +2722,7 @@ ${authBlock}
         model: analysisModel,
         max_tokens: 2000,
 system: 'Du bist ein erfahrener Verkaufstexter fuer Online-Marktplaetze (Willhaben, eBay, Kleinanzeigen, Maschinensucher).\nAufgabe: Artikel verkaufsorientiert beschreiben - positiv, ueberzeugend, OHNE zu luegen.\n\nSCHREIBREGELN:\n- Staerken in den Vordergrund, Schwaechen konstruktiv formulieren\n- Zustand immer aus Verkaeufer-Perspektive formulieren\n\nDOKUMENT-VORRANG: Wenn Dokumente (PDF/Dossier) beigefuegt sind:\n- Alle Daten aus Dokumenten haben ABSOLUTE PRIORITAET vor Foto-Schaetzungen\n- Preis, Baujahr, KM-Stand, Ausstattung aus Dokument IMMER verwenden\n- tech_specs: ALLE technischen Daten aus Dokumenten einzeln auflisten\n\nPREISREGELN:\n- Preis aus Dokument direkt uebernehmen wenn vorhanden\n- Ohne Dokument: Neupreis NICHT schaetzen, price_unknown=true\n- Preisbegruendung nur auf ECHTEN Fakten\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
-      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
+      messages: [{ role: 'user', content: [...imageBlocks, ...docBlocks, { type: 'text', text: prompt }] }]
     })
   });
  
