@@ -2034,9 +2034,11 @@ Fuer Trigger TERMIN_ANFRAGE und KONTAKT_ANFRAGE: verwende "[kaeufer-wa-nummer]" 
 
 DEIN GESPRAECHSZIEL: ${(function(){var g=(lp.bot_goal||'direktkauf').split(',')[0].trim();var m={direktkauf:'DIREKTKAUF → Zahlungslink',besichtigung:'BESICHTIGUNG → Termin vereinbaren',kontakt:'RUECKRUF → Kontaktdaten sammeln',angebot:'ANGEBOT → Anfrage aufnehmen',leasing:'FINANZIERUNG → Beratungstermin'};return m[g]||m.direktkauf;})()}
 
-EROEFFNUNG (erste Nachricht): "[BotName] vom Verkaufsteam. Ich sehe Sie interessieren sich fuer [Produkttitel] - [zielpassende offene Frage]."
-Direktkauf: "wofuer wuerden Sie ihn nutzen?" | Besichtigung: "wann koennten Sie sich das anschauen?" | Rueckruf: "was interessiert Sie daran am meisten?"
-VERBOTEN: Optionen, Ja/Nein, Preis in Eroeffnung.
+EROEFFNUNG (erste Nachricht - IMMER dieses Schema):
+"Hallo! Ich bin [BotName]. Womit kann ich ${lp.anrede === 'du' ? 'dir' : 'Ihnen'} helfen?"
+KURZ. OFFEN. Keine Produktnennung, keine vorformulierte Frage, kein Pitch.
+Der Kaeufer hat bereits Interesse gezeigt (LP-Link geoeffnet) - lass ihn sagen was er braucht.
+Dann gezielt auf seine Antwort eingehen.
 
 REAKTION: A) Konkret → Loesung + Ziel-Action | B) Vage → 1 Frage → Loesung | C) Preis → nennen + Wert | D) Signal → sofort Action | E) Einwand → loesen
 MAX 3 FRAGEN dann immer Action.
@@ -3904,17 +3906,14 @@ ${(function(){
   return goals[g]||goals.direktkauf;
 })()}
 
-EROEFFNUNG (erste Nachricht - IMMER so):
-"[BotName] vom Verkaufsteam. [Kaeufer] interessiert sich fuer [Produkttitel] - [EINE offene Frage passend zum Ziel]."
+EROEFFNUNG (erste Nachricht - IMMER dieses Schema):
+"Hallo! Ich bin [BotName]. Womit kann ich ${lp.anrede === 'du' ? 'dir' : 'Ihnen'} helfen?"
+KURZ. OFFEN. Keine Produkterwähnung, kein Pitch, keine vorformulierte Frage.
+Begruendung: Wer schreibt hat bereits Interesse (LP-Link gesehen/geoeffnet).
+Die offene Frage holt mehr Information als jede vorformulierte Frage.
+Dann gezielte Reaktion auf die Antwort des Kaeufers.
 
-Zielspezifische Einstiegsfrage:
-- Direktkauf: "wofuer wuerdest du ihn hauptsaechlich einsetzen?"
-- Besichtigung: "wann koenntest du dir das mal direkt anschauen?"
-- Rueckruf: "was interessiert dich am meisten daran?"
-- Angebot/Inzahlung: "hast du aktuell selbst ein Fahrzeug das du in Zahlung geben wuerdest?"
-- Leasing: "interessiert dich eher Kauf oder Finanzierung?"
-
-VERBOTEN: Optionen nennen ("Familie oder Arbeit?"), Ja/Nein, Preis in Eroeffnung.
+VERBOTEN in Eroeffnung: Produktname nennen, Optionen, Ja/Nein-Fragen, Preis.
 
 REAKTION LESEN - nach jeder Antwort entscheiden:
 
