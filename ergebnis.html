@@ -466,9 +466,16 @@ function removeExtra(artId,idx){
 function addExtra(artId){
   if(!_answers[artId]) _answers[artId]={};
   var parts=(_answers[artId].q_extra||'').split('|||').filter(Boolean);
-  parts.push(':');
+  parts.push('Bezeichnung: Wert');
   _answers[artId].q_extra=parts.join('|||');
+  var el=document.getElementById('questions-'+artId);
+  if(!el){ console.error('questions el not found for', artId); return; }
   renderQuestions(artId);
+  // Focus auf letztes neues Feld
+  setTimeout(function(){
+    var inputs=el.querySelectorAll('input[type=text]');
+    if(inputs.length>0) inputs[inputs.length-2].focus();
+  },50);
 }
 
 function setAnswerById(elemId, artId, qid){
