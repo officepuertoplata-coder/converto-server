@@ -2040,6 +2040,8 @@ KURZ. OFFEN. Keine Produktnennung, keine vorformulierte Frage, kein Pitch.
 Der Kaeufer hat bereits Interesse gezeigt (LP-Link geoeffnet) - lass ihn sagen was er braucht.
 Dann gezielt auf seine Antwort eingehen.
 
+VERFUEGBARKEIT ("noch verfuegbar?") = KAUFSIGNAL → Ja + Knappheit: "Ja, noch da - hat aber schon Interessenten, wird nicht lange bleiben. Was moechtest du wissen?"
+ZUSTANDSFRAGEN → Ehrlich mit Charme: "Vintage hat Geschichte - sauber und gepflegt, aber wie neu kann ich nicht garantieren. Wer es traegt sieht darin fantastisch aus."
 REAKTION: A) Konkret → Loesung + Ziel-Action | B) Vage → 1 Frage → Loesung | C) Preis → nennen + Wert | D) Signal → sofort Action | E) Einwand → loesen
 MAX 3 FRAGEN dann immer Action.
 Einigung: Kauf="ZAHLUNG_LINK:[BETRAG]" Termin="TERMIN_ANFRAGE:[name]:[kaeufer-wa-nummer]:[datum]" Rueckruf="KONTAKT_ANFRAGE:[name]:[kaeufer-wa-nummer]:[zeit]" (Telefon NICHT abfragen - hast du via WhatsApp)
@@ -2138,7 +2140,7 @@ WhatsApp eines echten Menschen. Locker, direkt. Max 2-3 Saetze. Kein Markdown. I
 
      // Modell = LP ai_mode – wenn nicht gesetzt, aus Artikel lesen
     const lpAiMode = lp.ai_mode || lp.vk_articles?.ai_mode || 'abteilungsleiter';
-    const aiModeMap = { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
+    const aiModeMap = { sachbearbeiter: 'claude-sonnet-4-6', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' }; // Sachbearbeiter → Sonnet: Haiku zu schwach für emotionale Verkaufsgespräche
     const model = aiModeMap[lpAiMode] || 'claude-sonnet-4-6';
     console.log('bot-sandbox: lp.ai_mode=', lp.ai_mode, '→ lpAiMode=', lpAiMode, '→ model=', model);
 
@@ -3917,6 +3919,15 @@ VERBOTEN in Eroeffnung: Produktname nennen, Optionen, Ja/Nein-Fragen, Preis.
 
 REAKTION LESEN - nach jeder Antwort entscheiden:
 
+VERFUEGBARKEIT ("ist es noch verfuegbar?" / "haben Sie das noch?") = KAUFSIGNAL:
+→ IMMER: Ja bestaetigen + Knappheit/Dringlichkeit erzeugen
+→ Beispiel: "Ja, das Stueck ist noch da - es hat aber schon ein paar Interessenten und ich koennte mir denken es ist bald weg. Was moechtest du wissen?"
+→ NIEMALS nur trocken "Ja, noch verfuegbar" ohne Spannung aufzubauen.
+
+ZUSTANDSFRAGEN ("ist es fleckenfrei?" / "wie ist der Zustand?"):
+→ Ehrlich aber mit Charme: "Vintage ist gebraucht und hat Geschichte - es ist sauber und gepflegt, aber garantieren dass es wie neu ist kann ich nicht. Was ich sagen kann: wer es traegt, wird darin famos aussehen."
+→ Schwaechen konstruktiv einbetten, nie defensiv auflisten.
+
 A) KAEUFER IST KONKRET:
 → Loesung zeigen. Kein weiteres Fragen.
 → Dann sofort zum Ziel: Termin / Zahlungslink / Kontaktdaten.
@@ -4076,7 +4087,7 @@ ${(botConfig.fomo_list||[]).filter(f=>f.argument).length?'\n\nFOMO ARGUMENTE - s
     method: 'POST',
     headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' }[lp.ai_mode] || 'claude-sonnet-4-6',
+      model: { sachbearbeiter: 'claude-sonnet-4-6', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' }[lp.ai_mode] || 'claude-sonnet-4-6', // Sonnet min für Bot-Dialog
       max_tokens: 300,
       system: systemPrompt,
       messages: session.messages
@@ -4120,7 +4131,7 @@ async function vkHandleLPBotReply(phone, text, phoneId) {
   session.messages.push({ role: 'user', content: text });
 
   // Modell = LP ai_mode – durchgehend konsistent, kein isNegotiating-Split
-  const waAiModeMap = { sachbearbeiter: 'claude-haiku-4-5-20251001', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
+  const waAiModeMap = { sachbearbeiter: 'claude-sonnet-4-6', abteilungsleiter: 'claude-sonnet-4-6', experte: 'claude-opus-4-6' };
   const model = waAiModeMap[session.lp?.ai_mode] || 'claude-sonnet-4-6';
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
