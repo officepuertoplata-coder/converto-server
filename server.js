@@ -505,7 +505,7 @@ app.post('/api/vk/check-payment', async (req, res) => {
           const { data: articles } = await supabase.from('vk_articles').select('*, vk_photos(*)').eq('session_id', session.id);
           for (const article of (articles || [])) {
             if (!(article.vk_photos || []).length) continue;
-            const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '', session ? session.ai_mode : 'sachbearbeiter');
+            const analysis = await vkAnalyzeArticle(article, article.vk_photos, session ? session.phone : '');
             const newTitle = analysis.title_short || null;
          
           // Authentizitäts-basierte Compliance
@@ -785,8 +785,7 @@ app.post('/api/vk/business-free', async (req, res) => {
 
     const now = new Date();
     const articleModes1 = req.body.article_modes || {};
-    const effectiveMode1 = getHighestMode(req.body.ai_mode || session.ai_mode, articleModes1);
-    await supabase.from('vk_sessions').update({
+        await supabase.from('vk_sessions').update({
       status: 'analyzing',
       paid_at: now.toISOString(),
       total_price: 0,
@@ -2569,15 +2568,7 @@ app.listen(PORT, async () => {
 // ═══════════════════════════════════════════════════════════
 
 
-// Höchsten AI-Modus aus Artikel-Modi ermitteln
-function getHighestMode(sessionMode, articleModes) {
-  const order = { sachbearbeiter: 1, abteilungsleiter: 2, experte: 3 };
-  let highest = sessionMode || 'sachbearbeiter';
-  Object.values(articleModes || {}).forEach(function(m) {
-    if ((order[m] || 0) > (order[highest] || 0)) highest = m;
-  });
-  return highest;
-}
+
 // ── PREISE (exkl. MwSt) ──────────────────────────────────
 const PRICES = {
   REPORT_PER_7D: 1.00,   // Report je 7 Tage
@@ -2738,7 +2729,7 @@ async function vkMarketSearch(productTitle, phone) {
   }
 }
 
-async function vkAnalyzeArticle(article, photos, phone, aiMode) {
+async function vkAnalyzeArticle(article, photos, phone) {
   const fetch = require('node-fetch');
   if (!photos || !photos.length) {
     const { data: fp } = await supabase.from('vk_photos').select('*').eq('article_id', article.id);
