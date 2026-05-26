@@ -365,6 +365,60 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
           }
             if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
 
+          // PDF-Daten mit Sonnet extrahieren (sequential - vor done)
+          await (async function extractPdfFacts() {
+            try {
+              const { data: artDocs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
+              if (!artDocs || !artDocs.length) return;
+              const ans = Object.assign({}, article.answers || {});
+              const allExtras = ans.q_extra ? ans.q_extra.split('|||').filter(Boolean) : [];
+              for (const doc of artDocs) {
+                if (!doc.public_url) continue;
+                try {
+                  const dr = await fetch(doc.public_url);
+                  const db = Buffer.from(await dr.arrayBuffer());
+                  const er = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      model: AI.correction,
+                      max_tokens: 2000,
+                      system: 'Extrahiere ALLE Fakten aus dem Dokument als JSON Array ohne Markdown: [{"k":"Bezeichnung","v":"Wert"}]. Preis, Baujahr, KM-Stand, Motorisierung, Ausstattung - alles einzeln.',
+                      messages: [{ role: 'user', content: [
+                        { type: 'document', source: { type: 'base64', media_type: doc.content_type || 'application/pdf', data: db.toString('base64') } },
+                        { type: 'text', text: 'JSON Array mit ALLEN Fakten.' }
+                      ]}]
+                    })
+                  });
+                  const ed = await er.json();
+                  const et = (ed.content?.[0]?.text || '[]').replace(/```json|```/g,'').trim();
+                  const si = et.indexOf('['), ei = et.lastIndexOf(']');
+                  if (si >= 0 && ei > si) {
+                    const pairs = JSON.parse(et.substring(si, ei+1));
+                    pairs.filter(p => p.k && p.v).forEach(p => allExtras.push(p.k+': '+p.v));
+                    // Preis und KM direkt in Analyse übernehmen
+                    const priceEntry = pairs.find(p => p.k && p.k.toLowerCase().includes('preis') && !p.k.toLowerCase().includes('finanz'));
+                    const kmEntry = pairs.find(p => p.k && (p.k.toLowerCase().includes('kilometer') || p.k.toLowerCase() === 'km'));
+                    const yearEntry = pairs.find(p => p.k && (p.k.toLowerCase().includes('zulassung') || p.k.toLowerCase().includes('baujahr')));
+                    if (priceEntry || kmEntry || yearEntry) {
+                      const { data: artNow } = await supabase.from('vk_articles').select('analysis').eq('id', article.id).single();
+                      const an = Object.assign({}, artNow?.analysis || {});
+                      if (priceEntry && priceEntry.v) {
+                        const priceNum = parseFloat(priceEntry.v.replace(/[^0-9.,]/g,'').replace(',','.'));
+                        if (priceNum > 0) { an.price_recommended = priceNum; an.price_min = Math.round(priceNum * 0.9); an.price_max = Math.round(priceNum * 1.05); an.price_unknown = false; }
+                      }
+                      await supabase.from('vk_articles').update({ analysis: an }).eq('id', article.id);
+                    }
+                  }
+                } catch(de) { console.error('PDF extract:', de.message); }
+              }
+              if (allExtras.length > 0) {
+                ans.q_extra = allExtras.join('|||');
+                await supabase.from('vk_articles').update({ answers: ans }).eq('id', article.id);
+              }
+            } catch(e) { console.error('extractPdfFacts:', e.message); }
+          })();
+
           }
           const anyExtended = (articles || []).some(a => a.extended);
           const days = anyExtended ? 7 : 3;
@@ -2697,20 +2751,6 @@ ${authBlock}
  
  const analysisModel = AI.analysis;
 
-  // PDFs laden
-  const docBlocks = [];
-  try {
-    const { data: artDocs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
-    if (artDocs && artDocs.length > 0) {
-      for (const doc of artDocs) {
-        if (!doc.public_url) continue;
-        const dr = await fetch(doc.public_url);
-        const db = Buffer.from(await dr.arrayBuffer());
-        docBlocks.push({ type: 'document', source: { type: 'base64', media_type: doc.content_type || 'application/pdf', data: db.toString('base64') } });
-      }
-    }
-  } catch(de) { console.error('Doc load:', de.message); }
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -2722,7 +2762,7 @@ ${authBlock}
         model: analysisModel,
         max_tokens: 2000,
 system: 'Du bist ein erfahrener Verkaufstexter fuer Online-Marktplaetze (Willhaben, eBay, Kleinanzeigen, Maschinensucher).\nAufgabe: Artikel verkaufsorientiert beschreiben - positiv, ueberzeugend, OHNE zu luegen.\n\nSCHREIBREGELN:\n- Staerken in den Vordergrund, Schwaechen konstruktiv formulieren\n- Zustand immer aus Verkaeufer-Perspektive formulieren\n\nDOKUMENT-VORRANG: Wenn Dokumente (PDF/Dossier) beigefuegt sind:\n- Alle Daten aus Dokumenten haben ABSOLUTE PRIORITAET vor Foto-Schaetzungen\n- Preis, Baujahr, KM-Stand, Ausstattung aus Dokument IMMER verwenden\n- tech_specs: ALLE technischen Daten aus Dokumenten einzeln auflisten\n\nPREISREGELN:\n- Preis aus Dokument direkt uebernehmen wenn vorhanden\n- Ohne Dokument: Neupreis NICHT schaetzen, price_unknown=true\n- Preisbegruendung nur auf ECHTEN Fakten\n\nAntworte NUR mit validem JSON, kein Markdown, keine Erklaerungen.',      
-      messages: [{ role: 'user', content: [...imageBlocks, ...docBlocks, { type: 'text', text: prompt }] }]
+      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt }] }]
     })
   });
  
