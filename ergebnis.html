@@ -424,9 +424,15 @@ function renderQuestions(artId){
     rows+='<button onclick="removeExtra(\'' + artId + '\',' + i + ')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;padding:4px;">✕</button>';
     rows+='</div>';
   });
-  rows+='<button onclick="addExtra(\'' + artId + '\')" style="margin-top:4px;padding:7px 14px;background:#f9fafb;border:1.5px dashed var(--border);border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--mu);width:100%;">+ Feld hinzufügen</button>';
-
   el.innerHTML=rows;
+
+  // Add button separat mit echtem Event Listener
+  var addBtn = document.createElement('button');
+  addBtn.textContent = '+ Feld hinzufügen';
+  addBtn.style.cssText = 'margin-top:4px;padding:7px 14px;background:#f9fafb;border:1.5px dashed #e5e7eb;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;color:#6b7280;width:100%;display:block;font-family:Nunito,sans-serif;';
+  var _artId = artId;
+  addBtn.addEventListener('click', function(){ addExtra(_artId); });
+  el.appendChild(addBtn);
 
   // Event Listener
   el.querySelectorAll('[data-qid]').forEach(function(inp){
