@@ -400,15 +400,35 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
                     const priceEntry = pairs.find(p => p.k && p.k.toLowerCase().includes('preis') && !p.k.toLowerCase().includes('finanz'));
                     const kmEntry = pairs.find(p => p.k && (p.k.toLowerCase().includes('kilometer') || p.k.toLowerCase() === 'km'));
                     const yearEntry = pairs.find(p => p.k && (p.k.toLowerCase().includes('zulassung') || p.k.toLowerCase().includes('baujahr')));
-                    if (priceEntry || kmEntry || yearEntry) {
-                      const { data: artNow } = await supabase.from('vk_articles').select('analysis').eq('id', article.id).single();
-                      const an = Object.assign({}, artNow?.analysis || {});
-                      if (priceEntry && priceEntry.v) {
-                        const priceNum = parseFloat(priceEntry.v.replace(/[^0-9.,]/g,'').replace(',','.'));
-                        if (priceNum > 0) { an.price_recommended = priceNum; an.price_min = Math.round(priceNum * 0.9); an.price_max = Math.round(priceNum * 1.05); an.price_unknown = false; }
+                    // Daten aus PDF in Analysis überschreiben
+                    const { data: artNow } = await supabase.from('vk_articles').select('analysis').eq('id', article.id).single();
+                    const an = Object.assign({}, artNow?.analysis || {});
+                    
+                    if (priceEntry && priceEntry.v) {
+                      const priceNum = parseFloat(priceEntry.v.replace(/[^0-9.,]/g,'').replace(',','.'));
+                      if (priceNum > 0) {
+                        an.price_recommended = priceNum;
+                        an.price_min = Math.round(priceNum * 0.88);
+                        an.price_max = Math.round(priceNum * 1.05);
+                        an.price_unknown = false;
+                        an.price_reasoning = 'Preis laut Verkaufsdossier: ' + priceEntry.v;
                       }
-                      await supabase.from('vk_articles').update({ analysis: an }).eq('id', article.id);
                     }
+                    if (kmEntry && kmEntry.v) {
+                      const kmNum = parseFloat(kmEntry.v.replace(/[^0-9]/g,''));
+                      if (kmNum > 0) an.km = kmNum;
+                    }
+                    if (yearEntry && yearEntry.v) {
+                      an.year = yearEntry.v;
+                    }
+                    // Motorisierung
+                    const motorEntry = pairs.find(p => p.k && (p.k.toLowerCase().includes('leistung') || p.k.toLowerCase().includes('motor') || p.k.toLowerCase().includes('ps')));
+                    if (motorEntry) an.motor = motorEntry.v;
+                    // Kurzinfos für Report
+                    const keyFacts = pairs.filter(p => ['Kraftstoff','Getriebe','Antrieb','Karosserieform','Hubraum'].includes(p.k)).map(p => p.k+': '+p.v).join(', ');
+                    if (keyFacts) an.key_facts_from_doc = keyFacts;
+                    
+                    await supabase.from('vk_articles').update({ analysis: an }).eq('id', article.id);
                   }
                 } catch(de) { console.error('PDF extract:', de.message); }
               }
