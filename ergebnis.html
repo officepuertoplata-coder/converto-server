@@ -222,6 +222,13 @@ function render(){
     html += '<div class="price-box"><div class="price-label">Maximum</div><div class="price-val">'+fmt(an.price_max)+'</div></div>';
     html += '</div>';
     if(an.price_reasoning) html += '<div style="font-size:.78rem;color:var(--mu);margin-top:6px;">'+esc(an.price_reasoning)+'</div>';
+    // Kerndaten aus PDF
+    var keyData = [];
+    if(an.km) keyData.push('🛣 '+parseInt(an.km).toLocaleString('de-AT')+' km');
+    if(an.year) keyData.push('📅 '+an.year);
+    if(an.motor) keyData.push('⚙️ '+an.motor);
+    if(an.key_facts_from_doc) keyData.push(an.key_facts_from_doc);
+    if(keyData.length) html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">'+keyData.map(function(d){return '<span style="background:#f0fdf4;border:1px solid #86efac;border-radius:20px;padding:4px 10px;font-size:.78rem;font-weight:700;color:#15803d;">'+esc(d)+'</span>';}).join('')+'</div>';
     html += '</div>';
 
     // ── TITEL & BESCHREIBUNG ──
@@ -401,7 +408,7 @@ function renderQuestions(artId){
 
   var rows='';
   if(qs.length){
-    rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;cursor:pointer;user-select:none;" onclick="toggleSection(\'sf-'+artId+'\')">&nbsp;Standardfelder ▲</div>';
+    rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;cursor:pointer;user-select:none;" onclick="toggleSection(\'sf-'+artId+'\')">📋 Fragekatalog ▲</div>';
     rows+='<div id="sf-'+artId+'">';
     qs.forEach(function(q){
       var val=ans[q.id]||'';
@@ -421,7 +428,7 @@ function renderQuestions(artId){
     rows+='</div>'; // close sf
   }
 
-  rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;">Technische Daten ▲ <span style="color:#1d4ed8;font-weight:600;text-transform:none;font-size:.65rem;">'+(extraFacts.length?extraFacts.length+' Einträge':'leer')+'</span></div>';
+  rows+='<div style="font-size:.7rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;">🧠 Wissensdatenbank ▲ <span style="color:#1d4ed8;font-weight:600;text-transform:none;font-size:.65rem;">'+(extraFacts.length?extraFacts.length+' Einträge':'leer')+'</span></div>';
   rows+='<div id="td-'+artId+'">';
   extraFacts.forEach(function(f,i){
     rows+='<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">';
@@ -653,7 +660,6 @@ function renderDocs(artId){
     html+='<div class="doc-item"><span>'+(d.type==='pdf'?'📄':'🔗')+'</span>';
     html+='<span class="doc-label">'+esc(d.label)+'</span>';
     if(d.public_url)html+='<a href="'+esc(d.public_url)+'" target="_blank" style="font-size:.7rem;color:var(--blue);font-weight:700;">↗</a>';
-    if(d.type==='pdf'&&d.public_url)html+='<button class="doc-analyze-btn" onclick="analyzeExistingDoc(\''+artId+'\',\''+esc(d.public_url)+'\',\''+esc(d.label)+'\',this)">🔍 Analysieren</button>';
     html+='<button class="doc-del-btn" onclick="deleteDoc(\''+d.id+'\',\''+artId+'\')">✕</button></div>';
   });
   el.innerHTML=html;
