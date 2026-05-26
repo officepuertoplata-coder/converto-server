@@ -2383,36 +2383,21 @@ app.listen(PORT, async () => {
 
 
 
-// ── PREISE (exkl. MwSt) ──────────────────────────────────
-const PRICES = {
-  REPORT_PER_7D: 1.00,   // Report je 7 Tage
-  LP_PER_7D:     1.00,   // Landingpage je 7 Tage
-  BOT_PER_7D:    2.00,   // Bot je 7 Tage
-  MWST:          0.20    // 20% MwSt
-};
-
 function vkCalcPrice(articles) {
-  // Neues Modell: Report + LP + Bot je Artikel je 7 Tage
-  let netTotal = 0;
+  let total = 1.00;
   for (const a of articles) {
-    const weeks = Math.max(1, Math.round((a.report_days || 7) / 7));
-    netTotal += PRICES.REPORT_PER_7D * weeks;
-    if (a.lp_booked && a.lp_days > 0) {
-      const lpWeeks = Math.max(1, Math.round(a.lp_days / 7));
-      netTotal += PRICES.LP_PER_7D * lpWeeks;
+    const photoCount = a.photo_count || (a.vk_photos || []).length || 0;
+    if (photoCount > 0) {
+      total += 1.00;
+      total += Math.max(0, photoCount - 1) * 0.25;
     }
-    if (a.bot_booked && a.bot_days > 0) {
-      const botWeeks = Math.max(1, Math.round(a.bot_days / 7));
-      netTotal += PRICES.BOT_PER_7D * botWeeks;
+    if (a.extended) total += 1.00;
+    if (a.lp_booked && a.lp_days > 0) {
+      const lpRate = a.lp_has_bot ? 1.00 : 0.40;
+      total += Math.round(a.lp_days * lpRate * 100) / 100;
     }
   }
-  return Math.round(netTotal * 100) / 100;
-}
-
-function vkCalcPriceMwSt(netPrice) {
-  const mwst = Math.round(netPrice * PRICES.MWST * 100) / 100;
-  const gross = Math.round((netPrice + mwst) * 100) / 100;
-  return { net: netPrice, mwst, gross };
+  return Math.round(total * 100) / 100;
 }
 
 function vkCalcDiscount(coupon, price) {
@@ -3399,17 +3384,8 @@ app.post('/api/vk/checkout', async (req, res) => {
         await supabase.from('vk_coupons').update({ used_count: (coupon.used_count||0) + 1 }).eq('id', coupon.id);
       }
     }
-    const pricing = vkCalcPriceMwSt(finalPrice);
-    const lineItems = [
-      {
-        price_data: { currency: 'eur', product_data: { name: 'Verkaufsreport – ' + enriched.length + ' Artikel', description: enriched.map(function(a){ return a.title || 'Artikel'; }).join(', ') }, unit_amount: Math.round(pricing.net * 100) }, quantity: 1
-      },
-      {
-        price_data: { currency: 'eur', product_data: { name: 'MwSt (20%)' }, unit_amount: Math.round(pricing.mwst * 100) }, quantity: 1
-      }
-    ];
-    const checkout = await stripe.checkout.sessions.create({ mode: 'payment', payment_method_types: ['card'], line_items: lineItems, metadata: { vk_token: token, vk_session_id: session.id }, success_url: 'https://converdino.com/bericht.html?s=' + token + '&paid=1', cancel_url: 'https://converdino.com/bericht.html?s=' + token });
-    await supabase.from('vk_sessions').update({ stripe_session_id: checkout.id, total_price: pricing.gross, coupon_code: couponCode || null }).eq('id', session.id);
+    const checkout = await stripe.checkout.sessions.create({ mode: 'payment', payment_method_types: ['card'], line_items: [{ price_data: { currency: 'eur', product_data: { name: 'Verkaufsreport – ' + enriched.length + ' Artikel', description: enriched.map(function(a){ return a.title || 'Artikel'; }).join(', ') }, unit_amount: Math.round(finalPrice * 100) }, quantity: 1 }], metadata: { vk_token: token, vk_session_id: session.id }, success_url: 'https://converdino.com/bericht.html?s=' + token + '&paid=1', cancel_url: 'https://converdino.com/bericht.html?s=' + token });
+    await supabase.from('vk_sessions').update({ stripe_session_id: checkout.id, total_price: finalPrice, coupon_code: couponCode || null }).eq('id', session.id);
     res.json({ success: true, url: checkout.url });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
