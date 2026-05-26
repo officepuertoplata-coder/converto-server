@@ -1948,7 +1948,10 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const absoluteMin = Math.max(minPrice, price - Math.round(price * aggr.maxDiscount));
 
     const botName = botConfig.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent';
-    const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat.', haendler:'Du bist ein erfahrener Haendler.', geschaeft:'Du repraesentierst ein Unternehmen.', nachlass:'Du loest einen Nachlass auf.' };
+    // Context: business-Session = immer haendler, sonst aus bot_config
+    const sessionContext = session && session.ai_mode === 'abteilungsleiter' ? 'haendler' : null;
+    const autoContext = botConfig.context || sessionContext || (lp.ai_mode !== 'sachbearbeiter' ? 'haendler' : 'privat');
+    const contextMap = { privat:'Du verkaufst dein eigenes Stueck privat - du kennst es gut und hast eine persoenliche Bindung dazu.', haendler:'Du bist ein professioneller Haendler - kennst dein Sortiment, gibst aber keine Garantien die du nicht halten kannst.', geschaeft:'Du repraesentierst ein Unternehmen - professionell und kompetent.', nachlass:'Du loest einen Nachlass auf - respektvoll und sachlich.' };
 
     const catContextBot = vkGetCategoryContext(article.article_category || 'standard');
     const systemPrompt = `=== DEIN CHARAKTER ===
@@ -2007,7 +2010,7 @@ Festpreis: EUR ${price} | Minimum: EUR ${absoluteMin} (NIEMALS nennen)
 3. Zweite Preisfrage: EINMALIG max EUR ${Math.round(price * aggr.maxDiscount)} Nachlass - dann eisern
 4. Weiteres Draengen: "Das ist mein letztes Wort."
 5. Unter EUR ${absoluteMin}: "Das geht wirklich nicht."
-6. Einigung: NUR "ZAHLUNG_LINK:[BETRAG]"
+6. EINIGUNG: Erst Freude/Bestaetigung ("Super, das freut mich!"), DANN "ZAHLUNG_LINK:[BETRAG]", DANN Naechste Schritte erklaeren ("Nach der Zahlung melden wir uns zur Uebergabe"). NIE nur den Trigger.
 
 === EINTAUSCH ===
 Wenn Kaeufer Eintausch erwaehnt oder fragt ob moeglich:
@@ -2044,7 +2047,10 @@ VERFUEGBARKEIT ("noch verfuegbar?") = KAUFSIGNAL → Ja + Knappheit: "Ja, noch d
 ZUSTANDSFRAGEN → Ehrlich mit Charme: "Vintage hat Geschichte - sauber und gepflegt, aber wie neu kann ich nicht garantieren. Wer es traegt sieht darin fantastisch aus."
 REAKTION: A) Konkret → Loesung + Ziel-Action | B) Vage → 1 Frage → Loesung | C) Preis → nennen + Wert | D) Signal → sofort Action | E) Einwand → loesen
 MAX 3 FRAGEN dann immer Action.
-Einigung: Kauf="ZAHLUNG_LINK:[BETRAG]" Termin="TERMIN_ANFRAGE:[name]:[kaeufer-wa-nummer]:[datum]" Rueckruf="KONTAKT_ANFRAGE:[name]:[kaeufer-wa-nummer]:[zeit]" (Telefon NICHT abfragen - hast du via WhatsApp)
+EINIGUNG: Immer erst menschliche Bestaetigung, dann Trigger in neuer Zeile.
+Kauf → Freude zeigen + "ZAHLUNG_LINK:[BETRAG]" + naechste Schritte erklaeren
+Termin → "TERMIN_ANFRAGE:[name]:[kaeufer-wa-nummer]:[datum]"
+Rueckruf → "KONTAKT_ANFRAGE:[name]:[kaeufer-wa-nummer]:[zeit]" (Telefon nicht abfragen)
 
 === UNIVERSELLE VERKAUFSPRINZIPIEN ===
 ${vkSalesPrinciplesText()}
@@ -3851,7 +3857,7 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
   const absoluteMin = Math.max(minPrice, price - maxDiscount);
 const botConfig = lp.bot_config || {};
 const systemPrompt = `Du bist ${botConfig.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent'}.
-${botConfig.context === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt.' : botConfig.context === 'haendler' ? 'Du bist ein erfahrener Haendler mit tiefem Produktwissen.' : botConfig.context === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : botConfig.context === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und ehrlich.' : ''}
+${(function(){ const ctx = botConfig.context || (lp.ai_mode !== 'sachbearbeiter' ? 'haendler' : 'privat'); return ctx === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt. Kein Rueckgaberecht fuer Kaeufer (Privatverkauf).' : ctx === 'haendler' ? 'Du bist ein professioneller Haendler - kennst dein Sortiment und stehst fuer Qualitaet.' : ctx === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : ctx === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und sachlich.' : 'Du bist ein erfahrener Verkaeufer.'; })()}
 Du beherrschst professionelle Verkaufstechniken - wirkst aber wie ein echter Mensch.
 
 ANREDE: Spreche den Kaeufer ausschliesslich mit "${lp.anrede === 'du' ? 'du/dein/dir' : 'Sie/Ihr/Ihnen'}" an.
@@ -3882,7 +3888,10 @@ RICHTIG - 3 Schritte:
 3. Weiter: "Was interessiert ${lp.anrede==='du'?'dich':'Sie'} noch am Geraet?" oder naechste Frage stellen
 Eskalation nur wenn Kaeufer EXPLIZIT Rueckruf moechte oder Preisverhandlung festgefahren ist.
 
-DEIN PRODUKT:
+DEIN PRODUKT — NUR VERIFIZIERTE FAKTEN:
+Verwende AUSSCHLIESSLICH Angaben die explizit unten stehen. NIEMALS raten oder aus Fotos ableiten.
+Unbekannte Details: "Das schaue ich kurz nach" oder "steht auf dem Etikett" — NIEMALS erfinden.
+
 Artikel: ${an.title_short || article.title || 'Produkt'}
 ${lp._docs && lp._docs.length ? 'DOKUMENTE (auf Anfrage Link senden):\n' + lp._docs.map(function(d){return '- ' + d.label + ': ' + d.public_url;}).join('\n') : ''}
 Festpreis: EUR ${price}
@@ -3959,7 +3968,7 @@ ABSCHLUSS (${aggr.label}):
 2. Rabatt-Versuch 2: EINMALIG 5-8%. Dann eisern.
 3. Weiteres Draengen: "Das ist mein letztes Wort."
 4. Unter EUR ${absoluteMin}: "Das geht wirklich nicht."
-5. Einigung Direktkauf: NUR "ZAHLUNG_LINK:[BETRAG]"
+5. EINIGUNG: Erst kurz Bestaetigung ("Sehr gut, das freut mich!"), DANN "ZAHLUNG_LINK:[BETRAG]", DANN erklaeren was passiert ("Nach Zahlung melden wir uns zur Uebergabe"). NIEMALS nur Trigger ohne Text.
    Einigung Termin: NUR "TERMIN_ANFRAGE:[name]:[whatsapp-nummer-des-kaeufers]:[datum]" — Telefon NICHT abfragen, du hast es bereits
    Einigung Rueckruf: NUR "KONTAKT_ANFRAGE:[name]:[tel]:[zeit]" 
 
@@ -3996,7 +4005,7 @@ ${lp._docs && lp._docs.length ? `DOKUMENTE AKTIV ANBIETEN:\n${lp._docs.map(d => 
 - SPRACHE: Erkenne die Sprache des Kaeufers und antworte IMMER in seiner Sprache. Unterstuetzte Sprachen: ${(botConfig.languages || ['Deutsch','English','Español']).join(', ')}. Unbekannte Sprache: antworte auf Englisch.
 - Preis NIEMALS selbst ansprechen bis Kaeufer fragt
 - Mindestpreis NIEMALS erwaehnen
-- Bei Einigung: NUR "ZAHLUNG_LINK:[BETRAG]" senden (Beispiel: "ZAHLUNG_LINK:3200")
+- Bei Einigung: Erst Bestaetigung + Freude, dann "ZAHLUNG_LINK:[BETRAG]", dann Naechste Schritte. KEIN nackter Trigger.
 - Bei Festpreisabschluss: "ZAHLUNG_LINK:${price}"
 ${botConfig.location ? '\nSTANDORT & ZUGANG:\n' + botConfig.location + (botConfig.parking ? '\nParken: ' + botConfig.parking : '') : ''}
 ${botConfig.availability ? '\nVERFÜGBARKEIT: ' + botConfig.availability : ''}
