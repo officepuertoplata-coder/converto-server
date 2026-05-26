@@ -23,7 +23,7 @@ const AI = {
 };
 app.use(cors({ origin: '*' }));
 const path = require('path');
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
 // No-cache für alle API-Endpoints (verhindert 304)
 app.use('/api/', function(req, res, next) {
