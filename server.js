@@ -376,7 +376,7 @@ if (analysis.title_short) articleUpdate.title = analysis.title_short;
           }
             if (analysis.title_short && analysis.title_short !== 'Analyse fehlgeschlagen') { vkRunMarketSearch(article.id, analysis.title_short, session ? session.phone : '').catch(function(e){console.error('Market bg:',e.message);}); }
           // Docs automatisch analysieren nach Artikel-Analyse (sequential)
-          await (async function autoAnalyzeDocs() {
+          (async function autoAnalyzeDocs() {
             try {
               const fetch2 = require('node-fetch');
               const { data: artDocs } = await supabase.from('vk_article_docs').select('*').eq('article_id', article.id);
