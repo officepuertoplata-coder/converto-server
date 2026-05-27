@@ -310,8 +310,17 @@ function setupZone(zoneId, inputId, handler) {
   const inp  = document.getElementById(inputId);
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handler(e.dataTransfer.files); });
-  inp.addEventListener('change', () => { handler(inp.files); inp.value = ''; });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files); // Snapshot, nicht live
+    handler(files);
+  });
+  inp.addEventListener('change', () => {
+    const files = Array.from(inp.files); // ZUERST Snapshot in normales Array
+    inp.value = '';                       // DANN Input leeren (sicher)
+    handler(files);
+  });
 }
 
 // ── PHOTO UPLOAD ────────────────────────────────────
