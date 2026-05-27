@@ -126,17 +126,17 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           const botCodeMatch = rawText.trim().match(/^(BOT-[A-Z0-9]{4,8})$/i);
           if (botCodeMatch && msgType === 'text') {
             try {
-              await handleBotSlotStart(from, botCodeMatch[1].toUpperCase(), phoneId);
+              await cvAPI.handleBotStart(from, botCodeMatch[1].toUpperCase(), phoneId);
               continue;
             } catch(botErr) { console.error('Bot slot start error:', botErr.message); }
           }
 
           // Prüfe ob aktive Bot-Slot Konversation läuft
           if (msgType === 'text') {
-            const activeBotSlot = await getActiveBotSlotSession(from);
+            const activeBotSlot = await cvAPI.getActiveBotSession(from);
             if (activeBotSlot) {
               try {
-                await handleBotSlotReply(from, rawText, activeBotSlot, phoneId);
+                await cvAPI.handleBotReply(from, rawText, activeBotSlot, phoneId);
                 continue;
               } catch(botErr) { console.error('Bot slot reply error:', botErr.message); }
             }
@@ -2756,84 +2756,34 @@ app.get('/api/bot/subscription/:phone', async (req, res) => {
 app.post('/api/bot/slot/:id/upload', async (req, res) => {
   try {
     const { title, sale_price, min_price, location, anrede } = req.body;
-    const slotId = req.params.id;
-    
-    console.log('Upload start für Slot:', slotId);
-    
-    // 1. Slot laden (ohne Join — funktioniert garantiert)
-    const { data: slot, error: slotErr } = await supabase.from('bot_slots')
-      .select('*').eq('id', slotId).single();
-    if (slotErr) return res.status(500).json({ error: 'Slot-Lesefehler: ' + slotErr.message });
-    if (!slot) return res.status(404).json({ error: 'Slot ' + slotId + ' nicht gefunden' });
-    if (slot.status === 'active') return res.status(400).json({ error: 'Slot ist aktiv. Erst Artikel löschen.' });
-    
-    // 2. Subscription separat laden (um Phone zu bekommen)
-    let customerPhone = 'admin';
-    if (slot.subscription_id) {
-      const { data: sub } = await supabase.from('subscriptions')
-        .select('customer_phone').eq('id', slot.subscription_id).single();
-      if (sub?.customer_phone) customerPhone = sub.customer_phone;
-    }
-    
-    // 3. Session erstellen
+    const { data: slot } = await supabase.from('bot_slots').select('*, subscriptions(*)').eq('id', req.params.id).single();
+    if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
+    if (slot.status === 'active') return res.status(400).json({ error: 'Slot aktiv — erst Artikel löschen' });
+
+    // Neue Session + Artikel erstellen
     const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const { data: session, error: sErr } = await supabase.from('vk_sessions').insert({
-      token: token,
-      phone: customerPhone,
-      status: 'open'
+    const { data: session } = await supabase.from('vk_sessions').insert({
+      token, phone: slot.subscriptions.customer_phone,
+      customer_name: title, status: 'open'
     }).select().single();
-    
-    if (sErr) {
-      console.error('Session error:', sErr);
-      return res.status(500).json({ error: 'Session: ' + sErr.message });
-    }
-    if (!session?.id) return res.status(500).json({ error: 'Session-Datensatz hat keine ID' });
-    
-    // 4. Artikel erstellen (nur Basis-Felder)
-    const { data: article, error: aErr } = await supabase.from('vk_articles').insert({
-      session_id: session.id,
-      title: title || 'Artikel',
-      status: 'pending'
+
+    const { data: article } = await supabase.from('vk_articles').insert({
+      session_id: session.id, title,
+      sale_price, min_price, location, anrede: anrede || 'Sie',
+      status: 'pending', sort_order: 0
     }).select().single();
-    
-    if (aErr) {
-      console.error('Article error:', aErr);
-      return res.status(500).json({ error: 'Artikel: ' + aErr.message });
-    }
-    if (!article?.id) return res.status(500).json({ error: 'Artikel-Datensatz hat keine ID' });
-    
-    // 5. Preise/Standort/Anrede separat updaten (optional — Spalten könnten fehlen)
-    try {
-      await supabase.from('vk_articles').update({
-        sale_price: sale_price || null,
-        min_price: min_price || null,
-        location: location || null,
-        anrede: anrede || 'Sie'
-      }).eq('id', article.id);
-    } catch(e) { console.error('Article details warning:', e.message); }
-    
-    // 6. Slot updaten
-    const { error: uErr } = await supabase.from('bot_slots').update({
-      article_id: article.id,
-      status: 'uploading'
-    }).eq('id', slotId);
-    if (uErr) console.error('Slot update warning:', uErr);
-    
-    console.log('Upload erfolgreich:', { article_id: article.id, session_id: session.id });
-    
-    res.json({
-      success: true,
-      article_id: article.id,
-      session_id: session.id,
-      token: token
-    });
-  } catch(e) {
-    console.error('Upload endpoint exception:', e);
-    res.status(500).json({ error: 'Unerwarteter Fehler: ' + e.message });
-  }
+
+    // Slot updaten
+    await supabase.from('bot_slots').update({
+      article_id: article.id, status: 'uploading',
+      sale_price, min_price, location
+    }).eq('id', req.params.id);
+
+    res.json({ success: true, article_id: article.id, session_id: session.id, token });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-
+// ── BOT AKTIVIEREN (nach Analyse) ────────────────────────
 app.post('/api/bot/slot/:id/activate', async (req, res) => {
   try {
     const { data: slot } = await supabase.from('bot_slots').select('*').eq('id', req.params.id).single();
@@ -3051,7 +3001,10 @@ async function activateBotSlot(slotId) {
     vkAutoGenerateDNA(article.id, article.analysis, article.ai_mode || 'sachbearbeiter').catch(e => console.error('DNA error:', e.message));
   }
 }
-require('./converdino-api')(app, supabase);
+
+// ── CONVERDINO API LOAD ──────────────────────────────
+const cvAPI = require('./converdino-api')(app, supabase, { sendWAMessage });
+
 app.listen(PORT, async () => {
   console.log('✅ Converto API v2.2.0 läuft auf Port ' + PORT);
 
