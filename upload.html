@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Converdino – Artikel einrichten</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--g:#25D366;--g2:#1b4332;--g3:#f0fdf4;--bg:#f4f6f4;--card:#fff;--border:#e5e7eb;--mu:#6b7280;--txt:#111827;--red:#ef4444;--blue:#1d4ed8;--r:14px;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;}
+.nav{background:var(--g2);color:#fff;padding:0 20px;display:flex;align-items:center;height:56px;gap:12px;}
+.nav-back{background:rgba(255,255,255,.12);border:none;color:#fff;padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;}
+.nav-title{font-size:.95rem;font-weight:800;}
+.main{max-width:640px;margin:0 auto;padding:24px 16px;}
+
+/* PROGRESS */
+.progress{display:flex;gap:0;margin-bottom:24px;background:var(--card);border-radius:var(--r);padding:4px;border:1.5px solid var(--border);}
+.step{flex:1;text-align:center;padding:10px 8px;border-radius:10px;font-size:.75rem;font-weight:700;color:var(--mu);cursor:default;}
+.step.active{background:var(--g2);color:#fff;}
+.step.done{background:var(--g3);color:#15803d;}
+
+/* CARD */
+.card{background:var(--card);border-radius:var(--r);padding:20px;margin-bottom:16px;border:1.5px solid var(--border);}
+.card-title{font-size:.95rem;font-weight:800;margin-bottom:4px;}
+.card-sub{font-size:.78rem;color:var(--mu);margin-bottom:16px;}
+
+/* FOTOS */
+.foto-grid{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.foto-thumb{width:90px;height:90px;border-radius:10px;overflow:hidden;position:relative;background:#f3f4f6;flex-shrink:0;}
+.foto-thumb img{width:100%;height:100%;object-fit:cover;}
+.foto-del{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;border:none;font-size:.65rem;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.add-foto{width:90px;height:90px;border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--mu);font-size:.68rem;font-weight:700;background:none;transition:border-color .2s;font-family:'Nunito',sans-serif;}
+.add-foto:hover{border-color:var(--g);color:var(--g);}
+.add-foto span{font-size:1.4rem;}
+.drop-zone{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;color:var(--mu);font-size:.82rem;transition:all .2s;margin-bottom:8px;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--g);background:var(--g3);color:#15803d;}
+.foto-count{font-size:.75rem;color:var(--mu);margin-top:4px;}
+
+/* DOCS */
+.doc-item{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:10px;margin-bottom:8px;}
+.doc-icon{font-size:1.2rem;flex-shrink:0;}
+.doc-label{flex:1;font-size:.82rem;font-weight:700;color:var(--blue);}
+.doc-del{background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;}
+.doc-add{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+.doc-inp{flex:1;min-width:140px;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.82rem;font-family:'Nunito',sans-serif;}
+.doc-upload-btn{padding:9px 14px;background:#fff;border:1.5px solid #bfdbfe;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--blue);font-family:'Nunito',sans-serif;white-space:nowrap;}
+
+/* ACTIONS */
+.action-bar{display:flex;gap:10px;margin-top:20px;}
+.btn-main{flex:1;padding:16px;background:var(--g);color:#fff;border:none;border-radius:12px;font-size:1rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;box-shadow:0 4px 12px rgba(37,211,102,.3);}
+.btn-main:disabled{opacity:.5;cursor:not-allowed;}
+.btn-sec{padding:16px 20px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;font-size:.88rem;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;color:var(--mu);}
+
+/* SUCCESS */
+.success-card{background:var(--g2);color:#fff;border-radius:var(--r);padding:32px 24px;text-align:center;}
+.success-icon{font-size:3rem;margin-bottom:12px;}
+.success-title{font-size:1.3rem;font-weight:900;margin-bottom:8px;}
+.success-sub{font-size:.85rem;opacity:.8;margin-bottom:24px;}
+.success-btn{display:inline-block;padding:14px 28px;background:var(--g);color:#fff;border:none;border-radius:12px;font-size:.95rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;text-decoration:none;}
+
+/* MISC */
+.loading{text-align:center;padding:60px;color:var(--mu);}
+.ring{width:32px;height:32px;border:3px solid #e5e7eb;border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress-bar{height:4px;background:#e5e7eb;border-radius:2px;margin-top:8px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--g);border-radius:2px;transition:width .3s;}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--g2);color:#fff;padding:10px 20px;border-radius:30px;font-size:.85rem;font-weight:700;opacity:0;transition:all .3s;z-index:999;}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+</style>
+</head>
+<body>
+<nav class="nav">
+  <button class="nav-back" onclick="location.href='dashboard.html'">← Zurück</button>
+  <span class="nav-title" id="navTitle">Artikel einrichten</span>
+</nav>
+
+<div class="main" id="app">
+  <div class="loading"><div class="ring"></div>Lade...</div>
+</div>
+<div id="toast"></div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+const KEY = 'converto_auth_v2';
+const params = new URLSearchParams(location.search);
+const slotId = params.get('slot');
+const sessionToken = params.get('session');
+const articleId = params.get('article');
+let photos = [], docs = [], uploading = false;
+
+function toast(msg){ var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
+function esc(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
+function toBase64(file){ return new Promise((res,rej)=>{ var r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(file); }); }
+
+window.onload = function(){
+  const auth = JSON.parse(localStorage.getItem(KEY)||'null');
+  if(!auth){ location.href='login.html'; return; }
+  if(!slotId||!sessionToken||!articleId){ location.href='dashboard.html'; return; }
+  render();
+};
+
+function render(){
+  var app = document.getElementById('app');
+  var html = '';
+
+  // Progress
+  html += '<div class="progress">';
+  html += '<div class="step done">1 Artikel</div>';
+  html += '<div class="step active">2 Fotos & Dokumente</div>';
+  html += '<div class="step">3 Analyse</div>';
+  html += '</div>';
+
+  // Fotos
+  html += '<div class="card">';
+  html += '<div class="card-title">📷 Fotos hochladen</div>';
+  html += '<div class="card-sub">Mindestens 1 Foto · Drag & Drop oder Auswahl</div>';
+  html += '<div class="drop-zone" id="dropZone" onclick="trigFoto()">📷 Fotos auswählen oder hierher ziehen</div>';
+  html += '<div class="foto-grid" id="fotoGrid">';
+  photos.forEach(function(p,i){
+    html += '<div class="foto-thumb"><img src="'+esc(p.url)+'"><button class="foto-del" onclick="removePhoto('+i+')">✕</button></div>';
+  });
+  html += '</div>';
+  html += '<div class="foto-count" id="fotoCount">'+photos.length+' Foto(s) ausgewählt';
+  if(photos.length > 0) html += ' · wird beim Absenden hochgeladen';
+  html += '</div>';
+  html += '<div class="progress-bar"><div class="progress-fill" id="fotoProgress" style="width:0%"></div></div>';
+  html += '</div>';
+
+  // Dokumente
+  html += '<div class="card">';
+  html += '<div class="card-title">📄 Dokumente (optional)</div>';
+  html += '<div class="card-sub">PDFs oder Bilder — Serviceheft, Dossier, Rechnung, Zertifikate</div>';
+  html += '<div id="docList">';
+  docs.forEach(function(d,i){
+    html += '<div class="doc-item"><span class="doc-icon">📄</span><span class="doc-label">'+esc(d.label)+'</span>';
+    html += '<button class="doc-del" onclick="removeDoc('+i+')">✕</button></div>';
+  });
+  html += '</div>';
+  html += '<div class="doc-add">';
+  html += '<input class="doc-inp" id="docLabel" placeholder="Bezeichnung (z.B. Serviceheft)">';
+  html += '<button class="doc-upload-btn" onclick="trigDoc()">📄 PDF/Foto hinzufügen</button>';
+  html += '</div>';
+  html += '</div>';
+
+  // Action
+  html += '<div class="action-bar">';
+  html += '<button class="btn-sec" onclick="location.href=\'dashboard.html\'">Abbrechen</button>';
+  html += '<button class="btn-main" id="submitBtn" onclick="doSubmit()" '+(photos.length===0?'disabled':'')+'>🚀 Analyse starten</button>';
+  html += '</div>';
+
+  app.innerHTML = html;
+  setupDrop();
+}
+
+// ── FOTOS ─────────────────────────────────────────────
+function trigFoto(){
+  var inp = document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.multiple=true;
+  inp.onchange = function(){ if(inp.files) addPhotos(Array.from(inp.files)); };
+  inp.click();
+}
+
+function addPhotos(files){
+  files.forEach(function(f){
+    if(!f.type.startsWith('image/')) return;
+    var url = URL.createObjectURL(f);
+    photos.push({file:f, url:url});
+  });
+  render();
+}
+
+function removePhoto(idx){ photos.splice(idx,1); render(); }
+
+function setupDrop(){
+  var zone = document.getElementById('dropZone');
+  if(!zone) return;
+  zone.ondragenter = function(e){ e.preventDefault(); zone.classList.add('drag'); };
+  zone.ondragover = function(e){ e.preventDefault(); };
+  zone.ondragleave = function(){ zone.classList.remove('drag'); };
+  zone.ondrop = function(e){
+    e.preventDefault(); zone.classList.remove('drag');
+    var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.type.startsWith('image/'); });
+    if(files.length) addPhotos(files);
+  };
+}
+
+// ── DOKUMENTE ─────────────────────────────────────────
+function trigDoc(){
+  var label = document.getElementById('docLabel').value.trim();
+  if(!label){ toast('Bitte Bezeichnung eingeben'); return; }
+  var inp = document.createElement('input');
+  inp.type='file'; inp.accept='.pdf,.jpg,.jpeg,.png,.txt';
+  inp.onchange = function(){
+    if(!inp.files||!inp.files[0]) return;
+    docs.push({file:inp.files[0], label:label});
+    document.getElementById('docLabel').value='';
+    render();
+    toast('✓ Dokument hinzugefügt');
+  };
+  inp.click();
+}
+
+function removeDoc(idx){ docs.splice(idx,1); render(); }
+
+// ── SUBMIT ─────────────────────────────────────────────
+async function doSubmit(){
+  if(photos.length===0){ toast('Mindestens 1 Foto erforderlich'); return; }
+  if(uploading) return;
+  uploading = true;
+  var btn = document.getElementById('submitBtn');
+  btn.disabled=true; btn.textContent='⏳ Wird hochgeladen...';
+
+  var total = photos.length + docs.length;
+  var done = 0;
+
+  function updateProgress(){
+    done++;
+    var pct = Math.round((done/total)*100);
+    var bar = document.getElementById('fotoProgress');
+    if(bar) bar.style.width = pct+'%';
+    btn.textContent = '⏳ '+done+'/'+total+' hochgeladen...';
+  }
+
+  try{
+    // Fotos hochladen
+    for(var i=0; i<photos.length; i++){
+      var b64 = await toBase64(photos[i].file);
+      var r = await fetch(API+'/api/vk/photo',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({article_id:articleId, session_id:null, image_base64:b64, content_type:photos[i].file.type||'image/jpeg'})});
+      var d = await r.json();
+      if(!d.id && !d.photo) throw new Error('Foto-Upload fehlgeschlagen');
+      updateProgress();
+    }
+
+    // Dokumente hochladen
+    for(var j=0; j<docs.length; j++){
+      var b64d = await toBase64(docs[j].file);
+      await fetch(API+'/api/vk/article/'+articleId+'/doc',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({type:'pdf', label:docs[j].label, file_base64:b64d, file_name:docs[j].file.name, content_type:docs[j].file.type, session_id:null})});
+      updateProgress();
+    }
+
+    // Slot als "analyzing" markieren + Analyse starten
+    await fetch(API+'/api/bot/slot/'+slotId+'/start-analysis',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({token:sessionToken})});
+
+    // Erfolg anzeigen
+    showSuccess();
+  }catch(e){
+    toast('Fehler: '+e.message);
+    btn.disabled=false; btn.textContent='🚀 Analyse starten';
+    uploading=false;
+  }
+}
+
+function showSuccess(){
+  document.getElementById('app').innerHTML = `
+    <div class="success-card">
+      <div class="success-icon">🚀</div>
+      <div class="success-title">Analyse gestartet!</div>
+      <div class="success-sub">Die KI analysiert jetzt dein Produkt und erstellt die Wissensdatenbank für den Bot. Das dauert 1-3 Minuten.</div>
+      <a href="dashboard.html" class="success-btn">Zum Dashboard →</a>
+    </div>`;
+}
+</script>
+</body>
+</html>
