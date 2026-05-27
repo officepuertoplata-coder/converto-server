@@ -2504,6 +2504,252 @@ app.post('/api/vk/session/:token/analyze-docs', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+
+// ═══════════════════════════════════════════════════════════
+// BOT SUBSCRIPTION ENDPOINTS
+// ═══════════════════════════════════════════════════════════
+
+const stripeEU = require('stripe')(process.env.STRIPE_SECRET_KEY_EU);
+const BOT_PRICE_ID = process.env.STRIPE_PRICE_BOT_SLOT;
+
+// ── ABO ERSTELLEN ────────────────────────────────────────
+app.post('/api/bot/subscribe', async (req, res) => {
+  try {
+    const { phone, slots, name, email } = req.body;
+    if (!phone || !slots || slots < 1) return res.status(400).json({ error: 'Telefonnummer und Slot-Anzahl erforderlich' });
+
+    // Stripe Customer erstellen
+    const customer = await stripeEU.customers.create({
+      name: name || phone,
+      email: email || undefined,
+      metadata: { phone }
+    });
+
+    // Checkout Session für Subscription
+    const checkout = await stripeEU.checkout.sessions.create({
+      customer: customer.id,
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{
+        price: BOT_PRICE_ID,
+        quantity: slots
+      }],
+      automatic_tax: { enabled: false },
+      metadata: { phone, slots: String(slots) },
+      success_url: 'https://converdino.com/dashboard.html?subscribed=1&phone=' + encodeURIComponent(phone),
+      cancel_url: 'https://converdino.com/dashboard.html?cancelled=1'
+    });
+
+    res.json({ url: checkout.url, session_id: checkout.id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ABO STATUS & SLOTS ───────────────────────────────────
+app.get('/api/bot/subscription/:phone', async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const { data: sub } = await supabase.from('subscriptions')
+      .select('*, bot_slots(*)')
+      .eq('customer_phone', phone)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!sub) return res.json({ active: false, slots: [] });
+
+    res.json({
+      active: true,
+      slots_total: sub.slots_total,
+      slots_used: sub.slots_used,
+      current_period_end: sub.current_period_end,
+      slots: sub.bot_slots || []
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ARTIKEL IN SLOT LADEN ────────────────────────────────
+app.post('/api/bot/slot/:id/upload', async (req, res) => {
+  try {
+    const { title, sale_price, min_price, location, anrede } = req.body;
+    const { data: slot } = await supabase.from('bot_slots').select('*, subscriptions(*)').eq('id', req.params.id).single();
+    if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
+    if (slot.status === 'active') return res.status(400).json({ error: 'Slot aktiv — erst Artikel löschen' });
+
+    // Neue Session + Artikel erstellen
+    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const { data: session } = await supabase.from('vk_sessions').insert({
+      token, phone: slot.subscriptions.customer_phone,
+      customer_name: title, status: 'open'
+    }).select().single();
+
+    const { data: article } = await supabase.from('vk_articles').insert({
+      session_id: session.id, title,
+      sale_price, min_price, location, anrede: anrede || 'Sie',
+      status: 'pending', sort_order: 0
+    }).select().single();
+
+    // Slot updaten
+    await supabase.from('bot_slots').update({
+      article_id: article.id, status: 'uploading',
+      sale_price, min_price, location
+    }).eq('id', req.params.id);
+
+    res.json({ success: true, article_id: article.id, session_id: session.id, token });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── BOT AKTIVIEREN (nach Analyse) ────────────────────────
+app.post('/api/bot/slot/:id/activate', async (req, res) => {
+  try {
+    const { data: slot } = await supabase.from('bot_slots').select('*').eq('id', req.params.id).single();
+    if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
+
+    // Bot-Code generieren (eindeutig)
+    const botCode = 'BOT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    const waLink = 'https://wa.me/436776411806?text=' + encodeURIComponent(botCode);
+
+    // QR-Code URL (via externem Service)
+    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(waLink);
+
+    // Widget Code
+    const widgetCode = `<script>
+(function(){
+  var btn = document.createElement('div');
+  btn.style='position:fixed;bottom:24px;right:24px;z-index:9999;cursor:pointer;';
+  btn.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4);">💬 Bot anfragen</a>';
+  document.body.appendChild(btn);
+})();
+</scr` + `ipt>`;
+
+    await supabase.from('bot_slots').update({
+      status: 'active', bot_code: botCode,
+      wa_deeplink: waLink, qr_code_url: qrUrl,
+      widget_code: widgetCode, activated_at: new Date().toISOString()
+    }).eq('id', req.params.id);
+
+    // slots_used erhöhen
+    const { data: sub } = await supabase.from('subscriptions').select('slots_used').eq('id', slot.subscription_id).single();
+    await supabase.from('subscriptions').update({ slots_used: (sub.slots_used || 0) + 1 }).eq('id', slot.subscription_id);
+
+    res.json({ success: true, bot_code: botCode, wa_link: waLink, qr_url: qrUrl, widget_code: widgetCode });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ARTIKEL AUS SLOT LÖSCHEN ─────────────────────────────
+app.delete('/api/bot/slot/:id/article', async (req, res) => {
+  try {
+    const { data: slot } = await supabase.from('bot_slots').select('*, subscriptions(*)').eq('id', req.params.id).single();
+    if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
+
+    await supabase.from('bot_slots').update({
+      article_id: null, status: 'empty',
+      bot_code: null, wa_deeplink: null,
+      qr_code_url: null, widget_code: null
+    }).eq('id', req.params.id);
+
+    // slots_used verringern
+    const { data: sub } = await supabase.from('subscriptions').select('slots_used').eq('id', slot.subscription_id).single();
+    if (sub && sub.slots_used > 0) {
+      await supabase.from('subscriptions').update({ slots_used: sub.slots_used - 1 }).eq('id', slot.subscription_id);
+    }
+
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── STRIPE WEBHOOK (Abo-Events) ──────────────────────────
+app.post('/api/bot/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = stripeEU.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET_EU);
+  } catch(e) { return res.status(400).json({ error: e.message }); }
+
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      if (session.mode !== 'subscription') return res.json({ received: true });
+      const phone = session.metadata?.phone;
+      const slots = parseInt(session.metadata?.slots || '1');
+
+      // Subscription in DB anlegen
+      const stripeSub = await stripeEU.subscriptions.retrieve(session.subscription);
+      await supabase.from('subscriptions').insert({
+        customer_phone: phone,
+        stripe_subscription_id: session.subscription,
+        stripe_customer_id: session.customer,
+        slots_total: slots, slots_used: 0,
+        status: 'active',
+        current_period_end: new Date(stripeSub.current_period_end * 1000).toISOString()
+      });
+
+      // Slots anlegen
+      const slotRows = Array.from({ length: slots }, (_, i) => ({
+        subscription_id: null, // wird gleich gefüllt
+        slot_number: i + 1, status: 'empty'
+      }));
+
+      // Sub ID holen
+      const { data: newSub } = await supabase.from('subscriptions')
+        .select('id').eq('stripe_subscription_id', session.subscription).single();
+
+      if (newSub) {
+        await supabase.from('bot_slots').insert(
+          slotRows.map(s => ({ ...s, subscription_id: newSub.id }))
+        );
+      }
+    }
+
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object;
+      await supabase.from('subscriptions')
+        .update({ status: 'past_due' })
+        .eq('stripe_subscription_id', invoice.subscription);
+      // Bots pausieren
+      const { data: sub } = await supabase.from('subscriptions').select('id').eq('stripe_subscription_id', invoice.subscription).single();
+      if (sub) await supabase.from('bot_slots').update({ status: 'paused' }).eq('subscription_id', sub.id).eq('status', 'active');
+    }
+
+    if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object;
+      await supabase.from('subscriptions').update({ status: 'cancelled' }).eq('stripe_subscription_id', subscription.id);
+      const { data: sub } = await supabase.from('subscriptions').select('id').eq('stripe_subscription_id', subscription.id).single();
+      if (sub) await supabase.from('bot_slots').update({ status: 'inactive' }).eq('subscription_id', sub.id);
+    }
+
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object;
+      const stripeSub = await stripeEU.subscriptions.retrieve(invoice.subscription);
+      await supabase.from('subscriptions').update({
+        status: 'active',
+        current_period_end: new Date(stripeSub.current_period_end * 1000).toISOString()
+      }).eq('stripe_subscription_id', invoice.subscription);
+      // Bots reaktivieren
+      const { data: sub } = await supabase.from('subscriptions').select('id').eq('stripe_subscription_id', invoice.subscription).single();
+      if (sub) await supabase.from('bot_slots').update({ status: 'active' }).eq('subscription_id', sub.id).eq('status', 'paused');
+    }
+
+  } catch(e) { console.error('Webhook error:', e.message); }
+  res.json({ received: true });
+});
+
+// ── SLOT ASSETS (QR, Widget, Link) ───────────────────────
+app.get('/api/bot/slot/:id/assets', async (req, res) => {
+  try {
+    const { data: slot } = await supabase.from('bot_slots').select('*').eq('id', req.params.id).single();
+    if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
+    res.json({
+      bot_code: slot.bot_code,
+      wa_link: slot.wa_deeplink,
+      qr_url: slot.qr_code_url,
+      widget_code: slot.widget_code,
+      status: slot.status
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.listen(PORT, async () => {
   console.log('✅ Converto API v2.2.0 läuft auf Port ' + PORT);
 
