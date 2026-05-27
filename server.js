@@ -2732,36 +2732,24 @@ app.post('/api/bot/subscribe', async (req, res) => {
 app.get('/api/bot/subscription/:phone', async (req, res) => {
   try {
     const phone = req.params.phone;
-
-    // Schritt 1: Subscription laden (ohne Join)
-    const { data: subs, error: subErr } = await supabase.from('subscriptions')
-      .select('*')
+    const { data: subs } = await supabase.from('subscriptions')
+      .select('*, bot_slots(*)')
       .eq('customer_phone', phone)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(1);
 
-    if (subErr) { console.error('Sub error:', subErr); return res.json({ active: false, slots: [], error: subErr.message }); }
-
     const sub = subs?.[0] || null;
     if (!sub) return res.json({ active: false, slots: [] });
-
-    // Schritt 2: Slots separat laden
-    const { data: slots, error: slotErr } = await supabase.from('bot_slots')
-      .select('*')
-      .eq('subscription_id', sub.id)
-      .order('slot_number', { ascending: true });
-
-    if (slotErr) { console.error('Slot error:', slotErr); }
 
     res.json({
       active: true,
       slots_total: sub.slots_total,
       slots_used: sub.slots_used,
       current_period_end: sub.current_period_end,
-      slots: slots || []
+      slots: sub.bot_slots || []
     });
-  } catch(e) { console.error('Sub endpoint error:', e); res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── ARTIKEL IN SLOT LADEN ────────────────────────────────
@@ -2772,27 +2760,39 @@ app.post('/api/bot/slot/:id/upload', async (req, res) => {
     if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
     if (slot.status === 'active') return res.status(400).json({ error: 'Slot aktiv — erst Artikel löschen' });
 
-    // Neue Session + Artikel erstellen
+    // Schritt 1: Session erstellen
     const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const { data: session } = await supabase.from('vk_sessions').insert({
-      token, phone: slot.subscriptions.customer_phone,
-      customer_name: title, status: 'open'
+    const customerPhone = slot.subscriptions ? slot.subscriptions.customer_phone : 'admin';
+    const { data: session, error: sessionErr } = await supabase.from('vk_sessions').insert({
+      token, phone: customerPhone, status: 'open'
     }).select().single();
+    if (sessionErr || !session) {
+      console.error('Session INSERT error:', sessionErr);
+      return res.status(500).json({ error: 'Session konnte nicht erstellt werden: ' + (sessionErr?.message||'unbekannt') });
+    }
 
-    const { data: article } = await supabase.from('vk_articles').insert({
-      session_id: session.id, title,
-      sale_price, min_price, location, anrede: anrede || 'Sie',
-      status: 'pending', sort_order: 0
+    // Schritt 2: Artikel erstellen
+    const { data: article, error: articleErr } = await supabase.from('vk_articles').insert({
+      session_id: session.id, title, status: 'pending', sort_order: 0
     }).select().single();
+    if (articleErr || !article) {
+      console.error('Article INSERT error:', articleErr);
+      return res.status(500).json({ error: 'Artikel konnte nicht erstellt werden: ' + (articleErr?.message||'unbekannt') });
+    }
 
-    // Slot updaten
-    await supabase.from('bot_slots').update({
-      article_id: article.id, status: 'uploading',
-      sale_price, min_price, location
+    // Schritt 3: Slot updaten
+    const { error: slotUpdateErr } = await supabase.from('bot_slots').update({
+      article_id: article.id, status: 'uploading'
     }).eq('id', req.params.id);
+    if (slotUpdateErr) console.error('Slot update error:', slotUpdateErr);
+
+    // Schritt 4: Preise + Infos im Artikel speichern falls Spalten vorhanden
+    try {
+      await supabase.from('vk_articles').update({ sale_price, min_price, location, anrede: anrede || 'Sie' }).eq('id', article.id);
+    } catch(e) { /* Spalten existieren evtl noch nicht */ }
 
     res.json({ success: true, article_id: article.id, session_id: session.id, token });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('Upload endpoint error:', e); res.status(500).json({ error: e.message }); }
 });
 
 // ── BOT AKTIVIEREN (nach Analyse) ────────────────────────
