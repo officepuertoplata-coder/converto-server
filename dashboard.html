@@ -261,7 +261,10 @@ async function loadDashboard(){
 // ── RENDER ────────────────────────────────────────────
 function render(){
   const app = document.getElementById('app');
-  if(!subData||(!subData.active && subData.status!=='active')){
+  // DEBUG: log what server returns
+  console.log('SERVER RESPONSE:', JSON.stringify(subData));
+  const isActive = subData && (subData.active===true || subData.status==='active' || subData.slots_total > 0);
+  if(!subData||!isActive){
     app.innerHTML = `
       <div class="no-sub">
         <div style="font-size:3rem;margin-bottom:12px;">🤖</div>
