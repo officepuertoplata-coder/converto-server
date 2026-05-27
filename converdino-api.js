@@ -4,7 +4,15 @@
 // Berührt nichts vom alten Code.
 // ============================================================
 
-module.exports = function(app, supabase) {
+module.exports = function(app, supabase, deps) {
+
+  // ============================================================
+  // EXTERNE ABHÄNGIGKEITEN (aus server.js übergeben)
+  // ============================================================
+  deps = deps || {};
+  const sendWAMessage = deps.sendWAMessage || function() {
+    console.warn('[CV] sendWAMessage nicht verfügbar — WhatsApp-Bot deaktiviert');
+  };
 
   // ============================================================
   // HELFER: Login-Identifier aus Body/Header lesen
@@ -466,7 +474,7 @@ JSON-FORMAT
 
         // Bot-Assets generieren
         const botCode = 'BOT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-        const waNumber = (process.env.WA_BOT_NUMBER || '436776411806').replace(/[^0-9]/g, '');
+        const waNumber = (process.env.WA_BOT_NUMBER || '4367764118066').replace(/[^0-9]/g, '');
         const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(botCode)}`;
         const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
         const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
@@ -555,5 +563,237 @@ JSON-FORMAT
   });
 
 
-  console.log('✅ Converdino API geladen — /api/cv/* aktiv');
+  // ============================================================
+  // WHATSAPP-BOT HANDLER (Schritt 6)
+  // ============================================================
+
+  // In-Memory Cache für aktive Bot-Konversationen
+  const cvBotSessions = new Map();
+  const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 Stunden
+
+  // ── BOT-KONVERSATION STARTEN ─────────────────────────────
+  async function cvHandleBotStart(phone, botCode, phoneId) {
+    console.log(`[CV Bot] Start: phone=${phone}, code=${botCode}`);
+
+    const { data: slot } = await supabase
+      .from('cv_slots')
+      .select('*')
+      .eq('bot_code', botCode)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (!slot) {
+      await sendWAMessage(phoneId, phone, '❌ Dieser Bot-Code ist nicht aktiv oder ungültig.');
+      return false;
+    }
+
+    const { data: article } = await supabase
+      .from('cv_articles')
+      .select('*')
+      .eq('slot_id', slot.id)
+      .maybeSingle();
+
+    if (!article) {
+      await sendWAMessage(phoneId, phone, '❌ Artikel nicht gefunden.');
+      return false;
+    }
+
+    // DB-Session anlegen (für Logging + Persistenz)
+    const { data: dbSession } = await supabase
+      .from('cv_bot_sessions')
+      .insert({ slot_id: slot.id, buyer_phone: phone, messages: [], status: 'active' })
+      .select()
+      .single();
+
+    // In-Memory-Cache
+    cvBotSessions.set(phone, {
+      dbSessionId: dbSession?.id,
+      slot, article,
+      history: [],
+      phoneId,
+      startedAt: Date.now()
+    });
+
+    await cvRunBotTurn(phone, null);
+    return true;
+  }
+
+  // ── AKTIVE SESSION FINDEN ────────────────────────────────
+  async function cvGetActiveBotSession(phone) {
+    const s = cvBotSessions.get(phone);
+    if (!s) return null;
+    if (Date.now() - s.startedAt > SESSION_TIMEOUT_MS) {
+      cvBotSessions.delete(phone);
+      return null;
+    }
+    return s;
+  }
+
+  // ── ANTWORT AUF KÄUFER-NACHRICHT ─────────────────────────
+  async function cvHandleBotReply(phone, text, session, phoneId) {
+    session.history.push({ role: 'user', content: text });
+    await cvRunBotTurn(phone, text);
+  }
+
+  // ── EIN BOT-TURN (intern) ────────────────────────────────
+  async function cvRunBotTurn(phone, userMessage) {
+    const session = cvBotSessions.get(phone);
+    if (!session) return;
+
+    const { article, slot, phoneId } = session;
+    const analysis = article.analysis || {};
+    const strategy = analysis.bot_strategy || {};
+    const anrede = article.anrede || 'Sie';
+
+    // Erste Nachricht: vorgefertigte Begrüßung verwenden, falls vorhanden
+    if (userMessage === null && strategy.opening_message) {
+      const opening = strategy.opening_message;
+      await sendWAMessage(phoneId, phone, opening);
+      session.history = [{ role: 'assistant', content: opening }];
+      await persistSession(session);
+      return;
+    }
+
+    const systemPrompt = `Du bist ein professioneller WhatsApp-Verkaufsberater. Verhandle aktiv und führe zum Abschluss.
+
+PRODUKT: ${article.title}
+VERKAUFSPREIS: €${article.sale_price}
+MINDESTPREIS: €${article.min_price} (NIE darunter gehen!)
+STANDORT: ${article.location || 'auf Anfrage'}
+ANREDE: ${anrede}
+
+PRODUKTBESCHREIBUNG:
+${analysis.summary || 'Kein Detail verfügbar.'}
+
+VERKAUFSARGUMENTE:
+${(analysis.selling_points || []).map((p, i) => `${i+1}. ${p}`).join('\n') || '(keine spezifischen Argumente)'}
+
+HAUPTARGUMENT FÜR DEN PREIS:
+${strategy.value_argument || 'Faires Preis-Leistungs-Verhältnis.'}
+
+UMGANG MIT EINWÄNDEN:
+${(analysis.likely_objections || []).map(o => `Einwand "${o.objection}": "${o.response}"`).join('\n') || '(keine Einwände vordefiniert)'}
+
+VERHANDLUNGS-STRATEGIE:
+${(strategy.negotiation_steps || ['Halte Verkaufspreis', 'Kleines Zugeständnis', 'Bis Mindestpreis']).join('\n')}
+- Maximal 2-3 Zugeständnisse, jedes kleiner als das vorherige
+- Bei Erreichen des Mindestpreises: "${strategy.walkaway_line || 'Das ist mein letztes Angebot.'}"
+
+REGELN
+- WhatsApp-Stil: kurz, natürlich, max. 3-4 Sätze
+- ${anrede}-Anrede konsequent
+- Aktiv verkaufen, nicht nur antworten
+- Bei Einigung: Frage Käufer nach Name und Telefonnummer für Rückruf
+- Bei Sackgasse: biete Rückruf an
+- Keine Fakten erfinden — nur was oben steht`;
+
+    const messages = userMessage === null
+      ? [{ role: 'user', content: 'START: Begrüße den Käufer, präsentiere das Produkt überzeugend in 2-3 Sätzen und frage was ihn besonders interessiert.' }]
+      : session.history.map(m => ({ role: m.role, content: m.content }));
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 500,
+          system: systemPrompt,
+          messages
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('[CV Bot] API error:', response.status, errText.substring(0, 200));
+        await sendWAMessage(phoneId, phone, 'Entschuldigung, ich bin gerade kurz nicht verfügbar. Bitte versuche es in einer Minute nochmal.');
+        return;
+      }
+
+      const data = await response.json();
+      const botReply = data.content?.[0]?.text || 'Entschuldigung, einen Moment bitte.';
+
+      await sendWAMessage(phoneId, phone, botReply);
+
+      if (userMessage !== null) {
+        session.history.push({ role: 'assistant', content: botReply });
+      } else {
+        session.history = [{ role: 'assistant', content: botReply }];
+      }
+      await persistSession(session);
+
+      // Deal/Exit Erkennung
+      const lr = botReply.toLowerCase();
+      const lu = (userMessage || '').toLowerCase();
+      const dealWords = ['einverstanden', 'deal', 'abgemacht', 'ok passt', 'ich nehm es', 'ich nehme es', 'gekauft'];
+      const exitWords = ['tschüss', 'auf wiedersehen', 'kein interesse', 'nicht interessiert', 'bye', 'ciao'];
+
+      if (dealWords.some(w => lr.includes(w) || lu.includes(w))) {
+        await cvNotifySeller(session, phone, 'deal', botReply);
+        cvBotSessions.delete(phone);
+      } else if (exitWords.some(w => lr.includes(w) || lu.includes(w)) || session.history.length > 30) {
+        await cvNotifySeller(session, phone, 'lost', botReply);
+        cvBotSessions.delete(phone);
+      }
+    } catch(e) {
+      console.error('[CV Bot turn]', e);
+    }
+  }
+
+  // ── SESSION PERSISTIEREN ─────────────────────────────────
+  async function persistSession(session) {
+    if (!session.dbSessionId) return;
+    try {
+      await supabase.from('cv_bot_sessions').update({
+        messages: session.history,
+        last_message_at: new Date().toISOString()
+      }).eq('id', session.dbSessionId);
+    } catch(e) { console.error('[CV persist]', e.message); }
+  }
+
+  // ── VERKÄUFER BENACHRICHTIGEN ────────────────────────────
+  async function cvNotifySeller(session, buyerPhone, outcome, lastMessage) {
+    try {
+      // Subscription laden um Verkäufer-Telefonnummer zu bekommen
+      const { data: sub } = await supabase
+        .from('cv_subscriptions').select('user_login')
+        .eq('id', session.slot.subscription_id).maybeSingle();
+
+      const sellerLogin = sub?.user_login;
+
+      // DB-Session updaten
+      if (session.dbSessionId) {
+        await supabase.from('cv_bot_sessions').update({
+          status: outcome === 'deal' ? 'deal' : 'lost',
+          outcome: lastMessage.substring(0, 500),
+          last_message_at: new Date().toISOString()
+        }).eq('id', session.dbSessionId);
+      }
+
+      // Wenn Verkäufer eine echte Telefonnummer ist → WA-Nachricht
+      if (sellerLogin && /^\+?\d{8,}$/.test(sellerLogin.replace(/[^0-9+]/g, ''))) {
+        const emoji = outcome === 'deal' ? '🎉' : '📋';
+        const title = outcome === 'deal' ? 'Einigung erzielt!' : 'Gespräch beendet';
+        const msg = `${emoji} *Converdino Bot-Report*\n\n*${title}*\nArtikel: ${session.article.title}\nKäufer: +${buyerPhone}\n\nLetzte Nachricht:\n${lastMessage.substring(0, 300)}`;
+        const cleanPhone = sellerLogin.replace(/[^0-9]/g, '');
+        await sendWAMessage(session.phoneId, cleanPhone, msg);
+      } else {
+        console.log(`[CV] Verkäufer-Benachrichtigung übersprungen (user_login: ${sellerLogin})`);
+      }
+    } catch(e) { console.error('[CV notify]', e); }
+  }
+
+
+  console.log('✅ Converdino API geladen — /api/cv/* aktiv + WhatsApp-Handler');
+
+  // Rückgabe: Handler für server.js
+  return {
+    handleBotStart: cvHandleBotStart,
+    getActiveBotSession: cvGetActiveBotSession,
+    handleBotReply: cvHandleBotReply
+  };
 };
