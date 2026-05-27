@@ -2732,24 +2732,36 @@ app.post('/api/bot/subscribe', async (req, res) => {
 app.get('/api/bot/subscription/:phone', async (req, res) => {
   try {
     const phone = req.params.phone;
-    const { data: subs } = await supabase.from('subscriptions')
-      .select('*, bot_slots(*)')
+
+    // Schritt 1: Subscription laden (ohne Join)
+    const { data: subs, error: subErr } = await supabase.from('subscriptions')
+      .select('*')
       .eq('customer_phone', phone)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(1);
 
+    if (subErr) { console.error('Sub error:', subErr); return res.json({ active: false, slots: [], error: subErr.message }); }
+
     const sub = subs?.[0] || null;
     if (!sub) return res.json({ active: false, slots: [] });
+
+    // Schritt 2: Slots separat laden
+    const { data: slots, error: slotErr } = await supabase.from('bot_slots')
+      .select('*')
+      .eq('subscription_id', sub.id)
+      .order('slot_number', { ascending: true });
+
+    if (slotErr) { console.error('Slot error:', slotErr); }
 
     res.json({
       active: true,
       slots_total: sub.slots_total,
       slots_used: sub.slots_used,
       current_period_end: sub.current_period_end,
-      slots: sub.bot_slots || []
+      slots: slots || []
     });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('Sub endpoint error:', e); res.status(500).json({ error: e.message }); }
 });
 
 // ── ARTIKEL IN SLOT LADEN ────────────────────────────────
