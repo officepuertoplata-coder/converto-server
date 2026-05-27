@@ -231,7 +231,7 @@ window.onload = function(){
     if(age > 12*60*60*1000){ location.href='login.html'; return; }
   }catch(e){ location.href='login.html'; return; }
 
-  document.getElementById('navPhone').textContent = auth.phone||auth.username||'';
+  document.getElementById('navPhone').textContent = auth.phone||auth.username||auth.name||'';
 
   // Prüfe ob gerade ein Abo gekauft wurde
   const params = new URLSearchParams(location.search);
@@ -247,9 +247,10 @@ function doLogout(){
 
 // ── DASHBOARD LADEN ──────────────────────────────────
 async function loadDashboard(){
-  const phone = auth.phone||auth.username;
+  const phone = auth.phone||auth.username||auth.name||'admin';
   try{
-    const r = await fetch(API+'/api/bot/subscription/'+encodeURIComponent(phone));
+    const phone2 = phone || 'admin';
+  const r = await fetch(API+'/api/bot/subscription/'+encodeURIComponent(phone2));
     subData = await r.json();
     render();
   }catch(e){
