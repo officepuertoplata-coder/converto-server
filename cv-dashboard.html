@@ -276,6 +276,12 @@ function render(d) {
 
   html += '</div>';
   app.innerHTML = html;
+
+  // Auto-refresh wenn Slots gerade analysiert werden
+  const hasAnalyzing = slots.some(s => s.status === 'analyzing' || s.status === 'uploading');
+  if (hasAnalyzing) {
+    setTimeout(() => loadDashboard(), 4000);
+  }
 }
 
 function renderSlot(slot) {
