@@ -3003,6 +3003,10 @@ async function activateBotSlot(slotId) {
 }
 
 // ── CONVERDINO API LOAD ──────────────────────────────
+// Wrapper: konvertiert sendWAMessage Signatur zu sendWhatsApp
+async function sendWAMessage(phoneId, phone, message) {
+  return sendWhatsApp(null, phone, message);
+}
 const cvAPI = require('./converdino-api')(app, supabase, { sendWAMessage });
 
 app.listen(PORT, async () => {
