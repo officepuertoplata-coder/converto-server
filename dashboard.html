@@ -308,6 +308,7 @@ function render(){
       html += '<button class="upload-slot-btn" onclick="openUploadModal(\''+slot.id+'\')">📦 Artikel einrichten</button></div>';
     } else if(slot.status==='uploading'||slot.status==='analyzing'){
       html += '<div class="analyzing-slot"><div class="ring"></div><p>Analyse läuft...</p></div>';
+      html += '<button onclick="forceActivate(\''+slot.id+'\')" style="width:100%;padding:8px;background:#f0fdf4;border:1px solid #86efac;color:var(--g2);border-radius:8px;font-size:.75rem;font-weight:800;cursor:pointer;font-family:inherit;margin-top:8px;">⚡ Direkt aktivieren (Test)</button>';
     } else if(slot.status==='active'){
       html += '<div class="active-slot">';
       html += '<div class="art-title">'+esc(slot.article_title||'Artikel')+'</div>';
@@ -338,6 +339,15 @@ function statusLabel(s){
 }
 
 // ── BUY MODAL ────────────────────────────────────────
+async function forceActivate(slotId){
+  if(!confirm('Slot direkt aktivieren? (Ohne Analyse)')) return;
+  try {
+    const r = await fetch(API+'/api/bot/slot/'+slotId+'/force-activate', {method:'POST'});
+    const d = await r.json();
+    if(d.success){ toast('✅ Bot aktiviert!'); setTimeout(()=>loadDashboard(), 1000); }
+    else toast('❌ '+(d.error||'Fehler'));
+  } catch(e){ toast('❌ '+e.message); }
+}
 function openBuyModal(){ document.getElementById('buyModal').style.display='flex'; updateBuyPrice(); }
 function closeBuyModal(){ document.getElementById('buyModal').style.display='none'; }
 
