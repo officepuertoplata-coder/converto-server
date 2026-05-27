@@ -2,266 +2,367 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Converdino – Artikel einrichten</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino – Fotos & Dokumente</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-:root{--g:#25D366;--g2:#1b4332;--g3:#f0fdf4;--bg:#f4f6f4;--card:#fff;--border:#e5e7eb;--mu:#6b7280;--txt:#111827;--red:#ef4444;--blue:#1d4ed8;--r:14px;}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;}
-.nav{background:var(--g2);color:#fff;padding:0 20px;display:flex;align-items:center;height:56px;gap:12px;}
-.nav-back{background:rgba(255,255,255,.12);border:none;color:#fff;padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;}
-.nav-title{font-size:.95rem;font-weight:800;}
-.main{max-width:640px;margin:0 auto;padding:24px 16px;}
+  :root {
+    --g: #25D366; --g2: #128C7E; --bg: #f0f4f2; --card: #fff;
+    --border: #e2e8e4; --text: #1a2e24; --mu: #6b7e74; --red: #dc2626;
+    --r: 14px; --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
-/* PROGRESS */
-.progress{display:flex;gap:0;margin-bottom:24px;background:var(--card);border-radius:var(--r);padding:4px;border:1.5px solid var(--border);}
-.step{flex:1;text-align:center;padding:10px 8px;border-radius:10px;font-size:.75rem;font-weight:700;color:var(--mu);cursor:default;}
-.step.active{background:var(--g2);color:#fff;}
-.step.done{background:var(--g3);color:#15803d;}
+  /* NAV */
+  nav { background: #1a2e24; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { color: #fff; font-weight: 900; font-size: 1.15rem; letter-spacing: -.5px; text-decoration: none; }
+  .nav-back { color: rgba(255,255,255,.7); font-size: .82rem; font-weight: 700; text-decoration: none; }
+  .nav-back:hover { color: #fff; }
 
-/* CARD */
-.card{background:var(--card);border-radius:var(--r);padding:20px;margin-bottom:16px;border:1.5px solid var(--border);}
-.card-title{font-size:.95rem;font-weight:800;margin-bottom:4px;}
-.card-sub{font-size:.78rem;color:var(--mu);margin-bottom:16px;}
+  /* STEPS */
+  .steps { display: flex; align-items: center; gap: 0; background: var(--card); border-bottom: 1px solid var(--border); padding: 0 24px; overflow-x: auto; }
+  .step { display: flex; align-items: center; gap: 8px; padding: 14px 16px; font-size: .8rem; font-weight: 800; color: var(--mu); white-space: nowrap; }
+  .step.done { color: var(--g2); }
+  .step.active { color: var(--text); border-bottom: 3px solid var(--g); }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--border); color: var(--mu); font-size: .72rem; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .step.done .step-num { background: var(--g); color: #fff; }
+  .step.active .step-num { background: var(--text); color: #fff; }
+  .step-arrow { color: var(--border); font-size: .9rem; padding: 0 4px; }
 
-/* FOTOS */
-.foto-grid{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
-.foto-thumb{width:90px;height:90px;border-radius:10px;overflow:hidden;position:relative;background:#f3f4f6;flex-shrink:0;}
-.foto-thumb img{width:100%;height:100%;object-fit:cover;}
-.foto-del{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;border:none;font-size:.65rem;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-.add-foto{width:90px;height:90px;border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--mu);font-size:.68rem;font-weight:700;background:none;transition:border-color .2s;font-family:'Nunito',sans-serif;}
-.add-foto:hover{border-color:var(--g);color:var(--g);}
-.add-foto span{font-size:1.4rem;}
-.drop-zone{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;color:var(--mu);font-size:.82rem;transition:all .2s;margin-bottom:8px;}
-.drop-zone:hover,.drop-zone.drag{border-color:var(--g);background:var(--g3);color:#15803d;}
-.foto-count{font-size:.75rem;color:var(--mu);margin-top:4px;}
+  /* MAIN */
+  main { max-width: 700px; margin: 0 auto; padding: 32px 16px 80px; }
+  h1 { font-size: 1.4rem; font-weight: 900; margin-bottom: 6px; }
+  .subtitle { color: var(--mu); font-size: .88rem; margin-bottom: 28px; }
 
-/* DOCS */
-.doc-item{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:10px;margin-bottom:8px;}
-.doc-icon{font-size:1.2rem;flex-shrink:0;}
-.doc-label{flex:1;font-size:.82rem;font-weight:700;color:var(--blue);}
-.doc-del{background:none;border:none;color:#9ca3af;cursor:pointer;font-size:.9rem;}
-.doc-add{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
-.doc-inp{flex:1;min-width:140px;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.82rem;font-family:'Nunito',sans-serif;}
-.doc-upload-btn{padding:9px 14px;background:#fff;border:1.5px solid #bfdbfe;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;color:var(--blue);font-family:'Nunito',sans-serif;white-space:nowrap;}
+  /* UPLOAD ZONES */
+  .section { background: var(--card); border-radius: var(--r); padding: 24px; margin-bottom: 20px; box-shadow: var(--shadow); }
+  .section-title { font-size: .95rem; font-weight: 900; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .section-badge { font-size: .7rem; background: #f0fdf4; color: var(--g2); border: 1px solid #bbf7d0; padding: 2px 8px; border-radius: 20px; font-weight: 800; }
 
-/* ACTIONS */
-.action-bar{display:flex;gap:10px;margin-top:20px;}
-.btn-main{flex:1;padding:16px;background:var(--g);color:#fff;border:none;border-radius:12px;font-size:1rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;box-shadow:0 4px 12px rgba(37,211,102,.3);}
-.btn-main:disabled{opacity:.5;cursor:not-allowed;}
-.btn-sec{padding:16px 20px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;font-size:.88rem;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;color:var(--mu);}
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 32px 20px; text-align: center;
+    cursor: pointer; transition: all .2s; background: #fafafa; position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--g); background: #f0fdf4; }
+  .drop-icon { font-size: 2.2rem; margin-bottom: 8px; }
+  .drop-text { font-size: .88rem; color: var(--mu); font-weight: 700; }
+  .drop-text strong { color: var(--g2); }
+  .drop-hint { font-size: .75rem; color: var(--mu); margin-top: 4px; opacity: .7; }
+  .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
 
-/* SUCCESS */
-.success-card{background:var(--g2);color:#fff;border-radius:var(--r);padding:32px 24px;text-align:center;}
-.success-icon{font-size:3rem;margin-bottom:12px;}
-.success-title{font-size:1.3rem;font-weight:900;margin-bottom:8px;}
-.success-sub{font-size:.85rem;opacity:.8;margin-bottom:24px;}
-.success-btn{display:inline-block;padding:14px 28px;background:var(--g);color:#fff;border:none;border-radius:12px;font-size:.95rem;font-weight:800;cursor:pointer;font-family:'Nunito',sans-serif;text-decoration:none;}
+  /* FILE PREVIEWS */
+  .file-list { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .file-item {
+    display: flex; align-items: center; gap: 12px; background: #f8faf9;
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  }
+  .file-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: var(--border); }
+  .file-thumb-icon { width: 44px; height: 44px; border-radius: 6px; background: #f0fdf4; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: .82rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-size { font-size: .72rem; color: var(--mu); }
+  .file-status { font-size: .72rem; font-weight: 800; }
+  .file-status.ok { color: var(--g2); }
+  .file-status.err { color: var(--red); }
+  .file-status.uploading { color: #d97706; }
+  .file-del { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--mu); padding: 4px; border-radius: 4px; }
+  .file-del:hover { background: #fee2e2; color: var(--red); }
 
-/* MISC */
-.loading{text-align:center;padding:60px;color:var(--mu);}
-.ring{width:32px;height:32px;border:3px solid #e5e7eb;border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.progress-bar{height:4px;background:#e5e7eb;border-radius:2px;margin-top:8px;overflow:hidden;}
-.progress-fill{height:100%;background:var(--g);border-radius:2px;transition:width .3s;}
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--g2);color:#fff;padding:10px 20px;border-radius:30px;font-size:.85rem;font-weight:700;opacity:0;transition:all .3s;z-index:999;}
-#toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+  /* NOTE FIELD */
+  .note-area { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: 'Nunito', sans-serif; font-size: .88rem; resize: vertical; min-height: 100px; outline: none; }
+  .note-area:focus { border-color: var(--g); }
+  .note-btn { margin-top: 10px; padding: 8px 16px; background: var(--g); color: #fff; border: none; border-radius: 8px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: .82rem; cursor: pointer; }
+  .note-btn:hover { background: var(--g2); }
+
+  /* ANALYSE BUTTON */
+  .analyze-wrap { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; z-index: 50; }
+  .analyze-info { font-size: .8rem; color: var(--mu); }
+  .analyze-info strong { color: var(--text); }
+  .analyze-btn { background: linear-gradient(135deg, var(--g), var(--g2)); color: #fff; border: none; padding: 14px 28px; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 16px rgba(37,211,102,.35); transition: all .2s; }
+  .analyze-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,211,102,.45); }
+  .analyze-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; transform: none; }
+
+  /* TOAST */
+  .toast { position: fixed; top: 72px; right: 16px; background: #1a2e24; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: .82rem; font-weight: 800; z-index: 999; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  /* COUNT BADGE */
+  .count-badge { background: var(--g); color: #fff; border-radius: 20px; padding: 2px 8px; font-size: .72rem; font-weight: 900; }
 </style>
 </head>
 <body>
-<nav class="nav">
-  <button class="nav-back" onclick="location.href='dashboard.html'">← Zurück</button>
-  <span class="nav-title" id="navTitle">Artikel einrichten</span>
+
+<nav>
+  <a href="dashboard.html" class="logo">Converdino</a>
+  <a href="dashboard.html" class="nav-back">← Zurück zum Dashboard</a>
 </nav>
 
-<div class="main" id="app">
-  <div class="loading"><div class="ring"></div>Lade...</div>
+<div class="steps">
+  <div class="step done"><span class="step-num">✓</span> Artikel eingerichtet</div>
+  <span class="step-arrow">›</span>
+  <div class="step active"><span class="step-num">2</span> Fotos & Dokumente</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> Analyse & Bot aktiv</div>
 </div>
-<div id="toast"></div>
+
+<main>
+  <h1 id="pageTitle">📎 Fotos & Dokumente hochladen</h1>
+  <p class="subtitle">Je mehr Informationen du hochlädst, desto besser versteht der Bot das Produkt und kann Käufer überzeugen.</p>
+
+  <!-- FOTOS -->
+  <div class="section">
+    <div class="section-title">
+      📸 Produktfotos
+      <span class="section-badge">JPG / PNG</span>
+      <span class="count-badge" id="photoCount">0</span>
+    </div>
+    <div class="drop-zone" id="photoZone">
+      <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp" multiple>
+      <div class="drop-icon">🖼️</div>
+      <div class="drop-text">Fotos hier ablegen oder <strong>klicken zum Auswählen</strong></div>
+      <div class="drop-hint">JPG oder PNG · Mehrere Fotos möglich · Kein AVIF</div>
+    </div>
+    <div class="file-list" id="photoList"></div>
+  </div>
+
+  <!-- PDFs -->
+  <div class="section">
+    <div class="section-title">
+      📄 Dokumente
+      <span class="section-badge">PDF / TXT</span>
+      <span class="count-badge" id="docCount">0</span>
+    </div>
+    <div class="drop-zone" id="docZone">
+      <input type="file" id="docInput" accept="application/pdf,text/plain" multiple>
+      <div class="drop-icon">📋</div>
+      <div class="drop-text">Dossier, Rechnung, Beschreibung <strong>hochladen</strong></div>
+      <div class="drop-hint">PDF oder TXT · z.B. Fahrzeugdossier, Zertifikate, Garantieunterlagen</div>
+    </div>
+    <div class="file-list" id="docList"></div>
+  </div>
+
+  <!-- NOTIZ -->
+  <div class="section">
+    <div class="section-title">
+      📝 Notiz / Zusatzinfo
+      <span class="section-badge">Optional</span>
+    </div>
+    <p style="font-size:.82rem;color:var(--mu);margin-bottom:12px;">Gib dem Bot zusätzliche Infos: Zustand, Geschichte, Besonderheiten, Verfügbarkeit, Abholort.</p>
+    <textarea class="note-area" id="noteText" placeholder="z.B. Fahrzeug wurde immer in der Garage gelagert, Erstbesitz, alle Services bei Markenservice. Abholung in Wien 22, Wochenende möglich..."></textarea>
+    <button class="note-btn" onclick="saveNote()">💾 Notiz speichern</button>
+    <span id="noteStatus" style="font-size:.78rem;color:var(--g2);margin-left:10px;display:none;">✓ Gespeichert</span>
+  </div>
+</main>
+
+<div class="analyze-wrap">
+  <div class="analyze-info">
+    <strong id="uploadSummary">0 Fotos, 0 Dokumente</strong><br>
+    <span>KI analysiert alle Inhalte und aktiviert den Bot</span>
+  </div>
+  <button class="analyze-btn" id="analyzeBtn" onclick="startAnalysis()">🤖 Analyse starten →</button>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 const API = 'https://converto-server-production.up.railway.app';
-const KEY = 'converto_auth_v2';
 const params = new URLSearchParams(location.search);
-const slotId = params.get('slot');
+const slotId    = params.get('slot');
 const sessionToken = params.get('session');
 const articleId = params.get('article');
-let photos = [], docs = [], uploading = false;
 
-function toast(msg){ var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
-function esc(s){ return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
-function toBase64(file){ return new Promise((res,rej)=>{ var r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(file); }); }
+let photoCount = 0, docCount = 0;
 
-window.onload = function(){
-  const auth = JSON.parse(localStorage.getItem(KEY)||'null');
-  if(!auth){ location.href='login.html'; return; }
-  if(!slotId||!sessionToken||!articleId){ location.href='dashboard.html'; return; }
-  render();
-};
-
-function render(){
-  var app = document.getElementById('app');
-  var html = '';
-
-  // Progress
-  html += '<div class="progress">';
-  html += '<div class="step done">1 Artikel</div>';
-  html += '<div class="step active">2 Fotos & Dokumente</div>';
-  html += '<div class="step">3 Analyse</div>';
-  html += '</div>';
-
-  // Fotos
-  html += '<div class="card">';
-  html += '<div class="card-title">📷 Fotos hochladen</div>';
-  html += '<div class="card-sub">Mindestens 1 Foto · Drag & Drop oder Auswahl</div>';
-  html += '<div class="drop-zone" id="dropZone" onclick="trigFoto()">📷 Fotos auswählen oder hierher ziehen</div>';
-  html += '<div class="foto-grid" id="fotoGrid">';
-  photos.forEach(function(p,i){
-    html += '<div class="foto-thumb"><img src="'+esc(p.url)+'"><button class="foto-del" onclick="removePhoto('+i+')">✕</button></div>';
-  });
-  html += '</div>';
-  html += '<div class="foto-count" id="fotoCount">'+photos.length+' Foto(s) ausgewählt';
-  if(photos.length > 0) html += ' · wird beim Absenden hochgeladen';
-  html += '</div>';
-  html += '<div class="progress-bar"><div class="progress-fill" id="fotoProgress" style="width:0%"></div></div>';
-  html += '</div>';
-
-  // Dokumente
-  html += '<div class="card">';
-  html += '<div class="card-title">📄 Dokumente (optional)</div>';
-  html += '<div class="card-sub">PDFs oder Bilder — Serviceheft, Dossier, Rechnung, Zertifikate</div>';
-  html += '<div id="docList">';
-  docs.forEach(function(d,i){
-    html += '<div class="doc-item"><span class="doc-icon">📄</span><span class="doc-label">'+esc(d.label)+'</span>';
-    html += '<button class="doc-del" onclick="removeDoc('+i+')">✕</button></div>';
-  });
-  html += '</div>';
-  html += '<div class="doc-add">';
-  html += '<input class="doc-inp" id="docLabel" placeholder="Bezeichnung (z.B. Serviceheft)">';
-  html += '<button class="doc-upload-btn" onclick="trigDoc()">📄 PDF/Foto hinzufügen</button>';
-  html += '</div>';
-  html += '</div>';
-
-  // Action
-  html += '<div class="action-bar">';
-  html += '<button class="btn-sec" onclick="location.href=\'dashboard.html\'">Abbrechen</button>';
-  html += '<button class="btn-main" id="submitBtn" onclick="doSubmit()" '+(photos.length===0?'disabled':'')+'>🚀 Analyse starten</button>';
-  html += '</div>';
-
-  app.innerHTML = html;
-  setupDrop();
+if (!slotId || !articleId) {
+  document.querySelector('main').innerHTML = '<div style="text-align:center;padding:60px;color:var(--red);">❌ Ungültiger Link. <a href="dashboard.html">Zurück zum Dashboard</a></div>';
 }
 
-// ── FOTOS ─────────────────────────────────────────────
-function trigFoto(){
-  var inp = document.createElement('input');
-  inp.type='file'; inp.accept='image/*'; inp.multiple=true;
-  inp.onchange = function(){ if(inp.files) addPhotos(Array.from(inp.files)); };
-  inp.click();
+// ── DRAG & DROP ──────────────────────────────────────────
+function setupZone(zoneId, inputId, handler) {
+  const zone = document.getElementById(zoneId);
+  const inp  = document.getElementById(inputId);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handler(e.dataTransfer.files); });
+  inp.addEventListener('change', () => handler(inp.files));
 }
 
-function addPhotos(files){
-  files.forEach(function(f){
-    if(!f.type.startsWith('image/')) return;
-    var url = URL.createObjectURL(f);
-    photos.push({file:f, url:url});
-  });
-  render();
-}
+setupZone('photoZone', 'photoInput', uploadPhotos);
+setupZone('docZone',   'docInput',   uploadDocs);
 
-function removePhoto(idx){ photos.splice(idx,1); render(); }
-
-function setupDrop(){
-  var zone = document.getElementById('dropZone');
-  if(!zone) return;
-  zone.ondragenter = function(e){ e.preventDefault(); zone.classList.add('drag'); };
-  zone.ondragover = function(e){ e.preventDefault(); };
-  zone.ondragleave = function(){ zone.classList.remove('drag'); };
-  zone.ondrop = function(e){
-    e.preventDefault(); zone.classList.remove('drag');
-    var files = Array.from(e.dataTransfer.files).filter(function(f){ return f.type.startsWith('image/'); });
-    if(files.length) addPhotos(files);
-  };
-}
-
-// ── DOKUMENTE ─────────────────────────────────────────
-function trigDoc(){
-  var label = document.getElementById('docLabel').value.trim();
-  if(!label){ toast('Bitte Bezeichnung eingeben'); return; }
-  var inp = document.createElement('input');
-  inp.type='file'; inp.accept='.pdf,.jpg,.jpeg,.png,.txt';
-  inp.onchange = function(){
-    if(!inp.files||!inp.files[0]) return;
-    docs.push({file:inp.files[0], label:label});
-    document.getElementById('docLabel').value='';
-    render();
-    toast('✓ Dokument hinzugefügt');
-  };
-  inp.click();
-}
-
-function removeDoc(idx){ docs.splice(idx,1); render(); }
-
-// ── SUBMIT ─────────────────────────────────────────────
-async function doSubmit(){
-  if(photos.length===0){ toast('Mindestens 1 Foto erforderlich'); return; }
-  if(uploading) return;
-  uploading = true;
-  var btn = document.getElementById('submitBtn');
-  btn.disabled=true; btn.textContent='⏳ Wird hochgeladen...';
-
-  var total = photos.length + docs.length;
-  var done = 0;
-
-  function updateProgress(){
-    done++;
-    var pct = Math.round((done/total)*100);
-    var bar = document.getElementById('fotoProgress');
-    if(bar) bar.style.width = pct+'%';
-    btn.textContent = '⏳ '+done+'/'+total+' hochgeladen...';
-  }
-
-  try{
-    // Fotos hochladen
-    for(var i=0; i<photos.length; i++){
-      var b64 = await toBase64(photos[i].file);
-      var r = await fetch(API+'/api/vk/photo',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({article_id:articleId, session_id:null, image_base64:b64, content_type:photos[i].file.type||'image/jpeg'})});
-      var d = await r.json();
-      if(!d.id && !d.photo) throw new Error('Foto-Upload fehlgeschlagen');
-      updateProgress();
+// ── FOTO UPLOAD ──────────────────────────────────────────
+async function uploadPhotos(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) { toast('❌ Nur JPG/PNG erlaubt'); continue; }
+    if (file.name.toLowerCase().includes('.avif') || file.type === 'image/avif') {
+      toast('❌ AVIF nicht unterstützt. Bitte JPG oder PNG.'); continue;
     }
+    const itemId = 'p_' + Date.now() + Math.random();
+    addFileItem('photoList', itemId, file.name, formatSize(file.size), null, 'uploading', '⏳ wird hochgeladen...');
 
-    // Dokumente hochladen
-    for(var j=0; j<docs.length; j++){
-      var b64d = await toBase64(docs[j].file);
-      await fetch(API+'/api/vk/article/'+articleId+'/doc',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({type:'pdf', label:docs[j].label, file_base64:b64d, file_name:docs[j].file.name, content_type:docs[j].file.type, session_id:null})});
-      updateProgress();
+    try {
+      const base64 = await toBase64(file);
+      const r = await fetch(API + '/api/vk/photo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article_id: articleId, session_id: sessionToken, image_base64: base64.split(',')[1], content_type: file.type })
+      });
+      const d = await r.json();
+      if (d.success) {
+        photoCount++;
+        updateFileStatus(itemId, 'ok', '✓ Hochgeladen');
+        setThumb(itemId, d.photo?.public_url);
+        updateCounts();
+      } else {
+        updateFileStatus(itemId, 'err', '❌ ' + (d.error || 'Fehler'));
+      }
+    } catch(e) {
+      updateFileStatus(itemId, 'err', '❌ ' + e.message);
     }
-
-    // Slot als "analyzing" markieren + Analyse starten
-    await fetch(API+'/api/bot/slot/'+slotId+'/start-analysis',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:sessionToken})});
-
-    // Erfolg anzeigen
-    showSuccess();
-  }catch(e){
-    toast('Fehler: '+e.message);
-    btn.disabled=false; btn.textContent='🚀 Analyse starten';
-    uploading=false;
   }
 }
 
-function showSuccess(){
-  document.getElementById('app').innerHTML = `
-    <div class="success-card">
-      <div class="success-icon">🚀</div>
-      <div class="success-title">Analyse gestartet!</div>
-      <div class="success-sub">Die KI analysiert jetzt dein Produkt und erstellt die Wissensdatenbank für den Bot. Das dauert 1-3 Minuten.</div>
-      <a href="dashboard.html" class="success-btn">Zum Dashboard →</a>
-    </div>`;
+// ── DOKUMENT UPLOAD ──────────────────────────────────────
+async function uploadDocs(files) {
+  for (const file of files) {
+    const isPdf = file.type === 'application/pdf';
+    const isTxt = file.type === 'text/plain' || file.name.endsWith('.txt');
+    if (!isPdf && !isTxt) { toast('❌ Nur PDF oder TXT'); continue; }
+
+    const itemId = 'd_' + Date.now() + Math.random();
+    const icon = isPdf ? '📄' : '📝';
+    addFileItem('docList', itemId, file.name, formatSize(file.size), icon, 'uploading', '⏳ wird hochgeladen...');
+
+    try {
+      const base64 = await toBase64(file);
+      const r = await fetch(API + '/api/vk/article/' + articleId + '/doc', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: isPdf ? 'pdf' : 'note',
+          label: file.name,
+          file_base64: base64.split(',')[1],
+          file_name: file.name,
+          content_type: file.type,
+          session_id: sessionToken
+        })
+      });
+      const d = await r.json();
+      if (d.success) {
+        docCount++;
+        updateFileStatus(itemId, 'ok', '✓ Hochgeladen');
+        updateCounts();
+      } else {
+        updateFileStatus(itemId, 'err', '❌ ' + (d.error || 'Fehler'));
+      }
+    } catch(e) {
+      updateFileStatus(itemId, 'err', '❌ ' + e.message);
+    }
+  }
+}
+
+// ── NOTIZ SPEICHERN ──────────────────────────────────────
+async function saveNote() {
+  const text = document.getElementById('noteText').value.trim();
+  if (!text) { toast('Bitte erst Text eingeben'); return; }
+  try {
+    const base64 = btoa(unescape(encodeURIComponent(text)));
+    const r = await fetch(API + '/api/vk/article/' + articleId + '/doc', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'note', label: 'Notiz', file_base64: base64, content_type: 'text/plain', session_id: sessionToken })
+    });
+    const d = await r.json();
+    if (d.success) {
+      docCount++;
+      updateCounts();
+      document.getElementById('noteStatus').style.display = 'inline';
+      setTimeout(() => document.getElementById('noteStatus').style.display = 'none', 3000);
+      toast('✓ Notiz gespeichert');
+    } else {
+      toast('❌ ' + (d.error || 'Fehler beim Speichern'));
+    }
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+// ── ANALYSE STARTEN ──────────────────────────────────────
+async function startAnalysis() {
+  if (photoCount === 0 && docCount === 0) { toast('⚠️ Bitte mindestens ein Foto oder Dokument hochladen'); return; }
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true; btn.textContent = '⏳ Analyse wird gestartet...';
+  try {
+    const r = await fetch(API + '/api/bot/slot/' + slotId + '/start-analysis', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: sessionToken })
+    });
+    const d = await r.json();
+    if (d.success) {
+      btn.textContent = '✅ Analyse läuft...';
+      toast('✅ KI analysiert dein Produkt. Das dauert ca. 1–2 Minuten.');
+      setTimeout(() => location.href = 'dashboard.html', 3000);
+    } else {
+      btn.disabled = false; btn.textContent = '🤖 Analyse starten →';
+      toast('❌ ' + (d.error || 'Fehler'));
+    }
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '🤖 Analyse starten →';
+    toast('❌ ' + e.message);
+  }
+}
+
+// ── HELPERS ─────────────────────────────────────────────
+function updateCounts() {
+  document.getElementById('photoCount').textContent = photoCount;
+  document.getElementById('docCount').textContent = docCount;
+  document.getElementById('uploadSummary').textContent = photoCount + ' Foto' + (photoCount!==1?'s':'') + ', ' + docCount + ' Dokument' + (docCount!==1?'e':'');
+}
+
+function addFileItem(listId, itemId, name, size, icon, statusClass, statusText) {
+  const list = document.getElementById(listId);
+  const div = document.createElement('div');
+  div.className = 'file-item'; div.id = itemId;
+  div.innerHTML = icon
+    ? `<div class="file-thumb-icon" id="${itemId}_thumb">${icon}</div>`
+    : `<img class="file-thumb" id="${itemId}_thumb" src="" alt="">`;
+  div.innerHTML += `
+    <div class="file-info">
+      <div class="file-name">${esc(name)}</div>
+      <div class="file-size">${size}</div>
+    </div>
+    <span class="file-status ${statusClass}" id="${itemId}_status">${statusText}</span>
+  `;
+  list.appendChild(div);
+}
+
+function updateFileStatus(itemId, cls, text) {
+  const el = document.getElementById(itemId + '_status');
+  if (el) { el.className = 'file-status ' + cls; el.textContent = text; }
+}
+
+function setThumb(itemId, url) {
+  const el = document.getElementById(itemId + '_thumb');
+  if (el && url) { el.outerHTML = `<img class="file-thumb" id="${itemId}_thumb" src="${url}" alt="">`; }
+}
+
+function toBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('Datei konnte nicht gelesen werden'));
+    r.readAsDataURL(file);
+  });
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(0) + ' KB';
+  return (bytes/1048576).toFixed(1) + ' MB';
+}
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
 }
 </script>
 </body>
