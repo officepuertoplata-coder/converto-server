@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino – Fotos & Dokumente</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --g: #25D366; --g2: #128C7E; --dark: #1a2e24;
+    --bg: #f0f4f2; --card: #fff; --border: #e2e8e4;
+    --text: #1a2e24; --mu: #6b7e74; --red: #dc2626; --amber: #d97706;
+    --r: 14px; --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 100px; }
+
+  /* NAV */
+  nav { background: var(--dark); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { color: #fff; font-weight: 900; font-size: 1.15rem; letter-spacing: -.5px; text-decoration: none; }
+  .logo span { color: var(--g); }
+  .nav-back { color: rgba(255,255,255,.75); font-size: .82rem; font-weight: 700; text-decoration: none; }
+  .nav-back:hover { color: #fff; }
+
+  /* STEPS */
+  .steps { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 24px; }
+  .steps-inner { max-width: 800px; margin: 0 auto; display: flex; align-items: center; gap: 0; overflow-x: auto; }
+  .step { display: flex; align-items: center; gap: 8px; padding: 14px 16px; font-size: .8rem; font-weight: 800; color: var(--mu); white-space: nowrap; }
+  .step.done { color: var(--g2); }
+  .step.active { color: var(--text); border-bottom: 3px solid var(--g); }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--border); color: var(--mu); font-size: .72rem; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .step.done .step-num { background: var(--g); color: #fff; }
+  .step.active .step-num { background: var(--dark); color: #fff; }
+  .step-arrow { color: var(--border); padding: 0 4px; }
+
+  /* MAIN */
+  main { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+
+  /* ARTICLE INFO HEADER */
+  .article-header { background: var(--dark); color: #fff; border-radius: var(--r); padding: 18px 22px; margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .ah-info { flex: 1; min-width: 220px; }
+  .ah-label { font-size: .7rem; opacity: .7; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+  .ah-title { font-size: 1.15rem; font-weight: 900; }
+  .ah-meta { font-size: .82rem; opacity: .75; margin-top: 3px; }
+  .ah-stats { display: flex; gap: 10px; }
+  .ah-stat { background: rgba(255,255,255,.1); padding: 8px 14px; border-radius: 8px; text-align: center; min-width: 64px; }
+  .ah-stat-num { font-size: 1.2rem; font-weight: 900; line-height: 1; }
+  .ah-stat-lbl { font-size: .65rem; opacity: .7; margin-top: 2px; }
+
+  /* SECTION */
+  .section { background: var(--card); border-radius: var(--r); padding: 22px; margin-bottom: 18px; box-shadow: var(--shadow); }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+  .section-title { font-size: 1rem; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+  .section-badge { font-size: .68rem; background: #f0fdf4; color: var(--g2); border: 1px solid #bbf7d0; padding: 2px 8px; border-radius: 20px; font-weight: 800; }
+  .count-pill { background: var(--g); color: #fff; border-radius: 20px; padding: 2px 9px; font-size: .7rem; font-weight: 900; }
+
+  /* DROP ZONE */
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 30px 20px;
+    text-align: center; cursor: pointer; transition: all .2s; background: #fafafa;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--g); background: #f0fdf4; }
+  .drop-icon { font-size: 2.2rem; margin-bottom: 6px; }
+  .drop-text { font-size: .88rem; color: var(--mu); font-weight: 700; }
+  .drop-text strong { color: var(--g2); }
+  .drop-hint { font-size: .73rem; color: var(--mu); margin-top: 4px; opacity: .7; }
+  .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* FILE LIST */
+  .file-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .file-item { display: flex; align-items: center; gap: 12px; background: #f8faf9; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .file-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: var(--border); }
+  .file-icon { width: 44px; height: 44px; border-radius: 6px; background: #f0fdf4; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: .85rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-meta { font-size: .72rem; color: var(--mu); margin-top: 2px; }
+  .file-status { font-size: .72rem; font-weight: 800; }
+  .file-status.ok { color: var(--g2); }
+  .file-status.err { color: var(--red); }
+  .file-status.uploading { color: var(--amber); }
+  .file-del { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--mu); padding: 6px 8px; border-radius: 6px; }
+  .file-del:hover { background: #fee2e2; color: var(--red); }
+
+  /* NOTE */
+  .note-area {
+    width: 100%; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-family: inherit; font-size: .9rem; resize: vertical;
+    min-height: 100px; outline: none;
+  }
+  .note-area:focus { border-color: var(--g); }
+  .note-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .btn { padding: 9px 18px; border: none; border-radius: 8px; font-family: inherit; font-weight: 800; font-size: .82rem; cursor: pointer; transition: all .15s; }
+  .btn-success { background: var(--g); color: #fff; }
+  .btn-success:hover { background: var(--g2); }
+  .btn-soft { background: #f1f5f3; color: var(--text); border: 1px solid var(--border); }
+
+  /* BOTTOM BAR */
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--card);
+    border-top: 1px solid var(--border); padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    z-index: 50; box-shadow: 0 -4px 16px rgba(0,0,0,.05);
+  }
+  .bb-info { font-size: .82rem; color: var(--mu); }
+  .bb-info strong { color: var(--text); font-size: .9rem; display: block; margin-bottom: 2px; }
+  .activate-btn {
+    background: linear-gradient(135deg, var(--g), var(--g2));
+    color: #fff; border: none; padding: 13px 26px; border-radius: 12px;
+    font-family: inherit; font-size: 1rem; font-weight: 900; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(37,211,102,.35);
+  }
+  .activate-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,211,102,.45); }
+  .activate-btn:disabled { background: #9ca3af; cursor: not-allowed; box-shadow: none; transform: none; }
+
+  /* TOAST */
+  .toast { position: fixed; top: 72px; right: 16px; background: var(--dark); color: #fff; padding: 10px 18px; border-radius: 10px; font-size: .85rem; font-weight: 800; z-index: 999; opacity: 0; transform: translateY(-8px); transition: all .25s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* SPINNER */
+  .spinner-mini { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="cv-dashboard.html" class="logo">Conver<span>dino</span></a>
+  <a href="cv-dashboard.html" class="nav-back">← Zurück zum Dashboard</a>
+</nav>
+
+<div class="steps">
+  <div class="steps-inner">
+    <div class="step done"><span class="step-num">✓</span>Artikel eingerichtet</div>
+    <span class="step-arrow">›</span>
+    <div class="step active"><span class="step-num">2</span>Fotos & Dokumente</div>
+    <span class="step-arrow">›</span>
+    <div class="step"><span class="step-num">3</span>Bot aktiv</div>
+  </div>
+</div>
+
+<main>
+  <div id="header"></div>
+
+  <!-- FOTOS -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">📸 Produktfotos <span class="section-badge">JPG / PNG</span></div>
+      <span class="count-pill" id="photoCount">0</span>
+    </div>
+    <div class="drop-zone" id="photoZone">
+      <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp" multiple>
+      <div class="drop-icon">🖼️</div>
+      <div class="drop-text">Fotos ablegen oder <strong>klicken zum Auswählen</strong></div>
+      <div class="drop-hint">JPG oder PNG · Mehrere Fotos möglich · Kein AVIF</div>
+    </div>
+    <div class="file-list" id="photoList"></div>
+  </div>
+
+  <!-- DOKUMENTE -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">📄 Dokumente <span class="section-badge">PDF</span></div>
+      <span class="count-pill" id="docCount">0</span>
+    </div>
+    <div class="drop-zone" id="docZone">
+      <input type="file" id="docInput" accept="application/pdf" multiple>
+      <div class="drop-icon">📋</div>
+      <div class="drop-text">Dossier, Rechnung, Beschreibung <strong>hochladen</strong></div>
+      <div class="drop-hint">PDF · z.B. Fahrzeugdossier, Zertifikate, Garantieunterlagen</div>
+    </div>
+    <div class="file-list" id="docList"></div>
+  </div>
+
+  <!-- NOTIZ -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">📝 Notiz / Zusatzinfo <span class="section-badge">Optional</span></div>
+      <span class="count-pill" id="noteCount">0</span>
+    </div>
+    <p style="font-size:.82rem;color:var(--mu);margin-bottom:10px;">
+      Gib dem Bot zusätzliche Infos: Zustand, Geschichte, Besonderheiten, Verfügbarkeit, Abholort.
+    </p>
+    <textarea class="note-area" id="noteText" placeholder="z.B. Fahrzeug nur Garagen-gehalten, Erstbesitz, alle Services bei Markenservice. Abholung in Wien 22, Wochenende möglich..."></textarea>
+    <div class="note-row">
+      <button class="btn btn-success" onclick="saveNote()">💾 Notiz speichern</button>
+      <span id="noteStatus" style="font-size:.8rem;color:var(--g2);font-weight:800;display:none;">✓ Gespeichert</span>
+    </div>
+    <div class="file-list" id="noteList" style="margin-top:14px;"></div>
+  </div>
+</main>
+
+<div class="bottom-bar">
+  <div class="bb-info">
+    <strong id="totalSummary">0 Dateien hochgeladen</strong>
+    <span>KI analysiert alles und aktiviert den Bot</span>
+  </div>
+  <button class="activate-btn" id="activateBtn" onclick="activateBot()">🤖 Bot aktivieren →</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+const params = new URLSearchParams(location.search);
+const slotId = params.get('slot');
+
+let photoCount = 0, docCount = 0, noteCount = 0;
+
+if (!slotId) {
+  document.querySelector('main').innerHTML =
+    '<div style="text-align:center;padding:60px;color:var(--red);">❌ Ungültiger Link. <a href="cv-dashboard.html">Zurück zum Dashboard</a></div>';
+} else {
+  loadSlot();
+  setupZones();
+}
+
+// ── SLOT LADEN ──────────────────────────────────────
+async function loadSlot() {
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    if (!d.slot || !d.article) {
+      document.getElementById('header').innerHTML =
+        '<div style="background:#fee2e2;color:var(--red);padding:14px;border-radius:10px;">Artikel nicht gefunden. <a href="cv-dashboard.html">Zurück</a></div>';
+      return;
+    }
+    renderHeader(d.slot, d.article);
+    renderUploads(d.uploads || []);
+  } catch(e) {
+    document.getElementById('header').innerHTML =
+      '<div style="background:#fee2e2;color:var(--red);padding:14px;border-radius:10px;">Verbindungsfehler: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderHeader(slot, article) {
+  document.getElementById('header').innerHTML = `
+    <div class="article-header">
+      <div class="ah-info">
+        <div class="ah-label">Slot ${slot.slot_number} · Artikel</div>
+        <div class="ah-title">${esc(article.title)}</div>
+        <div class="ah-meta">€${fmtPrice(article.sale_price)} · Mindestpreis €${fmtPrice(article.min_price)}${article.location ? ' · ' + esc(article.location) : ''}</div>
+      </div>
+    </div>`;
+}
+
+function renderUploads(uploads) {
+  // Reset
+  document.getElementById('photoList').innerHTML = '';
+  document.getElementById('docList').innerHTML = '';
+  document.getElementById('noteList').innerHTML = '';
+  photoCount = 0; docCount = 0; noteCount = 0;
+
+  for (const u of uploads) {
+    if (u.kind === 'photo') { photoCount++; addPhotoItem(u); }
+    else if (u.kind === 'pdf') { docCount++; addDocItem(u); }
+    else if (u.kind === 'note') { noteCount++; addNoteItem(u); }
+  }
+  updateCounts();
+}
+
+function addPhotoItem(u) {
+  const div = document.createElement('div');
+  div.className = 'file-item';
+  div.innerHTML = `
+    <img class="file-thumb" src="${esc(u.public_url || '')}" alt="">
+    <div class="file-info">
+      <div class="file-name">${esc(u.file_name || 'Foto')}</div>
+      <div class="file-meta">Hochgeladen</div>
+    </div>
+    <button class="file-del" onclick="deleteUpload('${u.id}', this)">🗑</button>`;
+  document.getElementById('photoList').appendChild(div);
+}
+
+function addDocItem(u) {
+  const div = document.createElement('div');
+  div.className = 'file-item';
+  div.innerHTML = `
+    <div class="file-icon">📄</div>
+    <div class="file-info">
+      <div class="file-name">${esc(u.file_name || 'PDF')}</div>
+      <div class="file-meta"><a href="${esc(u.public_url || '#')}" target="_blank" style="color:var(--g2);">PDF öffnen ↗</a></div>
+    </div>
+    <button class="file-del" onclick="deleteUpload('${u.id}', this)">🗑</button>`;
+  document.getElementById('docList').appendChild(div);
+}
+
+function addNoteItem(u) {
+  const div = document.createElement('div');
+  div.className = 'file-item';
+  div.style.alignItems = 'flex-start';
+  const preview = (u.content || '').substring(0, 200);
+  div.innerHTML = `
+    <div class="file-icon">📝</div>
+    <div class="file-info">
+      <div class="file-name">Notiz</div>
+      <div class="file-meta" style="white-space:normal;line-height:1.4;margin-top:4px;">${esc(preview)}${(u.content||'').length > 200 ? '...' : ''}</div>
+    </div>
+    <button class="file-del" onclick="deleteUpload('${u.id}', this)">🗑</button>`;
+  document.getElementById('noteList').appendChild(div);
+}
+
+// ── DRAG & DROP SETUP ───────────────────────────────
+function setupZones() {
+  setupZone('photoZone', 'photoInput', uploadPhotos);
+  setupZone('docZone',   'docInput',   uploadDocs);
+}
+function setupZone(zoneId, inputId, handler) {
+  const zone = document.getElementById(zoneId);
+  const inp  = document.getElementById(inputId);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handler(e.dataTransfer.files); });
+  inp.addEventListener('change', () => { handler(inp.files); inp.value = ''; });
+}
+
+// ── PHOTO UPLOAD ────────────────────────────────────
+async function uploadPhotos(files) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) { toast('Nur JPG/PNG erlaubt'); continue; }
+    if (file.type === 'image/avif') { toast('AVIF nicht unterstützt'); continue; }
+    await doUpload('photo', file);
+  }
+  await loadSlot();
+}
+
+// ── DOC UPLOAD ──────────────────────────────────────
+async function uploadDocs(files) {
+  for (const file of files) {
+    if (file.type !== 'application/pdf') { toast('Nur PDF erlaubt'); continue; }
+    await doUpload('pdf', file);
+  }
+  await loadSlot();
+}
+
+async function doUpload(kind, file) {
+  try {
+    const base64 = await toBase64(file);
+    const r = await fetch(API + '/api/cv/slot/' + slotId + '/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind,
+        file_name: file.name,
+        file_base64: base64.split(',')[1],
+        content_type: file.type
+      })
+    });
+    const d = await r.json();
+    if (!d.success) { toast('Fehler: ' + (d.error || 'unbekannt')); }
+  } catch(e) { toast('Fehler: ' + e.message); }
+}
+
+// ── NOTIZ SPEICHERN ─────────────────────────────────
+async function saveNote() {
+  const text = document.getElementById('noteText').value.trim();
+  if (!text) { toast('Bitte erst Text eingeben'); return; }
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId + '/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'note', content: text })
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.getElementById('noteText').value = '';
+      const s = document.getElementById('noteStatus');
+      s.style.display = 'inline'; setTimeout(() => s.style.display = 'none', 2500);
+      toast('✓ Notiz gespeichert');
+      await loadSlot();
+    } else { toast('Fehler: ' + (d.error || 'unbekannt')); }
+  } catch(e) { toast('Fehler: ' + e.message); }
+}
+
+// ── UPLOAD LÖSCHEN ──────────────────────────────────
+async function deleteUpload(uploadId, btn) {
+  if (!confirm('Wirklich löschen?')) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch(API + '/api/cv/upload/' + uploadId, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) { toast('Gelöscht'); await loadSlot(); }
+    else { toast('Fehler beim Löschen'); btn.disabled = false; }
+  } catch(e) { toast('Fehler: ' + e.message); btn.disabled = false; }
+}
+
+// ── BOT AKTIVIEREN ──────────────────────────────────
+async function activateBot() {
+  if (photoCount === 0 && docCount === 0 && noteCount === 0) {
+    if (!confirm('Du hast nichts hochgeladen. Bot trotzdem aktivieren?')) return;
+  }
+  const btn = document.getElementById('activateBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-mini"></span> Aktiviere Bot...';
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId + '/activate', { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      btn.innerHTML = '✅ Bot aktiv!';
+      toast('✅ Bot aktiviert. Leite weiter...');
+      setTimeout(() => location.href = 'cv-dashboard.html', 1500);
+    } else {
+      btn.disabled = false; btn.innerHTML = '🤖 Bot aktivieren →';
+      toast('Fehler: ' + (d.error || 'unbekannt'));
+    }
+  } catch(e) {
+    btn.disabled = false; btn.innerHTML = '🤖 Bot aktivieren →';
+    toast('Fehler: ' + e.message);
+  }
+}
+
+// ── HELPERS ─────────────────────────────────────────
+function updateCounts() {
+  document.getElementById('photoCount').textContent = photoCount;
+  document.getElementById('docCount').textContent = docCount;
+  document.getElementById('noteCount').textContent = noteCount;
+  const total = photoCount + docCount + noteCount;
+  document.getElementById('totalSummary').textContent =
+    total + ' Datei' + (total !== 1 ? 'en' : '') + ' hochgeladen';
+}
+
+function toBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('Datei konnte nicht gelesen werden'));
+    r.readAsDataURL(file);
+  });
+}
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtPrice(p) { if (p == null) return '—'; return Number(p).toLocaleString('de-AT', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>
