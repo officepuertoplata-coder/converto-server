@@ -310,9 +310,106 @@ module.exports = function(app, supabase) {
 
 
   // ============================================================
+  // KI-ANALYSE: Opus analysiert Fotos + Notizen + Stammdaten
+  // ============================================================
+  async function cvAnalyzeArticle(article, uploads) {
+    const photos = uploads.filter(u => u.kind === 'photo' && u.public_url);
+    const pdfs   = uploads.filter(u => u.kind === 'pdf');
+    const notes  = uploads.filter(u => u.kind === 'note').map(u => u.content).join('\n\n');
+
+    const anrede = article.anrede || 'Sie';
+
+    const prompt = `Du analysierst ein Produkt für einen WhatsApp-Verkaufsbot, der direkt mit Käufern verhandelt.
+
+PRODUKT-STAMMDATEN
+Titel: ${article.title}
+Verkaufspreis: €${article.sale_price || 'n/a'}
+Mindestpreis: €${article.min_price || 'n/a'}
+Standort: ${article.location || 'nicht angegeben'}
+Anrede im Bot: ${anrede}
+
+NOTIZEN VOM VERKÄUFER
+${notes || '(keine Notizen)'}
+
+${pdfs.length > 0 ? `ZUSATZ: ${pdfs.length} PDF-Dokument(e) wurden hochgeladen (z.B. Dossier, Rechnung, Zertifikate).` : ''}
+${photos.length > 0 ? `Die angehängten Bilder zeigen das Produkt. Analysiere sie genau.` : ''}
+
+AUFGABE
+Erstelle eine vollständige Verkaufs-Wissensdatenbank als JSON. Der Bot wird damit später Käufer überzeugen und den Preis verhandeln.
+
+REGELN
+- Antworte NUR mit reinem JSON. Keine Markdown-Codeblöcke, keine Einleitung.
+- Halte dich EXAKT an die untenstehende Struktur.
+- Schreibe alle Bot-Texte in der Anrede "${anrede}".
+- Nutze konkrete Details aus Bildern und Notizen. Keine Floskeln.
+- Der Bot verhandelt zwischen Verkaufspreis (€${article.sale_price}) und Mindestpreis (€${article.min_price}). Niemals darunter.
+
+JSON-FORMAT
+{
+  "category": "Produkttyp (z.B. KFZ, Maschine, Möbel, Elektronik)",
+  "summary": "1-2 Sätze Produktbeschreibung",
+  "key_facts": ["konkrete Fakten aus Bildern und Notizen, je 1 Satz"],
+  "selling_points": ["stärkste Verkaufsargumente, je 1 Satz"],
+  "condition": "Beschreibung des Zustands",
+  "likely_buyer": "Wer kauft das typischerweise — 1 Satz",
+  "likely_objections": [{ "objection": "möglicher Einwand", "response": "Antwort des Bots" }],
+  "bot_strategy": {
+    "opening_message": "Erste Bot-Nachricht: Begrüßung + Produktvorstellung mit stärksten Argumenten, 2-3 Sätze",
+    "value_argument": "Hauptargument das den Preis rechtfertigt",
+    "negotiation_steps": [
+      "1. Verhandlung: Verkaufspreis halten, Wert betonen",
+      "2. Verhandlung: kleines Zugeständnis (etwa -2-3%)",
+      "3. Verhandlung: bis nahe Mindestpreis"
+    ],
+    "walkaway_line": "Höfliche Absage wenn Käufer unter Mindestpreis bleibt"
+  }
+}`;
+
+    // Content mit Bildern
+    const content = [];
+    for (const photo of photos.slice(0, 8)) {
+      content.push({
+        type: 'image',
+        source: { type: 'url', url: photo.public_url }
+      });
+    }
+    content.push({ type: 'text', text: prompt });
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-6',
+        max_tokens: 2500,
+        messages: [{ role: 'user', content }]
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Opus API ${response.status}: ${errText.substring(0, 300)}`);
+    }
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+    const cleaned = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+
+    try {
+      return JSON.parse(cleaned);
+    } catch(e) {
+      console.error('[CV Analyse] JSON parse failed. Raw:', text.substring(0, 500));
+      return { error: 'Analyse-Output ungültig', raw_text: text.substring(0, 1000) };
+    }
+  }
+
+
+  // ============================================================
   // 6. POST /api/cv/slot/:id/activate
-  //    Bot aktivieren — generiert BOT-Code, WA-Link, QR, Widget
-  //    (Analyse-Stub kommt in Schritt 5)
+  //    Sofort: Status 'analyzing' setzen, im Hintergrund analysieren + aktivieren
   // ============================================================
   app.post('/api/cv/slot/:id/activate', async (req, res) => {
     try {
@@ -323,42 +420,109 @@ module.exports = function(app, supabase) {
       if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
 
       const { data: article } = await supabase
-        .from('cv_articles').select('id').eq('slot_id', slotId).maybeSingle();
+        .from('cv_articles').select('*').eq('slot_id', slotId).maybeSingle();
       if (!article) return res.status(400).json({ error: 'Kein Artikel im Slot' });
 
-      // BOT-Code generieren (4 Zeichen, eindeutig)
-      const botCode = 'BOT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-      const waNumber = (process.env.WA_BOT_NUMBER || '436776411806').replace(/[^0-9]/g, '');
-      const waLink   = `https://wa.me/${waNumber}?text=${encodeURIComponent(botCode)}`;
-      const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
-      const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
+      const { data: uploads } = await supabase
+        .from('cv_uploads').select('*').eq('article_id', article.id);
 
-      const { error: updErr } = await supabase.from('cv_slots').update({
-        status: 'active',
-        bot_code: botCode,
-        wa_deeplink: waLink,
-        qr_code_url: qrUrl,
-        widget_code: widgetCode,
-        activated_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+      // Status sofort auf "analyzing"
+      await supabase.from('cv_slots').update({
+        status: 'analyzing', updated_at: new Date().toISOString()
       }).eq('id', slotId);
-      if (updErr) return res.status(500).json({ error: 'Aktivierung: ' + updErr.message });
+      await supabase.from('cv_articles').update({
+        status: 'analyzing', updated_at: new Date().toISOString()
+      }).eq('id', article.id);
 
-      await supabase.from('cv_articles')
-        .update({ status: 'analyzed' })
-        .eq('id', article.id);
+      // Antwort sofort zurück — Analyse läuft im Hintergrund
+      res.json({ success: true, status: 'analyzing' });
 
-      res.json({
-        success: true,
-        bot_code: botCode,
-        wa_deeplink: waLink,
-        qr_code_url: qrUrl,
-        widget_code: widgetCode
-      });
+      // ── HINTERGRUND: Analyse + Bot-Aktivierung ──
+      (async () => {
+        let analysis = null;
+        let analysisOk = false;
+
+        if (process.env.ANTHROPIC_API_KEY) {
+          try {
+            console.log(`[CV] Analyse startet für Slot ${slotId}, ${(uploads||[]).length} Uploads`);
+            analysis = await cvAnalyzeArticle(article, uploads || []);
+            analysisOk = !analysis?.error;
+            console.log(`[CV] Analyse fertig. OK: ${analysisOk}`);
+          } catch(e) {
+            console.error('[CV] Analyse Exception:', e.message);
+            analysis = { error: 'Analyse fehlgeschlagen: ' + e.message };
+          }
+        } else {
+          console.warn('[CV] ANTHROPIC_API_KEY fehlt — Bot wird ohne Analyse aktiviert');
+          analysis = { error: 'API-Key nicht konfiguriert' };
+        }
+
+        await supabase.from('cv_articles').update({
+          analysis,
+          dna: analysisOk ? (analysis.bot_strategy || null) : null,
+          status: analysisOk ? 'analyzed' : 'failed',
+          updated_at: new Date().toISOString()
+        }).eq('id', article.id);
+
+        // Bot-Assets generieren
+        const botCode = 'BOT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const waNumber = (process.env.WA_BOT_NUMBER || '436776411806').replace(/[^0-9]/g, '');
+        const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(botCode)}`;
+        const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
+        const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
+
+        await supabase.from('cv_slots').update({
+          status: 'active',
+          bot_code: botCode,
+          wa_deeplink: waLink,
+          qr_code_url: qrUrl,
+          widget_code: widgetCode,
+          activated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }).eq('id', slotId);
+
+        console.log(`[CV] Slot ${slotId} aktiv. BOT-Code: ${botCode}`);
+      })().catch(e => console.error('[CV] Hintergrund-Fehler:', e));
     } catch(e) {
       console.error('[CV /activate]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
     }
+  });
+
+
+  // ============================================================
+  // 6b. POST /api/cv/slot/:id/reanalyze
+  //     Manuelle Re-Analyse (z.B. nach Änderungen)
+  // ============================================================
+  app.post('/api/cv/slot/:id/reanalyze', async (req, res) => {
+    try {
+      const slotId = req.params.id;
+      const { data: article } = await supabase
+        .from('cv_articles').select('*').eq('slot_id', slotId).maybeSingle();
+      if (!article) return res.status(400).json({ error: 'Kein Artikel' });
+
+      const { data: uploads } = await supabase
+        .from('cv_uploads').select('*').eq('article_id', article.id);
+
+      await supabase.from('cv_articles').update({ status: 'analyzing' }).eq('id', article.id);
+      res.json({ success: true, status: 'analyzing' });
+
+      (async () => {
+        try {
+          const analysis = await cvAnalyzeArticle(article, uploads || []);
+          const ok = !analysis?.error;
+          await supabase.from('cv_articles').update({
+            analysis,
+            dna: ok ? (analysis.bot_strategy || null) : null,
+            status: ok ? 'analyzed' : 'failed',
+            updated_at: new Date().toISOString()
+          }).eq('id', article.id);
+        } catch(e) {
+          console.error('[CV reanalyze]', e);
+          await supabase.from('cv_articles').update({ status: 'failed' }).eq('id', article.id);
+        }
+      })();
+    } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
 
