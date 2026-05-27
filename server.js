@@ -2756,34 +2756,84 @@ app.get('/api/bot/subscription/:phone', async (req, res) => {
 app.post('/api/bot/slot/:id/upload', async (req, res) => {
   try {
     const { title, sale_price, min_price, location, anrede } = req.body;
-    const { data: slot } = await supabase.from('bot_slots').select('*, subscriptions(*)').eq('id', req.params.id).single();
-    if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
-    if (slot.status === 'active') return res.status(400).json({ error: 'Slot aktiv — erst Artikel löschen' });
-
-    // Neue Session + Artikel erstellen
+    const slotId = req.params.id;
+    
+    console.log('Upload start für Slot:', slotId);
+    
+    // 1. Slot laden (ohne Join — funktioniert garantiert)
+    const { data: slot, error: slotErr } = await supabase.from('bot_slots')
+      .select('*').eq('id', slotId).single();
+    if (slotErr) return res.status(500).json({ error: 'Slot-Lesefehler: ' + slotErr.message });
+    if (!slot) return res.status(404).json({ error: 'Slot ' + slotId + ' nicht gefunden' });
+    if (slot.status === 'active') return res.status(400).json({ error: 'Slot ist aktiv. Erst Artikel löschen.' });
+    
+    // 2. Subscription separat laden (um Phone zu bekommen)
+    let customerPhone = 'admin';
+    if (slot.subscription_id) {
+      const { data: sub } = await supabase.from('subscriptions')
+        .select('customer_phone').eq('id', slot.subscription_id).single();
+      if (sub?.customer_phone) customerPhone = sub.customer_phone;
+    }
+    
+    // 3. Session erstellen
     const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const { data: session } = await supabase.from('vk_sessions').insert({
-      token, phone: slot.subscriptions.customer_phone,
-      customer_name: title, status: 'open'
+    const { data: session, error: sErr } = await supabase.from('vk_sessions').insert({
+      token: token,
+      phone: customerPhone,
+      status: 'open'
     }).select().single();
-
-    const { data: article } = await supabase.from('vk_articles').insert({
-      session_id: session.id, title,
-      sale_price, min_price, location, anrede: anrede || 'Sie',
-      status: 'pending', sort_order: 0
+    
+    if (sErr) {
+      console.error('Session error:', sErr);
+      return res.status(500).json({ error: 'Session: ' + sErr.message });
+    }
+    if (!session?.id) return res.status(500).json({ error: 'Session-Datensatz hat keine ID' });
+    
+    // 4. Artikel erstellen (nur Basis-Felder)
+    const { data: article, error: aErr } = await supabase.from('vk_articles').insert({
+      session_id: session.id,
+      title: title || 'Artikel',
+      status: 'pending'
     }).select().single();
-
-    // Slot updaten
-    await supabase.from('bot_slots').update({
-      article_id: article.id, status: 'uploading',
-      sale_price, min_price, location
-    }).eq('id', req.params.id);
-
-    res.json({ success: true, article_id: article.id, session_id: session.id, token });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    
+    if (aErr) {
+      console.error('Article error:', aErr);
+      return res.status(500).json({ error: 'Artikel: ' + aErr.message });
+    }
+    if (!article?.id) return res.status(500).json({ error: 'Artikel-Datensatz hat keine ID' });
+    
+    // 5. Preise/Standort/Anrede separat updaten (optional — Spalten könnten fehlen)
+    try {
+      await supabase.from('vk_articles').update({
+        sale_price: sale_price || null,
+        min_price: min_price || null,
+        location: location || null,
+        anrede: anrede || 'Sie'
+      }).eq('id', article.id);
+    } catch(e) { console.error('Article details warning:', e.message); }
+    
+    // 6. Slot updaten
+    const { error: uErr } = await supabase.from('bot_slots').update({
+      article_id: article.id,
+      status: 'uploading'
+    }).eq('id', slotId);
+    if (uErr) console.error('Slot update warning:', uErr);
+    
+    console.log('Upload erfolgreich:', { article_id: article.id, session_id: session.id });
+    
+    res.json({
+      success: true,
+      article_id: article.id,
+      session_id: session.id,
+      token: token
+    });
+  } catch(e) {
+    console.error('Upload endpoint exception:', e);
+    res.status(500).json({ error: 'Unerwarteter Fehler: ' + e.message });
+  }
 });
 
-// ── BOT AKTIVIEREN (nach Analyse) ────────────────────────
+
 app.post('/api/bot/slot/:id/activate', async (req, res) => {
   try {
     const { data: slot } = await supabase.from('bot_slots').select('*').eq('id', req.params.id).single();
@@ -2962,27 +3012,16 @@ app.post('/api/bot/slot/:id/start-analysis', async (req, res) => {
         try {
           const { data: articles } = await supabase.from('vk_articles').select('*').eq('session_id', session.id);
           for (const art of (articles || [])) {
-            try {
-              const { data: photos } = await supabase.from('vk_photos').select('*').eq('article_id', art.id);
-              const { data: docs } = await supabase.from('vk_article_docs').select('*').eq('article_id', art.id);
-              // Analyse nur wenn Fotos oder Docs vorhanden
-              if ((photos||[]).length > 0 || (docs||[]).length > 0) {
-                const analysis = await vkAnalyzeArticle(art, photos || [], session.phone || '');
-                if (analysis) {
-                  await supabase.from('vk_articles').update({ analysis, status: 'analyzed', ai_mode: 'sachbearbeiter' }).eq('id', art.id);
-                }
-              } else {
-                // Kein Material — trotzdem als analyzed markieren
-                await supabase.from('vk_articles').update({ status: 'analyzed' }).eq('id', art.id);
-              }
-            } catch(artErr) { console.error('Article analysis error:', artErr.message); }
+            const { data: photos } = await supabase.from('vk_photos').select('*').eq('article_id', art.id);
+            const analysis = await vkAnalyzeArticle(art, photos || [], session.phone || '');
+            const articleUpdate = { analysis, status: 'analyzed', ai_mode: 'sachbearbeiter' };
+            await supabase.from('vk_articles').update(articleUpdate).eq('id', art.id);
           }
           await supabase.from('vk_sessions').update({ status: 'done' }).eq('id', session.id);
-        } catch(e) { console.error('Bot analysis error:', e.message); }
 
-        // Bot immer aktivieren — auch wenn Analyse scheitert
-        try { await activateBotSlot(req.params.id); }
-        catch(e) { console.error('Bot activation error:', e.message); }
+          // Bot aktivieren
+          await activateBotSlot(req.params.id);
+        } catch(e) { console.error('Bot analysis error:', e.message); }
       })();
     }
 
@@ -3012,16 +3051,6 @@ async function activateBotSlot(slotId) {
     vkAutoGenerateDNA(article.id, article.analysis, article.ai_mode || 'sachbearbeiter').catch(e => console.error('DNA error:', e.message));
   }
 }
-
-
-// ── FORCE AKTIVIEREN (Test/Admin) ────────────────────────
-app.post('/api/bot/slot/:id/force-activate', async (req, res) => {
-  try {
-    await activateBotSlot(req.params.id);
-    const { data: slot } = await supabase.from('bot_slots').select('*').eq('id', req.params.id).single();
-    res.json({ success: true, slot });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
 
 app.listen(PORT, async () => {
   console.log('✅ Converto API v2.2.0 läuft auf Port ' + PORT);
