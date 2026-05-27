@@ -261,7 +261,7 @@ async function loadDashboard(){
 // ── RENDER ────────────────────────────────────────────
 function render(){
   const app = document.getElementById('app');
-  if(!subData||!subData.active){
+  if(!subData||(!subData.active && subData.status!=='active')){
     app.innerHTML = `
       <div class="no-sub">
         <div style="font-size:3rem;margin-bottom:12px;">🤖</div>
