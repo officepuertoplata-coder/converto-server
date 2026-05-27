@@ -121,8 +121,28 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             try { const { data: merchant } = await supabase.from('merchants').select('id').eq('meta_phone_number_id', phoneId).single(); await vkHandleWhatsAppImage(from, msg.image.id, merchant?.id || null); } catch(e) { console.error('VK image handler error:', e.message); }
             continue;
           }
-          // ── LP BOT: Prüfe ob Nachricht LP-Kontext hat ──────
+          // ── BOT-SLOT ROUTING ─────────────────────────────────
           const rawText = msg.text?.body || '';
+          const botCodeMatch = rawText.trim().match(/^(BOT-[A-Z0-9]{4,8})$/i);
+          if (botCodeMatch && msgType === 'text') {
+            try {
+              await handleBotSlotStart(from, botCodeMatch[1].toUpperCase(), phoneId);
+              continue;
+            } catch(botErr) { console.error('Bot slot start error:', botErr.message); }
+          }
+
+          // Prüfe ob aktive Bot-Slot Konversation läuft
+          if (msgType === 'text') {
+            const activeBotSlot = await getActiveBotSlotSession(from);
+            if (activeBotSlot) {
+              try {
+                await handleBotSlotReply(from, rawText, activeBotSlot, phoneId);
+                continue;
+              } catch(botErr) { console.error('Bot slot reply error:', botErr.message); }
+            }
+          }
+
+          // ── LP BOT: Prüfe ob Nachricht LP-Kontext hat ──────
           const lpSlugMatch = rawText.match(/p\.converdino\.com\/p\/([\w-]+)/);
           if (lpSlugMatch && msgType === 'text') {
             try {
@@ -2506,6 +2526,169 @@ app.post('/api/vk/session/:token/analyze-docs', async (req, res) => {
 
 
 
+
+// ═══════════════════════════════════════════════════════════
+// BOT-SLOT HANDLER FUNKTIONEN
+// ═══════════════════════════════════════════════════════════
+
+// In-Memory Sessions für aktive Bot-Slot Gespräche
+const botSlotSessions = new Map(); // phone → { slotId, articleId, history, startedAt }
+
+async function handleBotSlotStart(phone, botCode, phoneId) {
+  // Slot anhand Bot-Code laden
+  const { data: slot } = await supabase.from('bot_slots')
+    .select('*, vk_articles(*, vk_photos(*))')
+    .eq('bot_code', botCode)
+    .eq('status', 'active')
+    .single();
+
+  if (!slot) {
+    await sendWAMessage(phoneId, phone, '❌ Dieser Bot-Code ist nicht aktiv. Bitte überprüfe den Link oder QR-Code.');
+    return;
+  }
+
+  const article = slot.vk_articles;
+  if (!article) {
+    await sendWAMessage(phoneId, phone, '❌ Artikel nicht gefunden.');
+    return;
+  }
+
+  // Session starten
+  botSlotSessions.set(phone, {
+    slotId: slot.id, articleId: article.id,
+    article, phoneId, history: [],
+    startedAt: Date.now()
+  });
+
+  // Ersten Bot-Turn starten
+  await runBotSlotTurn(phone, null, phoneId);
+}
+
+async function getActiveBotSlotSession(phone) {
+  const session = botSlotSessions.get(phone);
+  if (!session) return null;
+  // Session nach 2 Stunden ablaufen lassen
+  if (Date.now() - session.startedAt > 2 * 60 * 60 * 1000) {
+    botSlotSessions.delete(phone);
+    return null;
+  }
+  return session;
+}
+
+async function handleBotSlotReply(phone, text, session, phoneId) {
+  session.history.push({ role: 'user', content: text });
+  await runBotSlotTurn(phone, text, phoneId);
+}
+
+async function runBotSlotTurn(phone, userMessage, phoneId) {
+  const session = botSlotSessions.get(phone);
+  if (!session) return;
+
+  const article = session.article;
+  const an = article.analysis || {};
+
+  // Wissensdatenbank aufbauen
+  const answers = article.answers || {};
+  const extraFacts = answers.q_extra ? answers.q_extra.split('|||').filter(Boolean) : [];
+  const wissensbasis = extraFacts.map(f => f).join('\n');
+
+  const systemPrompt = `Du bist ein professioneller WhatsApp-Verkaufsberater für folgendes Produkt:
+
+PRODUKT: ${an.title_short || article.title}
+BESCHREIBUNG: ${an.short_desc || ''}
+VERKAUFSPREIS: €${article.sale_price || 0}
+MINDESTPREIS: €${article.min_price || 0}
+STANDORT: ${article.location || 'Nicht angegeben'}
+ANREDE: ${article.anrede || 'Sie'}
+
+WISSENSDATENBANK:
+${wissensbasis || 'Keine spezifischen Daten verfügbar.'}
+
+HIGHLIGHTS: ${(an.bullet_points||[]).join(', ')}
+
+VERHANDLUNGSREGELN:
+- Starte bei €${article.sale_price || 0}
+- Mache max. 2-3 Zugeständnisse, jedes kleiner als das vorherige
+- Gehe NIE unter €${article.min_price || 0}
+- Bei Mindestpreis: "Das ist mein letztes Angebot"
+
+GESPRÄCHSZIELE (in Reihenfolge):
+1. Interesse wecken, Produkt präsentieren
+2. Fragen beantworten → Vertrauen aufbauen  
+3. Preis verhandeln → Einigung erzielen
+4. Kontaktdaten tauschen → Abschluss
+5. Falls kein Deal → Rückruf anbieten
+
+BOT-VERHALTEN:
+- Antworte auf ${article.anrede || 'Sie'}-Basis
+- Kurze, natürliche WhatsApp-Nachrichten (max 3-4 Sätze)
+- Aktiver Verkäufer, nicht passiver Auskunftgeber
+- Bei Einigung: frage nach Name und Telefonnummer für Rückruf
+- Bei Exit: verabschiede dich höflich und informiere Verkäufer
+- NUR Fakten aus der Wissensdatenbank verwenden`;
+
+  const messages = [];
+  if (userMessage === null) {
+    // Erster Turn: Begrüßung
+    messages.push({ role: 'user', content: `START: Begrüße den Käufer und präsentiere das Produkt kurz und überzeugend.` });
+  } else {
+    // Konversationsverlauf
+    session.history.forEach(m => messages.push(m));
+  }
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: AI.bot, max_tokens: 500, system: systemPrompt, messages })
+    });
+    const data = await response.json();
+    const botReply = data.content?.[0]?.text || 'Entschuldigung, ich bin kurz nicht verfügbar.';
+
+    // Antwort senden
+    await sendWAMessage(phoneId, phone, botReply);
+
+    // History aktualisieren
+    if (userMessage !== null) {
+      session.history.push({ role: 'assistant', content: botReply });
+    } else {
+      session.history = [{ role: 'assistant', content: botReply }];
+    }
+
+    // Exit-Erkennung
+    const exitWords = ['tschüss', 'auf wiedersehen', 'danke', 'kein interesse', 'nicht interessiert', 'bye'];
+    const dealWords = ['einverstanden', 'deal', 'kaufe', 'nehme', 'abgemacht', 'ok passt'];
+    const lowerReply = botReply.toLowerCase();
+    const lowerUser = (userMessage||'').toLowerCase();
+
+    if (dealWords.some(w => lowerReply.includes(w) || lowerUser.includes(w))) {
+      // Deal — Verkäufer informieren
+      await notifySellerBotSlot(session, phone, 'deal', botReply);
+      botSlotSessions.delete(phone);
+    } else if (exitWords.some(w => lowerReply.includes(w)) || session.history.length > 30) {
+      // Exit
+      await notifySellerBotSlot(session, phone, 'exit', botReply);
+      botSlotSessions.delete(phone);
+    }
+  } catch(e) { console.error('Bot turn error:', e.message); }
+}
+
+async function notifySellerBotSlot(session, buyerPhone, type, lastMessage) {
+  try {
+    const { data: slot } = await supabase.from('bot_slots').select('*, subscriptions(customer_phone)').eq('id', session.slotId).single();
+    if (!slot?.subscriptions?.customer_phone) return;
+    const sellerPhone = slot.subscriptions.customer_phone;
+    const emoji = type === 'deal' ? '🎉' : '📋';
+    const title = type === 'deal' ? 'Einigung erzielt!' : 'Gespräch beendet';
+    const msg = `${emoji} *Converdino Bot-Report*\n\n*${title}*\nArtikel: ${session.article?.title || ''}\nKäufer: +${buyerPhone}\n\nLetzte Nachricht:\n${lastMessage.substring(0, 200)}`;
+    // Seller-Phonenum bestimmen
+    const { data: merchant } = await supabase.from('merchants').select('meta_phone_number_id').limit(1).single();
+    if (merchant?.meta_phone_number_id) {
+      await sendWAMessage(merchant.meta_phone_number_id, sellerPhone, msg);
+    }
+  } catch(e) { console.error('Notify seller error:', e.message); }
+}
+
 // ═══════════════════════════════════════════════════════════
 // BOT SUBSCRIPTION ENDPOINTS
 // ═══════════════════════════════════════════════════════════
@@ -2549,14 +2732,14 @@ app.post('/api/bot/subscribe', async (req, res) => {
 app.get('/api/bot/subscription/:phone', async (req, res) => {
   try {
     const phone = req.params.phone;
-    const { data: sub } = await supabase.from('subscriptions')
+    const { data: subs } = await supabase.from('subscriptions')
       .select('*, bot_slots(*)')
       .eq('customer_phone', phone)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
 
+    const sub = subs?.[0] || null;
     if (!sub) return res.json({ active: false, slots: [] });
 
     res.json({
