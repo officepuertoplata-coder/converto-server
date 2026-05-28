@@ -16,16 +16,28 @@ module.exports = function(app, supabase, deps) {
 
   // ============================================================
   // STRIPE (Treuhand-Anzahlung)
-  // Nutzt denselben EU-Key wie das bestehende System.
+  // Modus über CV_STRIPE_MODE steuerbar: 'test' oder 'live'.
+  //   test → STRIPE_SECRET_KEY_TEST + STRIPE_CV_WEBHOOK_SECRET_TEST
+  //   live → STRIPE_SECRET_KEY_EU   + STRIPE_CV_WEBHOOK_SECRET
   // Geld geht auf den Converdino-Account; Auszahlung an Verkäufer
   // erfolgt manuell nach Ablauf der Widerrufsfrist.
   // ============================================================
+  const CV_STRIPE_MODE = (process.env.CV_STRIPE_MODE || 'live').toLowerCase();
+  const CV_IS_TEST = CV_STRIPE_MODE === 'test';
+
+  const cvStripeKey = CV_IS_TEST
+    ? (process.env.STRIPE_SECRET_KEY_TEST || process.env.STRIPE_SECRET_KEY_EU)
+    : (process.env.STRIPE_SECRET_KEY_EU || process.env.STRIPE_SECRET_KEY);
+
+  const cvWebhookSecret = CV_IS_TEST
+    ? (process.env.STRIPE_CV_WEBHOOK_SECRET_TEST || process.env.STRIPE_CV_WEBHOOK_SECRET)
+    : process.env.STRIPE_CV_WEBHOOK_SECRET;
+
   let cvStripe = null;
   try {
-    const stripeKey = process.env.STRIPE_SECRET_KEY_EU || process.env.STRIPE_SECRET_KEY;
-    if (stripeKey) {
-      cvStripe = require('stripe')(stripeKey);
-      console.log('[CV] Stripe initialisiert');
+    if (cvStripeKey) {
+      cvStripe = require('stripe')(cvStripeKey);
+      console.log(`[CV] Stripe initialisiert (Modus: ${CV_IS_TEST ? 'TEST' : 'LIVE'})`);
     } else {
       console.warn('[CV] Kein Stripe-Key gefunden — Zahlungslinks deaktiviert');
     }
@@ -1615,7 +1627,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     if (!cvStripe) return res.status(503).send('Stripe nicht konfiguriert');
 
     let event;
-    const webhookSecret = process.env.STRIPE_CV_WEBHOOK_SECRET;
+    const webhookSecret = cvWebhookSecret;
     try {
       if (webhookSecret && req.headers['stripe-signature']) {
         // Signaturprüfung mit rohem Body (req.body ist Buffer wenn express.raw aktiv)
