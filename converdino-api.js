@@ -917,14 +917,24 @@ DEINE WERKZEUGE — wann du sie einsetzt
 - flag_hot_lead: Sobald der Käufer ernsthaftes Kaufinteresse zeigt (will kaufen, fragt nach Übergabe/Probefahrt/Verfügbarkeit, oder will mit dem Verkäufer sprechen). Reiche den Lead SOFORT weiter — lieber zu früh als zu spät.
 - collect_contact: Wenn konkretes Interesse da ist, frage natürlich nach Name und Telefonnummer (und optional Email). Erst bei echtem Interesse, nicht am Anfang.
 - agree_deal: Wenn sich Käufer und du auf einen Preis einigen. Vorher Kontaktdaten sichern.
-- escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee." Dann Kontaktdaten sichern.
-- request_callback: Wenn der Käufer lieber telefonieren möchte.
+- escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee."
+- request_callback: Wenn ein Rückruf/Termin vereinbart wird — mit konkretem Zeitfenster.
 - end_conversation: Nur bei klar fehlendem Interesse / Verabschiedung.
+
+═══════════════════════════════════════════════════════
+PFLICHT-ABLAUF BEI LEAD / EINIGUNG / ESKALATION (sehr wichtig!)
+═══════════════════════════════════════════════════════
+Sobald du an den Verkäufer/Verkaufsleiter übergibst, führe IMMER diese 3 Schritte in dieser Reihenfolge durch — niemals einfach nur "Danke" sagen:
+1. KONTAKT: Frage nach Name und Telefonnummer (falls noch nicht bekannt).
+2. ZEITFENSTER: Frage AKTIV nach einem konkreten Rückruf-Zeitfenster. Z.B. "Wann erreichen wir Sie am besten — heute Nachmittag, morgen Vormittag, oder haben Sie eine bestimmte Uhrzeit?"
+3. VERBINDLICHE BESTÄTIGUNG: Wiederhole das Vereinbarte konkret zurück und gib Sicherheit. Z.B. "Perfekt — ich gebe Ihre Daten direkt an unseren Verkaufsleiter weiter. Er ruft Sie [Zeitfenster] unter [Nummer] an. Er hat oft Spielraum den ich nicht habe."
+
+Erst NACH der verbindlichen Bestätigung mit Zeitfenster nutzt du request_callback (mit preferred_time) und ggf. end_conversation.
+Sage NIE nur "Danke" ohne dass ein konkreter nächster Schritt + Zeitfenster vereinbart ist.
 
 WICHTIG zu Werkzeugen:
 - Du kannst in einem Zug Text schreiben UND ein Werkzeug aufrufen.
-- Wenn du collect_contact, agree_deal, flag_hot_lead, escalate_to_sales oder request_callback nutzt und noch keine Kontaktdaten hast, frage zuerst danach.
-- Erfinde NIEMALS Kontaktdaten. Nutze nur was der Käufer wirklich genannt hat.
+- Erfinde NIEMALS Kontaktdaten oder Zeitfenster. Nutze nur was der Käufer wirklich genannt hat.
 
 STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur antworten. Niemals Fakten erfinden.`;
 
@@ -945,13 +955,14 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       },
       {
         name: 'collect_contact',
-        description: 'Speichere die Kontaktdaten des Käufers nachdem er sie genannt hat.',
+        description: 'Speichere die Kontaktdaten des Käufers nachdem er sie genannt hat. Wenn der Käufer auch ein Rückruf-Zeitfenster genannt hat, gib es in preferred_time an.',
         input_schema: {
           type: 'object',
           properties: {
             buyer_name: { type: 'string' },
             buyer_phone: { type: 'string' },
-            buyer_email: { type: 'string' }
+            buyer_email: { type: 'string' },
+            preferred_time: { type: 'string', description: 'Vereinbartes Rückruf-Zeitfenster falls genannt' }
           },
           required: ['buyer_name']
         }
@@ -964,35 +975,37 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           properties: {
             agreed_price: { type: 'number', description: 'Vereinbarter Preis in Euro' },
             buyer_name: { type: 'string' },
-            buyer_phone: { type: 'string' }
+            buyer_phone: { type: 'string' },
+            preferred_time: { type: 'string', description: 'Vereinbartes Übergabe-/Kontakt-Zeitfenster falls genannt' }
           },
           required: ['agreed_price']
         }
       },
       {
         name: 'escalate_to_sales',
-        description: 'Der Käufer will unter den Mindestpreis. Übergib an den menschlichen Verkaufsleiter.',
+        description: 'Der Käufer will unter den Mindestpreis. Übergib an den menschlichen Verkaufsleiter. Gib das vereinbarte Rückruf-Zeitfenster in preferred_time an.',
         input_schema: {
           type: 'object',
           properties: {
             buyer_wants_price: { type: 'number', description: 'Welchen Preis der Käufer will' },
             buyer_name: { type: 'string' },
-            buyer_phone: { type: 'string' }
+            buyer_phone: { type: 'string' },
+            preferred_time: { type: 'string', description: 'Vereinbartes Rückruf-Zeitfenster falls genannt' }
           },
           required: []
         }
       },
       {
         name: 'request_callback',
-        description: 'Der Käufer möchte telefonisch kontaktiert werden.',
+        description: 'Ein Rückruf wurde mit konkretem Zeitfenster vereinbart. IMMER mit preferred_time aufrufen.',
         input_schema: {
           type: 'object',
           properties: {
-            preferred_time: { type: 'string', description: 'Wunschzeit für Rückruf' },
+            preferred_time: { type: 'string', description: 'Vereinbartes Rückruf-Zeitfenster, z.B. "heute Nachmittag", "morgen 14 Uhr"' },
             buyer_name: { type: 'string' },
             buyer_phone: { type: 'string' }
           },
-          required: []
+          required: ['preferred_time']
         }
       },
       {
@@ -1083,15 +1096,17 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   // ── Tool-Aufruf verarbeiten ──────────────────────────────
   async function cvHandleToolCall(session, phone, toolName, input) {
     try {
-      // Käufer-Kontakt in Session mergen
-      if (input.buyer_name)  session.buyerName  = input.buyer_name;
-      if (input.buyer_phone) session.buyerPhone = input.buyer_phone;
-      if (input.buyer_email) session.buyerEmail = input.buyer_email;
+      // Käufer-Kontakt + Zeitfenster in Session mergen
+      if (input.buyer_name)     session.buyerName    = input.buyer_name;
+      if (input.buyer_phone)    session.buyerPhone   = input.buyer_phone;
+      if (input.buyer_email)    session.buyerEmail   = input.buyer_email;
+      if (input.preferred_time) session.callbackTime = input.preferred_time;
 
       const updates = {};
-      if (session.buyerName)  updates.buyer_name = session.buyerName;
-      if (session.buyerPhone) updates.buyer_contact_phone = session.buyerPhone;
-      if (session.buyerEmail) updates.buyer_email = session.buyerEmail;
+      if (session.buyerName)    updates.buyer_name          = session.buyerName;
+      if (session.buyerPhone)   updates.buyer_contact_phone = session.buyerPhone;
+      if (session.buyerEmail)   updates.buyer_email         = session.buyerEmail;
+      if (session.callbackTime) updates.callback_time       = session.callbackTime;
 
       switch (toolName) {
         case 'flag_hot_lead':
@@ -1101,13 +1116,13 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           if (!session.notified) {
             await cvLogEvent(session, phone, 'hot_lead', {
               reason: input.reason || '',
-              buyer_name: session.buyerName, buyer_phone: session.buyerPhone
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, preferred_time: session.callbackTime
             });
             session.notified = true;
           } else {
             await cvLogEvent(session, phone, 'hot_lead', {
               reason: 'Update: ' + (input.reason || 'weitere Infos'),
-              buyer_name: session.buyerName, buyer_phone: session.buyerPhone
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, preferred_time: session.callbackTime
             }, true);  // silent: nur loggen, nicht nochmal melden
           }
           break;
@@ -1119,12 +1134,12 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           if (session.notified) {
             await cvLogEvent(session, phone, 'contact_added', {
               reason: 'Kontaktdaten zum Lead',
-              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail, preferred_time: session.callbackTime
             });
           } else {
             await cvLogEvent(session, phone, 'hot_lead', {
               reason: 'Kontaktdaten erfasst',
-              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail, preferred_time: session.callbackTime
             });
             session.notified = true;
           }
@@ -1137,7 +1152,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           if (input.agreed_price) updates.agreed_price = input.agreed_price;
           await cvLogEvent(session, phone, 'agreed', {
             agreed_price: input.agreed_price,
-            buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
+            buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail, preferred_time: session.callbackTime
           });
           session.notified = true;
           break;
@@ -1149,7 +1164,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           await cvLogEvent(session, phone, 'escalated', {
             buyer_wants_price: input.buyer_wants_price,
             min_price: session.article.min_price,
-            buyer_name: session.buyerName, buyer_phone: session.buyerPhone
+            buyer_name: session.buyerName, buyer_phone: session.buyerPhone, preferred_time: session.callbackTime
           });
           session.notified = true;
           break;
@@ -1185,20 +1200,20 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     const du = anrede === 'Du';
     switch (toolName) {
       case 'collect_contact':
-        return du ? 'Super! Wie ist dein Name und unter welcher Nummer erreichen wir dich am besten?'
-                  : 'Sehr gerne! Wie ist Ihr Name und unter welcher Nummer erreichen wir Sie am besten?';
+        return du ? 'Super! Wie ist dein Name und unter welcher Nummer erreichen wir dich — und wann passt dir ein Rückruf am besten?'
+                  : 'Sehr gerne! Wie ist Ihr Name und unter welcher Nummer erreichen wir Sie — und wann passt Ihnen ein Rückruf am besten?';
       case 'flag_hot_lead':
-        return du ? 'Klingt gut! Ich gebe deine Anfrage direkt an den Verkäufer weiter, er meldet sich bei dir.'
-                  : 'Wunderbar! Ich gebe Ihre Anfrage direkt an den Verkäufer weiter, er meldet sich bei Ihnen.';
+        return du ? 'Klingt gut! Wann erreichen wir dich am besten für einen Rückruf — heute noch oder lieber morgen?'
+                  : 'Wunderbar! Wann erreichen wir Sie am besten für einen Rückruf — heute noch oder lieber morgen?';
       case 'agree_deal':
-        return du ? 'Perfekt, dann haben wir einen Deal! Der Verkäufer meldet sich für die Übergabe.'
-                  : 'Perfekt, dann haben wir eine Einigung! Der Verkäufer meldet sich für die Übergabe.';
+        return du ? 'Perfekt, dann haben wir einen Deal! Wann passt dir die Übergabe am besten? Der Verkäufer richtet sich nach dir.'
+                  : 'Perfekt, dann haben wir eine Einigung! Wann passt Ihnen die Übergabe am besten? Der Verkäufer richtet sich nach Ihnen.';
       case 'escalate_to_sales':
-        return du ? 'Meine Möglichkeiten sind hier erschöpft, aber ich hab einen Vorschlag: Unser Verkaufsleiter meldet sich bei dir, der hat oft noch die eine oder andere Idee.'
-                  : 'Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag: Unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee.';
+        return du ? 'Meine Möglichkeiten sind hier erschöpft, aber ich hab einen Vorschlag: Unser Verkaufsleiter meldet sich bei dir, der hat oft noch eine Idee. Wann erreicht er dich am besten?'
+                  : 'Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag: Unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch eine Idee. Wann erreicht er Sie am besten?';
       case 'request_callback':
-        return du ? 'Alles klar, ich organisiere einen Rückruf für dich!'
-                  : 'Alles klar, ich organisiere einen Rückruf für Sie!';
+        return du ? 'Alles klar, ich organisiere den Rückruf — der Verkäufer meldet sich wie vereinbart bei dir!'
+                  : 'Alles klar, ich organisiere den Rückruf — der Verkäufer meldet sich wie vereinbart bei Ihnen!';
       case 'end_conversation':
         return du ? 'Danke für dein Interesse, melde dich jederzeit gern wieder!'
                   : 'Vielen Dank für Ihr Interesse, melden Sie sich jederzeit gern wieder!';
