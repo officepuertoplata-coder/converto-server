@@ -541,7 +541,9 @@ JSON-FORMAT (exakt diese Felder, halte die Texte KOMPAKT):
   }
 }
 
-Maximal 3-4 Einträge bei likely_objections. Halte alle Texte kompakt.`;
+Maximal 3-4 Einträge bei likely_objections. Halte alle Texte kompakt.
+
+WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH das JSON-Objekt aus, keinen Text davor oder danach.`;
 
     const content = [];
     for (const photo of photos.slice(0, 8)) {
@@ -562,10 +564,7 @@ Maximal 3-4 Einträge bei likely_objections. Halte alle Texte kompakt.`;
       body: JSON.stringify({
         model: 'claude-opus-4-6',
         max_tokens: 5000,
-        messages: [
-          { role: 'user', content },
-          { role: 'assistant', content: '{' }   // Prefill: zwingt Opus direkt ins JSON
-        ]
+        messages: [{ role: 'user', content }]
       })
     });
 
@@ -578,12 +577,7 @@ Maximal 3-4 Einträge bei likely_objections. Halte alle Texte kompakt.`;
 
     // stop_reason prüfen: bei max_tokens ist JSON abgeschnitten
     const stopReason = data.stop_reason;
-    let text = data.content?.[0]?.text || '';
-
-    // Prefill '{' wieder voranstellen (API gibt es nicht zurück)
-    if (!text.trim().startsWith('{')) {
-      text = '{' + text;
-    }
+    const text = data.content?.[0]?.text || '';
 
     if (stopReason === 'max_tokens') {
       console.error('[CV Analyse] Opus wurde durch max_tokens abgeschnitten. Output unvollständig.');
