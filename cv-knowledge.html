@@ -119,6 +119,8 @@ const slotId = params.get('slot');
 let articleId = null;
 let originalAnalysis = null;
 let currentAnalysis = null;
+let currentPdfFacts = [];
+let currentArticle = null;
 
 if (!slotId) {
   document.getElementById('content').innerHTML =
@@ -139,6 +141,8 @@ async function loadKnowledge() {
     }
 
     articleId = d.article.id;
+    currentArticle = d.article;
+    currentPdfFacts = Array.isArray(d.article.pdf_facts) ? JSON.parse(JSON.stringify(d.article.pdf_facts)) : [];
     const a = d.article.analysis;
 
     if (!a || a.error) {
@@ -183,8 +187,24 @@ function renderHeader(article) {
 function render(article) {
   const a = currentAnalysis;
   const s = a.bot_strategy || {};
+  const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
 
   let html = renderHeader(article);
+
+  // ── PDF-FAKTEN (Stufe A) ──────────────────────────
+  if (pdfFacts.length > 0) {
+    html += `
+      <div class="section" style="border-left: 4px solid var(--blue);">
+        <div class="section-head">
+          <div class="section-title">📑 Aus Dokumenten extrahierte Fakten <span style="background:var(--blue);color:#fff;font-size:.65rem;padding:2px 8px;border-radius:6px;font-weight:900;margin-left:6px;">${pdfFacts.length}</span></div>
+          <div class="section-sub">Von Haiku aus deinen PDFs extrahiert. <strong>Hier korrigierst du falsche Werte (z.B. "7 Sitzer" → "8 Sitzer").</strong></div>
+        </div>
+        <div class="list-editor" id="list-pdf_facts">
+          ${renderPdfFacts(pdfFacts)}
+        </div>
+        <button class="list-add" onclick="addPdfFact()">+ Fakt manuell hinzufügen</button>
+      </div>`;
+  }
 
   // ── PRODUKT ────────────────────────────────────
   html += `
@@ -299,6 +319,46 @@ function renderList(items, key) {
     </div>`).join('');
 }
 
+function renderPdfFacts(facts) {
+  if (!Array.isArray(facts)) facts = [];
+  return facts.map((f, i) => `
+    <div class="list-item" style="align-items:stretch;" data-idx="${i}">
+      <div style="display:flex;flex-direction:column;gap:6px;flex:1;">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span style="background:var(--blue);color:#fff;font-size:.6rem;padding:2px 6px;border-radius:4px;font-weight:900;flex-shrink:0;">FAKT ${i+1}</span>
+          <input value="${esc(f.k || '')}" placeholder="Bezeichnung (z.B. Eigengewicht)" onchange="updatePdfFact(${i}, 'k', this.value)" style="flex:1;">
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <span style="background:var(--g);color:#fff;font-size:.6rem;padding:2px 6px;border-radius:4px;font-weight:900;flex-shrink:0;">WERT</span>
+          <input value="${esc(f.v || '')}" placeholder="Wert (z.B. 1820 kg)" onchange="updatePdfFact(${i}, 'v', this.value)" style="flex:1;">
+        </div>
+        ${f.source ? `<div style="font-size:.65rem;color:var(--mu);padding-left:4px;">Quelle: ${esc(f.source)}</div>` : ''}
+      </div>
+      <button class="list-del" onclick="removePdfFact(${i})">🗑</button>
+    </div>`).join('');
+}
+
+function updatePdfFact(idx, field, value) {
+  if (!currentPdfFacts[idx]) currentPdfFacts[idx] = {};
+  currentPdfFacts[idx][field] = value;
+}
+
+function addPdfFact() {
+  currentPdfFacts.push({ k: '', v: '', source: 'manuell ergänzt' });
+  const container = document.getElementById('list-pdf_facts');
+  if (container) {
+    container.innerHTML = renderPdfFacts(currentPdfFacts);
+  } else {
+    // Sektion existiert noch nicht — komplett neu rendern
+    render(currentArticle);
+  }
+}
+
+function removePdfFact(idx) {
+  currentPdfFacts.splice(idx, 1);
+  document.getElementById('list-pdf_facts').innerHTML = renderPdfFacts(currentPdfFacts);
+}
+
 function renderObjections(items) {
   if (!Array.isArray(items)) items = [];
   return items.map((o, i) => `
@@ -402,6 +462,11 @@ function collectFields() {
 
 async function saveKnowledge() {
   collectFields();
+  // PDF-Fakten säubern: leere entfernen
+  const cleanedFacts = currentPdfFacts.filter(f =>
+    f && (f.k || '').trim() && (f.v || '').trim()
+  );
+
   const btn = document.getElementById('saveBtn');
   const status = document.getElementById('saveStatus');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Speichere...';
@@ -411,13 +476,17 @@ async function saveKnowledge() {
     const r = await fetch(API + '/api/cv/article/' + articleId + '/knowledge', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ analysis: currentAnalysis })
+      body: JSON.stringify({
+        analysis: currentAnalysis,
+        pdf_facts: cleanedFacts
+      })
     });
     const d = await r.json();
     if (d.success) {
       status.className = 'save-status ok';
       status.textContent = '✓ Gespeichert';
       originalAnalysis = JSON.parse(JSON.stringify(currentAnalysis));
+      currentPdfFacts = cleanedFacts;
       toast('✅ Korrekturen aktiv — Bot nutzt sie ab jetzt');
       setTimeout(() => { status.textContent = ''; }, 3000);
     } else {

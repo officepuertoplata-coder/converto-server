@@ -157,19 +157,40 @@
     <div class="file-list" id="photoList"></div>
   </div>
 
-  <!-- DOKUMENTE -->
+  <!-- DOKUMENTE FÜR KI -->
   <div class="section">
     <div class="section-head">
-      <div class="section-title">📄 Dokumente <span class="section-badge">PDF</span></div>
+      <div class="section-title">📄 Dokumente für die KI <span class="section-badge">PDF</span></div>
       <span class="count-pill" id="docCount">0</span>
     </div>
+    <p style="font-size:.82rem;color:var(--mu);margin-bottom:10px;">
+      Datenblatt, Spezifikation, technisches Dossier — die KI liest diese und baut daraus die Wissensdatenbank. <strong>Werden NICHT an Käufer geschickt.</strong>
+    </p>
     <div class="drop-zone" id="docZone">
       <input type="file" id="docInput" accept="application/pdf" multiple>
-      <div class="drop-icon">📋</div>
-      <div class="drop-text">Dossier, Rechnung, Beschreibung <strong>hochladen</strong></div>
-      <div class="drop-hint">PDF · z.B. Fahrzeugdossier, Zertifikate, Garantieunterlagen</div>
+      <div class="drop-icon">🧠</div>
+      <div class="drop-text">Datenblatt, Specs, technisches Dossier <strong>hochladen</strong></div>
+      <div class="drop-hint">PDF · z.B. Hersteller-Datenblatt, Zertifikate, Begleitpapiere</div>
     </div>
     <div class="file-list" id="docList"></div>
+  </div>
+
+  <!-- VERKAUFSDOSSIER -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">📋 Verkaufsdossier <span class="section-badge" style="background:#dbeafe;color:#1d4ed8;">An Käufer</span></div>
+      <span class="count-pill" id="dossierCount">0</span>
+    </div>
+    <p style="font-size:.82rem;color:var(--mu);margin-bottom:10px;">
+      Hochwertige Verkaufsunterlage die der Bot bei Interesse <strong>an Käufer versendet</strong> (Resend/WhatsApp). Optional — wenn du nichts hochlädst, bietet der Bot kein Dossier an.
+    </p>
+    <div class="drop-zone" id="dossierZone">
+      <input type="file" id="dossierInput" accept="application/pdf" multiple>
+      <div class="drop-icon">📋</div>
+      <div class="drop-text">Verkaufsunterlage zum <strong>Versand hochladen</strong></div>
+      <div class="drop-hint">PDF · z.B. Verkaufsprospekt, Hochglanz-Datenblatt, Schaubild</div>
+    </div>
+    <div class="file-list" id="dossierList"></div>
   </div>
 
   <!-- NOTIZ -->
@@ -205,7 +226,7 @@ const API = 'https://converto-server-production.up.railway.app';
 const params = new URLSearchParams(location.search);
 const slotId = params.get('slot');
 
-let photoCount = 0, docCount = 0, noteCount = 0;
+let photoCount = 0, docCount = 0, dossierCount = 0, noteCount = 0;
 
 if (!slotId) {
   document.querySelector('main').innerHTML =
@@ -248,12 +269,16 @@ function renderUploads(uploads) {
   // Reset
   document.getElementById('photoList').innerHTML = '';
   document.getElementById('docList').innerHTML = '';
+  document.getElementById('dossierList').innerHTML = '';
   document.getElementById('noteList').innerHTML = '';
-  photoCount = 0; docCount = 0; noteCount = 0;
+  photoCount = 0; docCount = 0; dossierCount = 0; noteCount = 0;
 
   for (const u of uploads) {
     if (u.kind === 'photo') { photoCount++; addPhotoItem(u); }
-    else if (u.kind === 'pdf') { docCount++; addDocItem(u); }
+    else if (u.kind === 'pdf') {
+      if (u.purpose === 'dossier') { dossierCount++; addDocItem(u, 'dossier'); }
+      else                         { docCount++;     addDocItem(u, 'analysis'); }
+    }
     else if (u.kind === 'note') { noteCount++; addNoteItem(u); }
   }
   updateCounts();
@@ -272,17 +297,18 @@ function addPhotoItem(u) {
   document.getElementById('photoList').appendChild(div);
 }
 
-function addDocItem(u) {
+function addDocItem(u, target) {
   const div = document.createElement('div');
   div.className = 'file-item';
   div.innerHTML = `
-    <div class="file-icon">📄</div>
+    <div class="file-icon">${target === 'dossier' ? '📋' : '📄'}</div>
     <div class="file-info">
       <div class="file-name">${esc(u.file_name || 'PDF')}</div>
       <div class="file-meta"><a href="${esc(u.public_url || '#')}" target="_blank" style="color:var(--g2);">PDF öffnen ↗</a></div>
     </div>
     <button class="file-del" onclick="deleteUpload('${u.id}', this)">🗑</button>`;
-  document.getElementById('docList').appendChild(div);
+  const listId = target === 'dossier' ? 'dossierList' : 'docList';
+  document.getElementById(listId).appendChild(div);
 }
 
 function addNoteItem(u) {
@@ -302,8 +328,9 @@ function addNoteItem(u) {
 
 // ── DRAG & DROP SETUP ───────────────────────────────
 function setupZones() {
-  setupZone('photoZone', 'photoInput', uploadPhotos);
-  setupZone('docZone',   'docInput',   uploadDocs);
+  setupZone('photoZone',   'photoInput',   uploadPhotos);
+  setupZone('docZone',     'docInput',     files => uploadDocs(files, 'analysis'));
+  setupZone('dossierZone', 'dossierInput', files => uploadDocs(files, 'dossier'));
 }
 function setupZone(zoneId, inputId, handler) {
   const zone = document.getElementById(zoneId);
@@ -334,26 +361,28 @@ async function uploadPhotos(files) {
 }
 
 // ── DOC UPLOAD ──────────────────────────────────────
-async function uploadDocs(files) {
+async function uploadDocs(files, purpose) {
   for (const file of files) {
     if (file.type !== 'application/pdf') { toast('Nur PDF erlaubt'); continue; }
-    await doUpload('pdf', file);
+    await doUpload('pdf', file, purpose);
   }
   await loadSlot();
 }
 
-async function doUpload(kind, file) {
+async function doUpload(kind, file, purpose) {
   try {
     const base64 = await toBase64(file);
+    const body = {
+      kind,
+      file_name: file.name,
+      file_base64: base64.split(',')[1],
+      content_type: file.type
+    };
+    if (kind === 'pdf') body.purpose = purpose || 'analysis';
     const r = await fetch(API + '/api/cv/slot/' + slotId + '/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        kind,
-        file_name: file.name,
-        file_base64: base64.split(',')[1],
-        content_type: file.type
-      })
+      body: JSON.stringify(body)
     });
     const d = await r.json();
     if (!d.success) { toast('Fehler: ' + (d.error || 'unbekannt')); }
@@ -393,9 +422,19 @@ async function deleteUpload(uploadId, btn) {
   } catch(e) { toast('Fehler: ' + e.message); btn.disabled = false; }
 }
 
-// ── BOT AKTIVIEREN ──────────────────────────────────
+// ── HELPERS ─────────────────────────────────────────
+function updateCounts() {
+  document.getElementById('photoCount').textContent = photoCount;
+  document.getElementById('docCount').textContent = docCount;
+  document.getElementById('dossierCount').textContent = dossierCount;
+  document.getElementById('noteCount').textContent = noteCount;
+  const total = photoCount + docCount + dossierCount + noteCount;
+  document.getElementById('totalSummary').textContent =
+    total + ' Datei' + (total !== 1 ? 'en' : '') + ' hochgeladen';
+}
+
 async function activateBot() {
-  if (photoCount === 0 && docCount === 0 && noteCount === 0) {
+  if (photoCount === 0 && docCount === 0 && dossierCount === 0 && noteCount === 0) {
     if (!confirm('Du hast nichts hochgeladen. Bot trotzdem aktivieren?')) return;
   }
   const btn = document.getElementById('activateBtn');
@@ -415,16 +454,6 @@ async function activateBot() {
     btn.disabled = false; btn.innerHTML = '🤖 Bot aktivieren →';
     toast('Fehler: ' + e.message);
   }
-}
-
-// ── HELPERS ─────────────────────────────────────────
-function updateCounts() {
-  document.getElementById('photoCount').textContent = photoCount;
-  document.getElementById('docCount').textContent = docCount;
-  document.getElementById('noteCount').textContent = noteCount;
-  const total = photoCount + docCount + noteCount;
-  document.getElementById('totalSummary').textContent =
-    total + ' Datei' + (total !== 1 ? 'en' : '') + ' hochgeladen';
 }
 
 function toBase64(file) {

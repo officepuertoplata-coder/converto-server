@@ -181,11 +181,17 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/upload', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { kind, file_name, file_base64, content_type, content } = req.body;
+      const { kind, file_name, file_base64, content_type, content, purpose } = req.body;
 
       if (!['photo', 'pdf', 'note'].includes(kind)) {
         return res.status(400).json({ error: 'Ungültiger kind. Erwartet: photo/pdf/note' });
       }
+
+      // PDF-Zweck: 'analysis' (KI liest) oder 'dossier' (Bot versendet)
+      // Default für PDFs: 'analysis'
+      const pdfPurpose = (kind === 'pdf')
+        ? (purpose === 'dossier' ? 'dossier' : 'analysis')
+        : null;
 
       // Artikel zum Slot finden
       const { data: article, error: artErr } = await supabase
@@ -252,6 +258,7 @@ module.exports = function(app, supabase, deps) {
           storage_path: storagePath,
           public_url: publicUrl,
           content: textContent,
+          purpose: pdfPurpose,
           sort_order: nextOrder
         })
         .select()
@@ -319,26 +326,32 @@ module.exports = function(app, supabase, deps) {
 
   // ============================================================
   // 5b. PUT /api/cv/article/:id/knowledge
-  //     Wissensdatenbank manuell editieren
+  //     Wissensdatenbank manuell editieren (analysis + pdf_facts)
   // ============================================================
   app.put('/api/cv/article/:id/knowledge', async (req, res) => {
     try {
-      const { analysis } = req.body;
+      const { analysis, pdf_facts } = req.body;
       if (!analysis || typeof analysis !== 'object') {
         return res.status(400).json({ error: 'analysis (JSON-Objekt) erforderlich' });
       }
 
-      // bot_strategy auch in dna spiegeln (Bot liest von beiden)
-      const dna = analysis.bot_strategy || null;
+      const update = {
+        analysis,
+        dna: analysis.bot_strategy || null,  // bot_strategy in dna spiegeln
+        status: 'analyzed',
+        updated_at: new Date().toISOString()
+      };
+
+      // pdf_facts optional mitupdaten
+      if (Array.isArray(pdf_facts)) {
+        update.pdf_facts = pdf_facts.filter(f =>
+          f && typeof f === 'object' && f.k && f.v
+        );
+      }
 
       const { data, error } = await supabase
         .from('cv_articles')
-        .update({
-          analysis,
-          dna,
-          status: 'analyzed',
-          updated_at: new Date().toISOString()
-        })
+        .update(update)
         .eq('id', req.params.id)
         .select()
         .single();
@@ -352,14 +365,129 @@ module.exports = function(app, supabase, deps) {
 
 
   // ============================================================
-  // KI-ANALYSE: Opus analysiert Fotos + Notizen + Stammdaten
   // ============================================================
+  // KI-ANALYSE — ZWEI STUFEN
+  //   Stufe A: Haiku liest jedes Analyse-PDF und extrahiert
+  //            strukturierte Fakten [{k, v, source}]
+  //   Stufe B: Opus baut Verkaufs-DNA aus Fotos + Notizen +
+  //            extrahierten PDF-Fakten + Stammdaten
+  // ============================================================
+
+  // ── STUFE A ────────────────────────────────────────────────
+  async function cvExtractPdfFacts(pdfUrl, pdfFileName) {
+    try {
+      console.log('[CV Haiku] Lese PDF:', pdfFileName);
+      const dr = await fetch(pdfUrl);
+      if (!dr.ok) throw new Error('PDF Download HTTP ' + dr.status);
+      const db = Buffer.from(await dr.arrayBuffer());
+
+      const er = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 3500,
+          system: 'Du extrahierst Fakten aus Verkaufsunterlagen. Antworte ausschließlich mit einem reinen JSON-Array. Kein Markdown, keine Erklärung.',
+          messages: [{ role: 'user', content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: db.toString('base64')
+              }
+            },
+            { type: 'text', text:
+`Extrahiere ALLE konkreten Fakten aus diesem Dokument als JSON-Array.
+Format: [{"k": "Bezeichnung", "v": "Wert"}, ...]
+
+Sammle alles Konkrete: Baujahr, KM-Stand, Hubraum, Leistung (kW/PS), Kraftstoff,
+Getriebe, Antrieb, Eigengewicht, zulässiges Gesamtgewicht, Nutzlast,
+Sitzplätze, Türen, Farbe (außen/innen), Polsterung, alle Ausstattungs-
+merkmale einzeln, Maße (Länge/Breite/Höhe), Tank, Verbrauch, CO2,
+Erstzulassung, Pickerl/TÜV-Datum, Preis (falls genannt), Serienummern,
+Garantie-Infos, Inkludierte Dienstleistungen, alle technischen Daten.
+
+REGELN
+- Jedes Detail einzeln, nicht zusammenfassen
+- Werte sind Zahlen + Einheit oder kurze Begriffe ("1820 kg", "Dunkelblau-Metallic")
+- Keine ganzen Sätze als Wert
+- Nichts erfinden — nur was wirklich im Dokument steht
+- Keine Duplikate
+
+Antworte NUR mit dem JSON-Array. Nichts davor, nichts danach.`}
+          ]}]
+        })
+      });
+
+      if (!er.ok) {
+        const errText = await er.text();
+        console.error('[CV Haiku] API', er.status, errText.substring(0, 200));
+        return [];
+      }
+
+      const ed = await er.json();
+      const text = (ed.content?.[0]?.text || '[]').replace(/```json|```/g, '').trim();
+      const sIdx = text.indexOf('[');
+      const eIdx = text.lastIndexOf(']');
+      if (sIdx < 0 || eIdx <= sIdx) {
+        console.warn('[CV Haiku] Kein JSON-Array gefunden');
+        return [];
+      }
+
+      const arr = JSON.parse(text.substring(sIdx, eIdx + 1));
+      const facts = arr.filter(p => p && p.k && p.v).map(p => ({
+        k: String(p.k).trim(),
+        v: String(p.v).trim(),
+        source: pdfFileName || 'Dokument'
+      }));
+      console.log('[CV Haiku] ' + facts.length + ' Fakten aus ' + pdfFileName);
+      return facts;
+    } catch(e) {
+      console.error('[CV Haiku] Fehler bei', pdfFileName, ':', e.message);
+      return [];
+    }
+  }
+
+  // ── STUFE B (mit Stufe A integriert) ───────────────────────
   async function cvAnalyzeArticle(article, uploads) {
     const photos = uploads.filter(u => u.kind === 'photo' && u.public_url);
-    const pdfs   = uploads.filter(u => u.kind === 'pdf');
-    const notes  = uploads.filter(u => u.kind === 'note').map(u => u.content).join('\n\n');
+    // NUR Analyse-PDFs an die KI — Dossier-PDFs werden später vom Bot verschickt
+    const analysisPdfs = uploads.filter(u =>
+      u.kind === 'pdf' && (u.purpose === 'analysis' || u.purpose == null)
+    );
+    const notes = uploads.filter(u => u.kind === 'note').map(u => u.content).filter(Boolean).join('\n\n');
 
     const anrede = article.anrede || 'Sie';
+
+    // ─── STUFE A: alle Analyse-PDFs durch Haiku ─────────
+    let pdfFacts = [];
+    for (const pdf of analysisPdfs) {
+      if (!pdf.public_url) continue;
+      const facts = await cvExtractPdfFacts(pdf.public_url, pdf.file_name);
+      pdfFacts = pdfFacts.concat(facts);
+    }
+    // Sofort speichern damit Verkäufer sie schon sieht falls Stufe B failt
+    if (pdfFacts.length > 0) {
+      await supabase.from('cv_articles')
+        .update({ pdf_facts: pdfFacts })
+        .eq('id', article.id);
+      console.log('[CV] ' + pdfFacts.length + ' PDF-Fakten gespeichert für Artikel ' + article.id);
+    } else {
+      // Auch leer speichern (überschreibt alten Stand)
+      await supabase.from('cv_articles')
+        .update({ pdf_facts: [] })
+        .eq('id', article.id);
+    }
+
+    // ─── STUFE B: Opus baut Verkaufs-DNA ───────────────
+    const factsBlock = pdfFacts.length > 0
+      ? pdfFacts.map(f => `• ${f.k}: ${f.v}`).join('\n')
+      : '(keine PDF-Fakten — Bot kennt nur was auf Bildern sichtbar und in Notizen steht)';
 
     const prompt = `Du analysierst ein Produkt für einen WhatsApp-Verkaufsbot, der direkt mit Käufern verhandelt.
 
@@ -370,44 +498,50 @@ Mindestpreis: €${article.min_price || 'n/a'}
 Standort: ${article.location || 'nicht angegeben'}
 Anrede im Bot: ${anrede}
 
+═══════════════════════════════════════════════════════════
+VERIFIZIERTE FAKTEN AUS DEN HOCHGELADENEN DOKUMENTEN
+═══════════════════════════════════════════════════════════
+${factsBlock}
+
 NOTIZEN VOM VERKÄUFER
 ${notes || '(keine Notizen)'}
 
-${pdfs.length > 0 ? `ZUSATZ: ${pdfs.length} PDF-Dokument(e) wurden hochgeladen (z.B. Dossier, Rechnung, Zertifikate).` : ''}
-${photos.length > 0 ? `Die angehängten Bilder zeigen das Produkt. Analysiere sie genau.` : ''}
+${photos.length > 0 ? `BILDER: ${photos.length} Foto(s) zeigen das Produkt — analysiere sie genau, aber konzentriere dich auf den ZUSTAND und visuelle Eindrücke. Technische Daten haben Vorrang aus den Dokumenten oben.` : ''}
 
 AUFGABE
-Erstelle eine vollständige Verkaufs-Wissensdatenbank als JSON. Der Bot wird damit später Käufer überzeugen und den Preis verhandeln.
+Erstelle eine vollständige Verkaufs-Wissensdatenbank als JSON. Der Bot wird damit überzeugen und verhandeln.
 
-REGELN
+REGELN — STRENG EINHALTEN
 - Antworte NUR mit reinem JSON. Keine Markdown-Codeblöcke, keine Einleitung.
 - Halte dich EXAKT an die untenstehende Struktur.
 - Schreibe alle Bot-Texte in der Anrede "${anrede}".
-- Nutze konkrete Details aus Bildern und Notizen. Keine Floskeln.
-- Der Bot verhandelt zwischen Verkaufspreis (€${article.sale_price}) und Mindestpreis (€${article.min_price}). Niemals darunter.
+- DOKUMENT-VORRANG: Fakten aus den Dokumenten oben sind verifiziert. Bei Konflikt zwischen Dokument und Foto-Eindruck → DOKUMENT GEWINNT.
+- Erfinde NIEMALS Daten. Wenn etwas nicht in Fakten/Notizen/Bildern ist → nicht erwähnen. Lieber "kann ich Ihnen gerne nachreichen" als Lüge.
+- key_facts: Übernimm ALLE wichtigen Dokument-Fakten 1:1 als kurze Sätze. Das ist die primäre Wissensquelle des Bots.
+- Bot verhandelt zwischen €${article.sale_price} und €${article.min_price}. NIEMALS darunter.
 
-JSON-FORMAT
+JSON-FORMAT (exakt diese Felder):
 {
-  "category": "Produkttyp (z.B. KFZ, Maschine, Möbel, Elektronik)",
+  "category": "Produkttyp (KFZ, Maschine, Möbel, Elektronik, etc.)",
   "summary": "1-2 Sätze Produktbeschreibung",
-  "key_facts": ["konkrete Fakten aus Bildern und Notizen, je 1 Satz"],
-  "selling_points": ["stärkste Verkaufsargumente, je 1 Satz"],
-  "condition": "Beschreibung des Zustands",
-  "likely_buyer": "Wer kauft das typischerweise — 1 Satz",
-  "likely_objections": [{ "objection": "möglicher Einwand", "response": "Antwort des Bots" }],
+  "key_facts": ["Alle wichtigen Fakten aus Dokumenten + sichtbare Zustands-Fakten, je 1 Satz pro Eintrag"],
+  "selling_points": ["3-6 stärkste Verkaufsargumente, je 1 Satz"],
+  "condition": "Zustands-Beschreibung basierend auf Bildern + Notizen",
+  "likely_buyer": "Typischer Käufer — 1 Satz",
+  "likely_objections": [{ "objection": "möglicher Einwand", "response": "Antwort des Bots in ${anrede}-Form" }],
   "bot_strategy": {
-    "opening_message": "Erste Bot-Nachricht: Begrüßung + Produktvorstellung mit stärksten Argumenten, 2-3 Sätze",
-    "value_argument": "Hauptargument das den Preis rechtfertigt",
+    "opening_message": "Erste Bot-Nachricht in ${anrede}-Form: Begrüßung + Produkt-Highlight, 2-3 Sätze, mit den 2 stärksten Argumenten",
+    "value_argument": "Hauptargument das den Preis €${article.sale_price} rechtfertigt",
     "negotiation_steps": [
-      "1. Verhandlung: Verkaufspreis halten, Wert betonen",
-      "2. Verhandlung: kleines Zugeständnis (etwa -2-3%)",
-      "3. Verhandlung: bis nahe Mindestpreis"
+      "Schritt 1: bei €${article.sale_price} halten, Wert betonen",
+      "Schritt 2: kleines Zugeständnis (~30% Spielraum)",
+      "Schritt 3: weiteres Zugeständnis (~65% Spielraum)",
+      "Schritt 4: bis nahe €${article.min_price}"
     ],
-    "walkaway_line": "Höfliche Absage wenn Käufer unter Mindestpreis bleibt"
+    "walkaway_line": "Höfliche aber bestimmte Absage wenn Käufer unter €${article.min_price} bleibt"
   }
 }`;
 
-    // Content mit Bildern
     const content = [];
     for (const photo of photos.slice(0, 8)) {
       content.push({
@@ -426,7 +560,7 @@ JSON-FORMAT
       },
       body: JSON.stringify({
         model: 'claude-opus-4-6',
-        max_tokens: 2500,
+        max_tokens: 3000,
         messages: [{ role: 'user', content }]
       })
     });
@@ -679,6 +813,12 @@ JSON-FORMAT
     const strategy = analysis.bot_strategy || {};
     const anrede = article.anrede || 'Sie';
 
+    // PDF-Fakten holen — der Bot zitiert primär aus dieser Quelle
+    const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
+    const factsBlock = pdfFacts.length > 0
+      ? pdfFacts.map(f => `• ${f.k}: ${f.v}`).join('\n')
+      : '(keine extrahierten Dokument-Fakten)';
+
     // Erste Nachricht: vorgefertigte Begrüßung verwenden, falls vorhanden
     if (userMessage === null && strategy.opening_message) {
       const opening = strategy.opening_message;
@@ -696,8 +836,20 @@ MINDESTPREIS: €${article.min_price} (NIE darunter gehen!)
 STANDORT: ${article.location || 'auf Anfrage'}
 ANREDE: ${anrede}
 
+═══════════════════════════════════════════════════════
+VERIFIZIERTE FAKTEN AUS HOCHGELADENEN DOKUMENTEN
+(deine primäre Wissensquelle — diese Daten sind sicher korrekt)
+═══════════════════════════════════════════════════════
+${factsBlock}
+
 PRODUKTBESCHREIBUNG:
 ${analysis.summary || 'Kein Detail verfügbar.'}
+
+ZUSTAND:
+${analysis.condition || '(nicht beschrieben)'}
+
+WEITERE FAKTEN (aus Bildern + Notizen):
+${(analysis.key_facts || []).map(f => `• ${f}`).join('\n') || '(keine)'}
 
 VERKAUFSARGUMENTE:
 ${(analysis.selling_points || []).map((p, i) => `${i+1}. ${p}`).join('\n') || '(keine spezifischen Argumente)'}
@@ -717,9 +869,11 @@ REGELN
 - WhatsApp-Stil: kurz, natürlich, max. 3-4 Sätze
 - ${anrede}-Anrede konsequent
 - Aktiv verkaufen, nicht nur antworten
+- Antworte auf Detail-Fragen IMMER ZUERST aus den verifizierten Dokument-Fakten oben
+- Wenn ein Fakt weder oben noch in der Beschreibung steht: sag "diese spezifische Info habe ich gerade nicht zur Hand, ich kläre das mit dem Verkäufer und melde mich"
 - Bei Einigung: Frage Käufer nach Name und Telefonnummer für Rückruf
 - Bei Sackgasse: biete Rückruf an
-- Keine Fakten erfinden — nur was oben steht`;
+- NIEMALS Fakten erfinden — strikt nur was oben steht`;
 
     const messages = userMessage === null
       ? [{ role: 'user', content: 'START: Begrüße den Käufer, präsentiere das Produkt überzeugend in 2-3 Sätzen und frage was ihn besonders interessiert.' }]
