@@ -15,6 +15,28 @@ module.exports = function(app, supabase, deps) {
   };
 
   // ============================================================
+  // STRIPE (Treuhand-Anzahlung)
+  // Nutzt denselben EU-Key wie das bestehende System.
+  // Geld geht auf den Converdino-Account; Auszahlung an Verkäufer
+  // erfolgt manuell nach Ablauf der Widerrufsfrist.
+  // ============================================================
+  let cvStripe = null;
+  try {
+    const stripeKey = process.env.STRIPE_SECRET_KEY_EU || process.env.STRIPE_SECRET_KEY;
+    if (stripeKey) {
+      cvStripe = require('stripe')(stripeKey);
+      console.log('[CV] Stripe initialisiert');
+    } else {
+      console.warn('[CV] Kein Stripe-Key gefunden — Zahlungslinks deaktiviert');
+    }
+  } catch(e) {
+    console.error('[CV] Stripe-Init fehlgeschlagen:', e.message);
+  }
+
+  // Basis-URL für Redirect nach Zahlung
+  const CV_BASE_URL = process.env.CV_BASE_URL || 'https://converdino.com';
+
+  // ============================================================
   // HELFER: Login-Identifier aus Body/Header lesen
   // ============================================================
   function getUserLogin(req) {
@@ -99,7 +121,7 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/article', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { title, sale_price, min_price, location, anrede, notes } = req.body;
+      const { title, sale_price, min_price, location, anrede, notes, deposit_percent } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
@@ -159,10 +181,14 @@ module.exports = function(app, supabase, deps) {
         article = inserted;
       }
 
-      // Slot Status updaten
+      // Slot Status + Anzahlungssatz updaten
+      const slotUpdate = { status: 'configured', updated_at: new Date().toISOString() };
+      if (deposit_percent != null && deposit_percent >= 1 && deposit_percent <= 100) {
+        slotUpdate.deposit_percent = deposit_percent;
+      }
       await supabase
         .from('cv_slots')
-        .update({ status: 'configured', updated_at: new Date().toISOString() })
+        .update(slotUpdate)
         .eq('id', slotId);
 
       res.json({ success: true, article });
@@ -820,6 +846,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
       slot, article,
       history: [],
       phoneId,
+      phone,
       startedAt: Date.now()
     });
 
@@ -932,6 +959,8 @@ ${(strategy.negotiation_steps || ['Halte Verkaufspreis', 'Kleines Zugeständnis'
 ABWICKLUNG & SICHERHEIT (so läuft der Kauf ab)
 ═══════════════════════════════════════════════════════
 - Die Kaufabwicklung läuft IMMER sicher und treuhänderisch über die Plattform ab. Es gibt KEINEN Privatverkauf, keine private Übergabe von Bargeld, kein direkter Geldtausch zwischen Käufer und Verkäufer.
+- ABLAUF BEI EINIGUNG: Wenn ihr euch einig seid und der Käufer reservieren/kaufen möchte → sichere zuerst Name + Kontakt (collect_contact) → dann rufe create_payment_link auf. Der Käufer zahlt eine Reservierungs-Anzahlung (z.B. 10%), der Restbetrag wird bei Übergabe fällig.
+- Erkläre dem Käufer: "Mit der Anzahlung reservieren Sie verbindlich, das Geld ist sicher über unsere Treuhand geschützt. Der Restbetrag wird bei Übergabe fällig." Das ist ein echtes Sicherheits-Argument.
 - Erkläre bei Kaufinteresse sinngemäß: "Die Zahlung läuft sicher ab — Ihr Geld ist geschützt, und der Verkäufer versendet Artikel und Rechnung erst danach an Sie." Das ist ein echtes Vertrauens- und Sicherheits-Argument, nutze es aktiv besonders bei höherpreisigen Artikeln.
 - NENNE NIEMALS eine Provision, Gebühr oder einen Vermittlungsanteil. Der Käufer zahlt den verhandelten Preis — Punkt. Über interne Abläufe sprichst du nicht.
 - Stelle dich nicht als Verkäufer dar ("ich verkaufe Ihnen..."). Du bist der Verkaufsberater der die sichere Abwicklung vermittelt. Der eigentliche Verkäufer stellt Rechnung und versendet die Ware.
@@ -943,6 +972,7 @@ DEINE WERKZEUGE — wann du sie einsetzt
 - flag_hot_lead: Sobald der Käufer ernsthaftes Kaufinteresse zeigt (will kaufen, fragt nach Übergabe/Probefahrt/Verfügbarkeit, oder will mit dem Verkäufer sprechen). Reiche den Lead SOFORT weiter — lieber zu früh als zu spät.
 - collect_contact: Wenn konkretes Interesse da ist, frage natürlich nach Name und Telefonnummer (und optional Email). Erst bei echtem Interesse, nicht am Anfang.
 - agree_deal: Wenn sich Käufer und du auf einen Preis einigen. Vorher Kontaktdaten sichern.
+- create_payment_link: NACH der Einigung UND wenn du Name + Kontaktdaten hast — erstellt den sicheren Anzahlungs-Zahlungslink und schickt ihn dem Käufer. Nutze dies wenn der Käufer bereit ist zu reservieren/zu zahlen.
 - escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee."
 - request_callback: Wenn ein Rückruf/Termin vereinbart wird — mit konkretem Zeitfenster.
 - confirm_commitment: Der allerletzte Schritt, der das Gespräch beendet — siehe Commitment-Phase unten.
@@ -1019,6 +1049,17 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
             buyer_name: { type: 'string' },
             buyer_phone: { type: 'string' },
             preferred_time: { type: 'string', description: 'Vereinbartes Übergabe-/Kontakt-Zeitfenster falls genannt' }
+          },
+          required: ['agreed_price']
+        }
+      },
+      {
+        name: 'create_payment_link',
+        description: 'Erstellt einen sicheren Stripe-Zahlungslink für die Reservierungs-Anzahlung. NUR aufrufen NACHDEM eine Preiseinigung erzielt wurde UND du Name + Kontaktdaten des Käufers hast. Der Käufer zahlt die Anzahlung, der Rest wird bei Übergabe fällig. Sage dem Käufer dass die Zahlung sicher über die Plattform-Treuhand läuft.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            agreed_price: { type: 'number', description: 'Der final vereinbarte Gesamtpreis in Euro' }
           },
           required: ['agreed_price']
         }
@@ -1284,13 +1325,43 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           session.phase = 'closed';
           updates.phase = 'closed';
           updates.status = 'deal';
-          if (input.agreed_price) updates.agreed_price = input.agreed_price;
+          if (input.agreed_price) { updates.agreed_price = input.agreed_price; session.agreedPrice = input.agreed_price; }
           await cvLogEvent(session, phone, 'agreed', {
             agreed_price: input.agreed_price,
             buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail, preferred_time: session.callbackTime
           });
           session.notified = true;
           break;
+
+        case 'create_payment_link': {
+          if (input.agreed_price) session.agreedPrice = input.agreed_price;
+          const result = await cvCreateDepositLink(session);
+          if (result) {
+            const du = (session.article.anrede || 'Sie') === 'Du';
+            const linkMsg = du
+              ? `Perfekt! 🎉\n\nUm „${session.article.title}" verbindlich für dich zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* an (${result.depositPct}%) — sicher über unsere Treuhand. Den Restbetrag von €${result.restbetrag.toFixed(2)} klärst du direkt bei der Übergabe mit dem Verkäufer.\n\nHier dein sicherer Zahlungslink:\n${result.url}`
+              : `Perfekt! 🎉\n\nUm „${session.article.title}" verbindlich für Sie zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* an (${result.depositPct}%) — sicher über unsere Treuhand. Den Restbetrag von €${result.restbetrag.toFixed(2)} klären Sie direkt bei der Übergabe mit dem Verkäufer.\n\nHier Ihr sicherer Zahlungslink:\n${result.url}`;
+            await sendWAMessage(session.phoneId, phone, linkMsg);
+            session.history.push({ role: 'assistant', content: linkMsg });
+            // Event: Link verschickt
+            await cvLogEvent(session, phone, 'payment_link_sent', {
+              deposit: result.deposit, agreed_price: result.agreed,
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone
+            }, true);
+            session.paymentLinkSent = true;
+          } else {
+            // Fehler beim Link — ehrlich bleiben, Lead an Verkäufer
+            const du = (session.article.anrede || 'Sie') === 'Du';
+            await sendWAMessage(session.phoneId, phone, du
+              ? 'Einen Moment — ich richte gerade die Reservierung ein und der Verkäufer meldet sich gleich bei dir mit den Zahlungsdetails.'
+              : 'Einen Moment — ich richte gerade die Reservierung ein und der Verkäufer meldet sich gleich bei Ihnen mit den Zahlungsdetails.');
+            await cvLogEvent(session, phone, 'hot_lead', {
+              reason: 'Zahlungslink-Erstellung fehlgeschlagen — bitte manuell kontaktieren',
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone
+            });
+          }
+          break;
+        }
 
         case 'escalate_to_sales':
           session.phase = 'escalated';
@@ -1460,6 +1531,188 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         console.log(`[CV] Verkäufer-Benachrichtigung (${type}) — kein gültiger Kontakt (user_login: ${sellerLogin}). Resend folgt in Schritt D.`);
       }
     } catch(e) { console.error('[CV notify]', e.message); }
+  }
+
+
+  // ============================================================
+  // STRIPE: Anzahlungs-Zahlungslink erstellen
+  // ============================================================
+  async function cvCreateDepositLink(session) {
+    if (!cvStripe) {
+      console.error('[CV Stripe] Nicht initialisiert');
+      return null;
+    }
+    try {
+      const article = session.article;
+      const slot = session.slot;
+      const agreed = Number(session.agreedPrice) || Number(article.sale_price);
+      const depositPct = Number(slot.deposit_percent) || 10;
+      const deposit = Math.round(agreed * depositPct) / 100; // z.B. 10% von 23990 = 2399
+      const depositCents = Math.round(deposit * 100);
+
+      if (depositCents < 50) {
+        console.error('[CV Stripe] Anzahlung zu klein:', deposit);
+        return null;
+      }
+
+      // Produkt + Preis dynamisch anlegen, Payment Link erstellen
+      const paymentLink = await cvStripe.paymentLinks.create({
+        line_items: [{
+          price_data: {
+            currency: 'eur',
+            unit_amount: depositCents,
+            product_data: {
+              name: `Reservierung: ${article.title}`,
+              description: `Anzahlung ${depositPct}% — Restbetrag €${(agreed - deposit).toFixed(2)} bei Übergabe`
+            }
+          },
+          quantity: 1
+        }],
+        metadata: {
+          cv_slot_id: String(slot.id),
+          cv_session_id: String(session.dbSessionId || ''),
+          buyer_phone: String(session.phone || ''),
+          buyer_name: String(session.buyerName || ''),
+          agreed_price: String(agreed),
+          deposit_amount: String(deposit),
+          bot_code: String(slot.bot_code || '')
+        },
+        after_completion: {
+          type: 'redirect',
+          redirect: { url: `${CV_BASE_URL}/danke.html` }
+        }
+      });
+
+      // In Session + DB speichern
+      session.depositAmount = deposit;
+      session.stripePaymentLink = paymentLink.url;
+      if (session.dbSessionId) {
+        await supabase.from('cv_bot_sessions').update({
+          deposit_amount: deposit,
+          agreed_price: agreed,
+          stripe_payment_link: paymentLink.url,
+          stripe_payment_link_id: paymentLink.id,
+          last_message_at: new Date().toISOString()
+        }).eq('id', session.dbSessionId);
+      }
+
+      console.log(`[CV Stripe] Link erstellt: €${deposit} Anzahlung für Slot ${slot.id}`);
+      return { url: paymentLink.url, deposit, agreed, restbetrag: agreed - deposit, depositPct };
+    } catch(e) {
+      console.error('[CV Stripe] Link-Erstellung fehlgeschlagen:', e.message);
+      return null;
+    }
+  }
+
+  // ============================================================
+  // STRIPE WEBHOOK: Zahlungseingang verarbeiten
+  // Route: POST /api/cv/stripe/webhook
+  // WICHTIG: braucht den rohen Body für die Signaturprüfung.
+  // In server.js muss VOR express.json() für diese Route
+  // express.raw({type:'application/json'}) gesetzt sein — siehe Anleitung.
+  // ============================================================
+  app.post('/api/cv/stripe/webhook', async (req, res) => {
+    if (!cvStripe) return res.status(503).send('Stripe nicht konfiguriert');
+
+    let event;
+    const webhookSecret = process.env.STRIPE_CV_WEBHOOK_SECRET;
+    try {
+      if (webhookSecret && req.headers['stripe-signature']) {
+        // Signaturprüfung mit rohem Body (req.body ist Buffer wenn express.raw aktiv)
+        event = cvStripe.webhooks.constructEvent(
+          req.body, req.headers['stripe-signature'], webhookSecret
+        );
+      } else {
+        // Fallback ohne Secret (nur für Test) — Body ggf. schon geparst
+        event = typeof req.body === 'object' && !Buffer.isBuffer(req.body)
+          ? req.body
+          : JSON.parse(req.body.toString());
+        console.warn('[CV Stripe] Webhook OHNE Signaturprüfung verarbeitet (Test-Modus)');
+      }
+    } catch(e) {
+      console.error('[CV Stripe] Webhook-Signatur ungültig:', e.message);
+      return res.status(400).send(`Webhook Error: ${e.message}`);
+    }
+
+    // Nur abgeschlossene Checkouts interessieren uns
+    if (event.type === 'checkout.session.completed') {
+      const cs = event.data.object;
+      const meta = cs.metadata || {};
+      try {
+        const paidAmount = (cs.amount_total || 0) / 100;
+        const sessionId = meta.cv_session_id;
+        const slotId = meta.cv_slot_id;
+
+        // Bot-Session als bezahlt markieren
+        if (sessionId) {
+          await supabase.from('cv_bot_sessions').update({
+            paid_at: new Date().toISOString(),
+            paid_amount: paidAmount,
+            stripe_session_id: cs.id,
+            status: 'deal'
+          }).eq('id', sessionId);
+        }
+
+        // Event protokollieren
+        await supabase.from('cv_events').insert({
+          session_id: sessionId || null,
+          slot_id: slotId || null,
+          type: 'paid',
+          buyer_phone: meta.buyer_phone || null,
+          payload: {
+            buyer_name: meta.buyer_name,
+            agreed_price: meta.agreed_price,
+            deposit_amount: meta.deposit_amount,
+            paid_amount: paidAmount,
+            article: meta.bot_code
+          },
+          notified: false
+        });
+
+        console.log(`[CV Stripe] ✅ Zahlung eingegangen: €${paidAmount} für Slot ${slotId}`);
+
+        // Verkäufer informieren (WA-Fallback; Resend folgt Schritt D)
+        await cvNotifyPayment(slotId, meta, paidAmount);
+
+        // Käufer-Bestätigung per WhatsApp
+        if (meta.buyer_phone) {
+          const phoneId = process.env.META_PHONE_NUMBER_ID || null;
+          const confirmMsg = `✅ Zahlung erhalten — vielen Dank${meta.buyer_name ? ', ' + meta.buyer_name : ''}!\n\nIhre Reservierung für „${meta.article || 'den Artikel'}" ist bestätigt. Der Verkäufer wird sich für die Übergabe und den Restbetrag mit Ihnen in Verbindung setzen.`;
+          await sendWAMessage(phoneId, meta.buyer_phone, confirmMsg).catch(() => {});
+        }
+      } catch(e) {
+        console.error('[CV Stripe] Webhook-Verarbeitung Fehler:', e.message);
+      }
+    }
+
+    res.json({ received: true });
+  });
+
+  // Verkäufer über Zahlungseingang informieren
+  async function cvNotifyPayment(slotId, meta, paidAmount) {
+    try {
+      const { data: slot } = await supabase
+        .from('cv_slots').select('subscription_id, bot_code').eq('id', slotId).maybeSingle();
+      if (!slot) return;
+      const { data: sub } = await supabase
+        .from('cv_subscriptions').select('user_login').eq('id', slot.subscription_id).maybeSingle();
+      const sellerLogin = sub?.user_login;
+
+      const msg = `🤖 *Converdino*\n\n🎉 *Zahlung eingegangen!*\n` +
+        `Artikel: ${meta.article || slot.bot_code}\n` +
+        `Anzahlung: €${paidAmount}\n` +
+        (meta.agreed_price ? `Vereinbarter Preis: €${meta.agreed_price}\n` : '') +
+        (meta.buyer_name ? `Käufer: ${meta.buyer_name}\n` : '') +
+        (meta.buyer_phone ? `Käufer-WhatsApp: +${meta.buyer_phone}\n` : '') +
+        `\n⏳ Bitte Widerrufsfrist (14 Tage) beachten. Auszahlung erfolgt danach.`;
+
+      if (sellerLogin && /^\+?\d{8,}$/.test(sellerLogin.replace(/[^0-9+]/g, ''))) {
+        const cleanPhone = sellerLogin.replace(/[^0-9]/g, '');
+        await sendWAMessage(process.env.META_PHONE_NUMBER_ID, cleanPhone, msg);
+      } else {
+        console.log(`[CV Stripe] Verkäufer-Zahlungsinfo — kein gültiger Kontakt. Resend folgt Schritt D.`);
+      }
+    } catch(e) { console.error('[CV notifyPayment]', e.message); }
   }
 
 

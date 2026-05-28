@@ -32,6 +32,10 @@ app.use('/api/', function(req, res, next) {
   res.set('Expires', '0');
   next();
 });
+
+// Converdino Stripe-Webhook braucht ROHEN Body (vor express.json registrieren)
+app.use('/api/cv/stripe/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '50mb' }));
 express.urlencoded({ extended: true, limit: '50mb' })
 

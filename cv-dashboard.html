@@ -160,6 +160,11 @@
           <option value="Du">Du (locker)</option>
         </select>
       </div>
+      <div class="field">
+        <div class="field-label">Anzahlung zur Reservierung (%)</div>
+        <input id="f-deposit" type="number" min="1" max="100" step="1" placeholder="10" value="10">
+        <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Prozent des verhandelten Preises, den der Käufer als Anzahlung zahlt. Rest bei Übergabe.</div>
+      </div>
       <div class="err" id="articleErr"></div>
     </div>
     <div class="modal-foot">
@@ -363,6 +368,7 @@ async function saveArticle() {
   const minprice = parseFloat(document.getElementById('f-minprice').value);
   const location = document.getElementById('f-location').value.trim();
   const anrede   = document.getElementById('f-anrede').value;
+  const deposit  = parseInt(document.getElementById('f-deposit').value) || 10;
   const err      = document.getElementById('articleErr');
   const btn      = document.getElementById('saveArticleBtn');
 
@@ -370,6 +376,7 @@ async function saveArticle() {
   if (!price || price <= 0)        { err.textContent = 'Verkaufspreis erforderlich'; return; }
   if (!minprice || minprice <= 0)  { err.textContent = 'Mindestpreis erforderlich'; return; }
   if (minprice > price)    { err.textContent = 'Mindestpreis muss unter Verkaufspreis liegen'; return; }
+  if (deposit < 1 || deposit > 100) { err.textContent = 'Anzahlung muss zwischen 1 und 100% liegen'; return; }
 
   err.textContent = '';
   btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
@@ -378,7 +385,7 @@ async function saveArticle() {
     const r = await fetch(API + '/api/cv/slot/' + activeSlotId + '/article', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location, anrede })
+      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location, anrede, deposit_percent: deposit })
     });
     const d = await r.json();
     if (!d.success) {
