@@ -509,38 +509,39 @@ ${notes || '(keine Notizen)'}
 ${photos.length > 0 ? `BILDER: ${photos.length} Foto(s) zeigen das Produkt — analysiere sie genau, aber konzentriere dich auf den ZUSTAND und visuelle Eindrücke. Technische Daten haben Vorrang aus den Dokumenten oben.` : ''}
 
 AUFGABE
-Erstelle eine vollständige Verkaufs-Wissensdatenbank als JSON. Der Bot wird damit überzeugen und verhandeln.
+Die technischen Fakten sind oben bereits verifiziert und werden dem Bot separat zur Verfügung gestellt — du musst sie NICHT wiederholen. Deine Aufgabe ist die VERKAUFS-EBENE: Wie verkauft und verhandelt der Bot dieses Produkt überzeugend?
 
 REGELN — STRENG EINHALTEN
 - Antworte NUR mit reinem JSON. Keine Markdown-Codeblöcke, keine Einleitung.
 - Halte dich EXAKT an die untenstehende Struktur.
 - Schreibe alle Bot-Texte in der Anrede "${anrede}".
-- DOKUMENT-VORRANG: Fakten aus den Dokumenten oben sind verifiziert. Bei Konflikt zwischen Dokument und Foto-Eindruck → DOKUMENT GEWINNT.
-- Erfinde NIEMALS Daten. Wenn etwas nicht in Fakten/Notizen/Bildern ist → nicht erwähnen. Lieber "kann ich Ihnen gerne nachreichen" als Lüge.
-- key_facts: Übernimm ALLE wichtigen Dokument-Fakten 1:1 als kurze Sätze. Das ist die primäre Wissensquelle des Bots.
+- key_facts: NUR die 5-8 verkaufsrelevantesten Highlights (NICHT alle Fakten wiederholen — die kennt der Bot bereits). Kurze Verkaufs-Sätze.
+- Erfinde NIEMALS Daten — nutze nur was oben in Fakten/Notizen/Bildern steht.
 - Bot verhandelt zwischen €${article.sale_price} und €${article.min_price}. NIEMALS darunter.
 
-JSON-FORMAT (exakt diese Felder):
+JSON-FORMAT (exakt diese Felder, halte die Texte KOMPAKT):
 {
   "category": "Produkttyp (KFZ, Maschine, Möbel, Elektronik, etc.)",
   "summary": "1-2 Sätze Produktbeschreibung",
-  "key_facts": ["Alle wichtigen Fakten aus Dokumenten + sichtbare Zustands-Fakten, je 1 Satz pro Eintrag"],
-  "selling_points": ["3-6 stärkste Verkaufsargumente, je 1 Satz"],
-  "condition": "Zustands-Beschreibung basierend auf Bildern + Notizen",
+  "key_facts": ["5-8 stärkste Verkaufs-Highlights, je 1 kurzer Satz"],
+  "selling_points": ["3-5 stärkste Verkaufsargumente, je 1 Satz"],
+  "condition": "Zustands-Beschreibung aus Bildern + Notizen, 1-2 Sätze",
   "likely_buyer": "Typischer Käufer — 1 Satz",
-  "likely_objections": [{ "objection": "möglicher Einwand", "response": "Antwort des Bots in ${anrede}-Form" }],
+  "likely_objections": [{ "objection": "Einwand", "response": "Bot-Antwort in ${anrede}-Form" }],
   "bot_strategy": {
-    "opening_message": "Erste Bot-Nachricht in ${anrede}-Form: Begrüßung + Produkt-Highlight, 2-3 Sätze, mit den 2 stärksten Argumenten",
-    "value_argument": "Hauptargument das den Preis €${article.sale_price} rechtfertigt",
+    "opening_message": "Erste Bot-Nachricht in ${anrede}-Form: Begrüßung + Produkt-Highlight, 2-3 Sätze",
+    "value_argument": "Hauptargument das den Preis €${article.sale_price} rechtfertigt, 1-2 Sätze",
     "negotiation_steps": [
-      "Schritt 1: bei €${article.sale_price} halten, Wert betonen",
+      "Schritt 1: bei €${article.sale_price} halten",
       "Schritt 2: kleines Zugeständnis (~30% Spielraum)",
       "Schritt 3: weiteres Zugeständnis (~65% Spielraum)",
       "Schritt 4: bis nahe €${article.min_price}"
     ],
-    "walkaway_line": "Höfliche aber bestimmte Absage wenn Käufer unter €${article.min_price} bleibt"
+    "walkaway_line": "Höfliche Absage wenn Käufer unter €${article.min_price} bleibt"
   }
-}`;
+}
+
+Maximal 3-4 Einträge bei likely_objections. Halte alle Texte kompakt.`;
 
     const content = [];
     for (const photo of photos.slice(0, 8)) {
