@@ -146,16 +146,35 @@ async function loadKnowledge() {
     const a = d.article.analysis;
 
     if (!a || a.error) {
-      document.getElementById('content').innerHTML = `
-        ${renderHeader(d.article)}
+      // Auch bei fehlgeschlagener Analyse: PDF-Fakten zeigen falls vorhanden
+      let html = renderHeader(d.article);
+      html += `
         <div class="empty-state">
           <div class="empty-state-icon">🤔</div>
-          <div style="font-weight:800;margin-bottom:8px;">Noch keine Wissensdatenbank</div>
+          <div style="font-weight:800;margin-bottom:8px;">${currentPdfFacts.length > 0 ? 'Analyse unvollständig' : 'Noch keine Wissensdatenbank'}</div>
           <div style="font-size:.85rem;margin-bottom:16px;">
-            ${a?.error ? 'Die letzte Analyse ist fehlgeschlagen: ' + a.error : 'Es wurde noch keine Analyse durchgeführt.'}
+            ${a?.error ? 'Die letzte Analyse ist fehlgeschlagen: ' + esc(a.error) : 'Es wurde noch keine Analyse durchgeführt.'}
+            ${currentPdfFacts.length > 0 ? '<br><br>Die PDF-Fakten unten wurden trotzdem extrahiert. Du kannst „Neu analysieren" drücken um die volle Verkaufs-DNA zu erstellen.' : ''}
           </div>
           <button class="reanalyze-btn" onclick="reanalyze()">🔄 Jetzt analysieren</button>
         </div>`;
+
+      // PDF-Fakten-Sektion auch hier zeigen
+      if (currentPdfFacts.length > 0) {
+        html += `
+          <div class="section" style="border-left: 4px solid var(--blue);">
+            <div class="section-head">
+              <div class="section-title">📑 Aus Dokumenten extrahierte Fakten <span style="background:var(--blue);color:#fff;font-size:.65rem;padding:2px 8px;border-radius:6px;font-weight:900;margin-left:6px;">${currentPdfFacts.length}</span></div>
+              <div class="section-sub">Von Haiku aus deinen PDFs extrahiert. Hier kannst du Werte korrigieren.</div>
+            </div>
+            <div class="list-editor" id="list-pdf_facts">
+              ${renderPdfFacts(currentPdfFacts)}
+            </div>
+            <button class="list-add" onclick="addPdfFact()">+ Fakt manuell hinzufügen</button>
+          </div>`;
+      }
+
+      document.getElementById('content').innerHTML = html;
       return;
     }
 
