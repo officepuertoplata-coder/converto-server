@@ -318,6 +318,40 @@ module.exports = function(app, supabase, deps) {
 
 
   // ============================================================
+  // 5b. PUT /api/cv/article/:id/knowledge
+  //     Wissensdatenbank manuell editieren
+  // ============================================================
+  app.put('/api/cv/article/:id/knowledge', async (req, res) => {
+    try {
+      const { analysis } = req.body;
+      if (!analysis || typeof analysis !== 'object') {
+        return res.status(400).json({ error: 'analysis (JSON-Objekt) erforderlich' });
+      }
+
+      // bot_strategy auch in dna spiegeln (Bot liest von beiden)
+      const dna = analysis.bot_strategy || null;
+
+      const { data, error } = await supabase
+        .from('cv_articles')
+        .update({
+          analysis,
+          dna,
+          status: 'analyzed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', req.params.id)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true, article: data });
+    } catch(e) {
+      console.error('[CV knowledge PUT]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+
+  // ============================================================
   // KI-ANALYSE: Opus analysiert Fotos + Notizen + Stammdaten
   // ============================================================
   async function cvAnalyzeArticle(article, uploads) {

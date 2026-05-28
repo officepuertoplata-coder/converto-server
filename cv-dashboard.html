@@ -315,6 +315,7 @@ function renderSlot(slot) {
         <div class="article-meta">€${fmtPrice(slot.article?.sale_price)} · Bot läuft</div>
       </div>
       <div class="bot-info">Code: <span class="bot-code">${esc(slot.bot_code || '—')}</span></div>
+      <button class="btn btn-primary" onclick="goToKnowledge('${slot.id}')" style="margin-bottom:8px;">🧠 Was hat der Bot gelernt?</button>
       <div class="btn-row">
         <button class="btn btn-soft" onclick="showAssets('${slot.id}','wa')">💬 WA</button>
         <button class="btn btn-soft" onclick="showAssets('${slot.id}','qr')">📱 QR</button>
@@ -395,6 +396,10 @@ async function saveArticle() {
 
 function goToUpload(slotId) {
   location.href = 'cv-upload.html?slot=' + slotId;
+}
+
+function goToKnowledge(slotId) {
+  location.href = 'cv-knowledge.html?slot=' + slotId;
 }
 
 // ── SLOT LEEREN ──────────────────────────────────────

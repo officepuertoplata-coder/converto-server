@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino – Wissensdatenbank</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --g: #25D366; --g2: #128C7E; --dark: #1a2e24;
+    --bg: #f0f4f2; --card: #fff; --border: #e2e8e4;
+    --text: #1a2e24; --mu: #6b7e74; --red: #dc2626; --amber: #d97706;
+    --blue: #1d4ed8; --blue-bg: #dbeafe;
+    --r: 14px; --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 100px; }
+
+  nav { background: var(--dark); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { color: #fff; font-weight: 900; font-size: 1.15rem; text-decoration: none; }
+  .logo span { color: var(--g); }
+  .nav-back { color: rgba(255,255,255,.75); font-size: .82rem; font-weight: 700; text-decoration: none; }
+  .nav-back:hover { color: #fff; }
+
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px; }
+
+  .article-header { background: var(--dark); color: #fff; border-radius: var(--r); padding: 18px 22px; margin-bottom: 22px; }
+  .ah-label { font-size: .7rem; opacity: .7; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+  .ah-title { font-size: 1.2rem; font-weight: 900; margin-top: 4px; }
+  .ah-meta { font-size: .82rem; opacity: .75; margin-top: 4px; }
+
+  .info-banner { background: var(--blue-bg); color: var(--blue); padding: 12px 16px; border-radius: 10px; font-size: .85rem; margin-bottom: 22px; display: flex; align-items: flex-start; gap: 10px; }
+  .info-banner-icon { font-size: 1.2rem; flex-shrink: 0; }
+
+  .section { background: var(--card); border-radius: var(--r); padding: 20px 22px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .section-head { margin-bottom: 14px; }
+  .section-title { font-size: 1rem; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+  .section-sub { font-size: .78rem; color: var(--mu); margin-top: 3px; }
+
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field-label { font-size: .72rem; font-weight: 800; color: var(--mu); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .field input, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: .9rem; outline: none; background: #fff; resize: vertical; }
+  .field input:focus, .field textarea:focus { border-color: var(--g); }
+  .field textarea { min-height: 60px; }
+
+  /* LIST EDITOR */
+  .list-editor { display: flex; flex-direction: column; gap: 8px; }
+  .list-item { display: flex; gap: 8px; align-items: flex-start; }
+  .list-item input { flex: 1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: .88rem; outline: none; }
+  .list-item input:focus { border-color: var(--g); }
+  .list-item-num { background: var(--g); color: #fff; width: 26px; height: 26px; border-radius: 50%; font-size: .72rem; font-weight: 900; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 7px; }
+  .list-del { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--mu); padding: 8px; border-radius: 6px; }
+  .list-del:hover { background: #fee2e2; color: var(--red); }
+  .list-add { background: #f0fdf4; border: 1px dashed #86efac; color: var(--g2); padding: 8px 14px; border-radius: 8px; font-family: inherit; font-weight: 800; font-size: .8rem; cursor: pointer; margin-top: 4px; }
+  .list-add:hover { background: #dcfce7; }
+
+  /* OBJECTION PAIR */
+  .objection-item { background: #f8faf9; border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .objection-row { display: flex; gap: 8px; }
+  .objection-row textarea { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: .85rem; min-height: 40px; }
+  .objection-tag { background: var(--amber); color: #fff; padding: 3px 8px; border-radius: 6px; font-size: .68rem; font-weight: 900; text-transform: uppercase; align-self: flex-start; flex-shrink: 0; min-width: 70px; text-align: center; }
+  .objection-tag.response { background: var(--g); }
+
+  /* BOTTOM BAR */
+  .bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--border); padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; z-index: 50; box-shadow: 0 -4px 16px rgba(0,0,0,.05); }
+  .save-btn { background: linear-gradient(135deg, var(--g), var(--g2)); color: #fff; border: none; padding: 13px 28px; border-radius: 12px; font-family: inherit; font-size: 1rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 16px rgba(37,211,102,.35); }
+  .save-btn:disabled { background: #9ca3af; cursor: not-allowed; box-shadow: none; }
+  .reanalyze-btn { background: #f1f5f3; color: var(--text); border: 1px solid var(--border); padding: 10px 18px; border-radius: 10px; font-family: inherit; font-weight: 800; font-size: .85rem; cursor: pointer; }
+  .save-status { font-size: .8rem; font-weight: 800; }
+  .save-status.ok { color: var(--g2); }
+  .save-status.err { color: var(--red); }
+
+  /* TOAST */
+  .toast { position: fixed; top: 72px; right: 16px; background: var(--dark); color: #fff; padding: 10px 18px; border-radius: 10px; font-size: .85rem; font-weight: 800; z-index: 999; opacity: 0; transform: translateY(-8px); transition: all .25s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading { text-align: center; padding: 60px 20px; color: var(--mu); }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--mu); background: #f8faf9; border-radius: 10px; }
+  .empty-state-icon { font-size: 2.4rem; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="cv-dashboard.html" class="logo">Conver<span>dino</span></a>
+  <a href="cv-dashboard.html" class="nav-back">← Zurück zum Dashboard</a>
+</nav>
+
+<main>
+  <div id="content">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div style="margin-top:10px;">Wissensdatenbank wird geladen...</div>
+    </div>
+  </div>
+</main>
+
+<div class="bottom-bar" id="bottomBar" style="display:none;">
+  <div>
+    <button class="reanalyze-btn" onclick="reanalyze()">🔄 Neu analysieren</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <span class="save-status" id="saveStatus"></span>
+    <button class="save-btn" id="saveBtn" onclick="saveKnowledge()">💾 Korrekturen speichern</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+const params = new URLSearchParams(location.search);
+const slotId = params.get('slot');
+
+let articleId = null;
+let originalAnalysis = null;
+let currentAnalysis = null;
+
+if (!slotId) {
+  document.getElementById('content').innerHTML =
+    '<div class="empty-state">Ungültiger Link. <a href="cv-dashboard.html">Zurück</a></div>';
+} else {
+  loadKnowledge();
+}
+
+// ── LADEN ───────────────────────────────────────────────
+async function loadKnowledge() {
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    if (!d.slot || !d.article) {
+      document.getElementById('content').innerHTML =
+        '<div class="empty-state">Artikel nicht gefunden.</div>';
+      return;
+    }
+
+    articleId = d.article.id;
+    const a = d.article.analysis;
+
+    if (!a || a.error) {
+      document.getElementById('content').innerHTML = `
+        ${renderHeader(d.article)}
+        <div class="empty-state">
+          <div class="empty-state-icon">🤔</div>
+          <div style="font-weight:800;margin-bottom:8px;">Noch keine Wissensdatenbank</div>
+          <div style="font-size:.85rem;margin-bottom:16px;">
+            ${a?.error ? 'Die letzte Analyse ist fehlgeschlagen: ' + a.error : 'Es wurde noch keine Analyse durchgeführt.'}
+          </div>
+          <button class="reanalyze-btn" onclick="reanalyze()">🔄 Jetzt analysieren</button>
+        </div>`;
+      return;
+    }
+
+    originalAnalysis = JSON.parse(JSON.stringify(a)); // deep copy
+    currentAnalysis = JSON.parse(JSON.stringify(a));
+    render(d.article);
+    document.getElementById('bottomBar').style.display = 'flex';
+  } catch(e) {
+    document.getElementById('content').innerHTML =
+      '<div class="empty-state" style="color:var(--red);">Verbindungsfehler: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderHeader(article) {
+  return `
+    <div class="article-header">
+      <div class="ah-label">Wissensdatenbank · Slot</div>
+      <div class="ah-title">${esc(article.title)}</div>
+      <div class="ah-meta">€${fmtPrice(article.sale_price)} · Mindest €${fmtPrice(article.min_price)}${article.location ? ' · ' + esc(article.location) : ''}</div>
+    </div>
+    <div class="info-banner">
+      <div class="info-banner-icon">💡</div>
+      <div>
+        Hier siehst du <strong>was die KI aus deinen Bildern und Notizen verstanden hat</strong>. Wenn etwas falsch ist (z.B. "7 Sitzer" statt "8 Sitzer") — einfach hier korrigieren und speichern. Der Bot nutzt deine Korrekturen ab der nächsten Nachricht.
+      </div>
+    </div>`;
+}
+
+function render(article) {
+  const a = currentAnalysis;
+  const s = a.bot_strategy || {};
+
+  let html = renderHeader(article);
+
+  // ── PRODUKT ────────────────────────────────────
+  html += `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">📦 Was die KI erkannt hat</div>
+        <div class="section-sub">Grundlegende Produktinformationen</div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Kategorie</div>
+        <input id="f-category" value="${esc(a.category || '')}">
+      </div>
+
+      <div class="field">
+        <div class="field-label">Zusammenfassung</div>
+        <textarea id="f-summary">${esc(a.summary || '')}</textarea>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Zustand</div>
+        <textarea id="f-condition">${esc(a.condition || '')}</textarea>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Typischer Käufer</div>
+        <textarea id="f-buyer">${esc(a.likely_buyer || '')}</textarea>
+      </div>
+    </div>`;
+
+  // ── FAKTEN ────────────────────────────────────
+  html += `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">📋 Produkt-Fakten</div>
+        <div class="section-sub">Was der Bot über das Produkt weiß. <strong>Hier korrigierst du falsche Fakten (z.B. Sitzanzahl).</strong></div>
+      </div>
+      <div class="list-editor" id="list-key_facts">
+        ${renderList(a.key_facts, 'key_facts')}
+      </div>
+      <button class="list-add" onclick="addItem('key_facts')">+ Fakt hinzufügen</button>
+    </div>`;
+
+  // ── VERKAUFSARGUMENTE ─────────────────────────
+  html += `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">🎯 Verkaufsargumente</div>
+        <div class="section-sub">Die stärksten Gründe das Produkt zu kaufen</div>
+      </div>
+      <div class="list-editor" id="list-selling_points">
+        ${renderList(a.selling_points, 'selling_points')}
+      </div>
+      <button class="list-add" onclick="addItem('selling_points')">+ Argument hinzufügen</button>
+    </div>`;
+
+  // ── EINWÄNDE ──────────────────────────────────
+  html += `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">💬 Einwände & Antworten</div>
+        <div class="section-sub">Was Käufer typischerweise fragen — und wie der Bot reagieren soll</div>
+      </div>
+      <div class="list-editor" id="list-likely_objections">
+        ${renderObjections(a.likely_objections || [])}
+      </div>
+      <button class="list-add" onclick="addObjection()">+ Einwand hinzufügen</button>
+    </div>`;
+
+  // ── BOT-STRATEGIE ─────────────────────────────
+  html += `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">🤖 Bot-Strategie</div>
+        <div class="section-sub">Wie der Bot kommuniziert und verhandelt</div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Begrüßungs-Nachricht (erste Bot-Nachricht)</div>
+        <textarea id="f-opening" style="min-height:90px;">${esc(s.opening_message || '')}</textarea>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Hauptargument für den Preis</div>
+        <textarea id="f-value">${esc(s.value_argument || '')}</textarea>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Absage-Satz (bei Mindestpreis)</div>
+        <textarea id="f-walkaway">${esc(s.walkaway_line || '')}</textarea>
+      </div>
+
+      <div class="field">
+        <div class="field-label">Verhandlungs-Schritte</div>
+        <div class="list-editor" id="list-negotiation_steps">
+          ${renderList(s.negotiation_steps, 'negotiation_steps')}
+        </div>
+        <button class="list-add" onclick="addItem('negotiation_steps')">+ Schritt hinzufügen</button>
+      </div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = html;
+}
+
+function renderList(items, key) {
+  if (!Array.isArray(items)) items = [];
+  return items.map((item, i) => `
+    <div class="list-item" data-key="${key}" data-idx="${i}">
+      <div class="list-item-num">${i + 1}</div>
+      <input value="${esc(item)}" onchange="updateItem('${key}', ${i}, this.value)">
+      <button class="list-del" onclick="removeItem('${key}', ${i})">🗑</button>
+    </div>`).join('');
+}
+
+function renderObjections(items) {
+  if (!Array.isArray(items)) items = [];
+  return items.map((o, i) => `
+    <div class="objection-item" data-idx="${i}">
+      <div class="objection-row">
+        <div class="objection-tag">Einwand</div>
+        <textarea onchange="updateObjection(${i}, 'objection', this.value)">${esc(o.objection || '')}</textarea>
+      </div>
+      <div class="objection-row">
+        <div class="objection-tag response">Antwort</div>
+        <textarea onchange="updateObjection(${i}, 'response', this.value)">${esc(o.response || '')}</textarea>
+      </div>
+      <button class="list-del" style="align-self:flex-end;" onclick="removeObjection(${i})">🗑 Entfernen</button>
+    </div>`).join('');
+}
+
+// ── EDITS ──────────────────────────────────────────────
+function updateItem(key, idx, value) {
+  const target = key === 'negotiation_steps'
+    ? (currentAnalysis.bot_strategy = currentAnalysis.bot_strategy || {})
+    : currentAnalysis;
+  if (!Array.isArray(target[key])) target[key] = [];
+  target[key][idx] = value;
+}
+
+function addItem(key) {
+  if (key === 'negotiation_steps') {
+    currentAnalysis.bot_strategy = currentAnalysis.bot_strategy || {};
+    currentAnalysis.bot_strategy.negotiation_steps = currentAnalysis.bot_strategy.negotiation_steps || [];
+    currentAnalysis.bot_strategy.negotiation_steps.push('');
+  } else {
+    currentAnalysis[key] = currentAnalysis[key] || [];
+    currentAnalysis[key].push('');
+  }
+  // Re-render only this list
+  rerenderList(key);
+}
+
+function removeItem(key, idx) {
+  const arr = key === 'negotiation_steps'
+    ? currentAnalysis.bot_strategy?.negotiation_steps
+    : currentAnalysis[key];
+  if (!arr) return;
+  arr.splice(idx, 1);
+  rerenderList(key);
+}
+
+function rerenderList(key) {
+  const arr = key === 'negotiation_steps'
+    ? (currentAnalysis.bot_strategy?.negotiation_steps || [])
+    : (currentAnalysis[key] || []);
+  document.getElementById('list-' + key).innerHTML = renderList(arr, key);
+}
+
+function updateObjection(idx, field, value) {
+  currentAnalysis.likely_objections = currentAnalysis.likely_objections || [];
+  if (!currentAnalysis.likely_objections[idx]) currentAnalysis.likely_objections[idx] = {};
+  currentAnalysis.likely_objections[idx][field] = value;
+}
+
+function addObjection() {
+  currentAnalysis.likely_objections = currentAnalysis.likely_objections || [];
+  currentAnalysis.likely_objections.push({ objection: '', response: '' });
+  document.getElementById('list-likely_objections').innerHTML = renderObjections(currentAnalysis.likely_objections);
+}
+
+function removeObjection(idx) {
+  if (!currentAnalysis.likely_objections) return;
+  currentAnalysis.likely_objections.splice(idx, 1);
+  document.getElementById('list-likely_objections').innerHTML = renderObjections(currentAnalysis.likely_objections);
+}
+
+// ── SPEICHERN ──────────────────────────────────────────
+function collectFields() {
+  // Single-Value Felder aus Inputs/Textareas einsammeln
+  currentAnalysis.category = document.getElementById('f-category').value.trim();
+  currentAnalysis.summary = document.getElementById('f-summary').value.trim();
+  currentAnalysis.condition = document.getElementById('f-condition').value.trim();
+  currentAnalysis.likely_buyer = document.getElementById('f-buyer').value.trim();
+
+  currentAnalysis.bot_strategy = currentAnalysis.bot_strategy || {};
+  currentAnalysis.bot_strategy.opening_message = document.getElementById('f-opening').value.trim();
+  currentAnalysis.bot_strategy.value_argument = document.getElementById('f-value').value.trim();
+  currentAnalysis.bot_strategy.walkaway_line = document.getElementById('f-walkaway').value.trim();
+
+  // Leere Einträge in Listen entfernen
+  ['key_facts', 'selling_points'].forEach(k => {
+    if (Array.isArray(currentAnalysis[k])) {
+      currentAnalysis[k] = currentAnalysis[k].filter(x => x && x.trim());
+    }
+  });
+  if (Array.isArray(currentAnalysis.bot_strategy.negotiation_steps)) {
+    currentAnalysis.bot_strategy.negotiation_steps = currentAnalysis.bot_strategy.negotiation_steps.filter(x => x && x.trim());
+  }
+  if (Array.isArray(currentAnalysis.likely_objections)) {
+    currentAnalysis.likely_objections = currentAnalysis.likely_objections.filter(o =>
+      o && ((o.objection && o.objection.trim()) || (o.response && o.response.trim()))
+    );
+  }
+}
+
+async function saveKnowledge() {
+  collectFields();
+  const btn = document.getElementById('saveBtn');
+  const status = document.getElementById('saveStatus');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Speichere...';
+  status.textContent = '';
+
+  try {
+    const r = await fetch(API + '/api/cv/article/' + articleId + '/knowledge', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ analysis: currentAnalysis })
+    });
+    const d = await r.json();
+    if (d.success) {
+      status.className = 'save-status ok';
+      status.textContent = '✓ Gespeichert';
+      originalAnalysis = JSON.parse(JSON.stringify(currentAnalysis));
+      toast('✅ Korrekturen aktiv — Bot nutzt sie ab jetzt');
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    } else {
+      status.className = 'save-status err';
+      status.textContent = '❌ ' + (d.error || 'Fehler');
+    }
+  } catch(e) {
+    status.className = 'save-status err';
+    status.textContent = '❌ ' + e.message;
+  }
+  btn.disabled = false; btn.innerHTML = '💾 Korrekturen speichern';
+}
+
+// ── NEU ANALYSIEREN ─────────────────────────────────────
+async function reanalyze() {
+  if (!confirm('Wirklich neu analysieren? Alle deine Korrekturen werden überschrieben.')) return;
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId + '/reanalyze', { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      toast('⏳ Analyse läuft im Hintergrund. Seite in ~30 Sek. neu laden.');
+      setTimeout(() => location.reload(), 25000);
+    } else {
+      toast('Fehler: ' + (d.error || 'unbekannt'));
+    }
+  } catch(e) { toast('Fehler: ' + e.message); }
+}
+
+// ── HELPERS ─────────────────────────────────────────────
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtPrice(p) { if (p == null) return '—'; return Number(p).toLocaleString('de-AT', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+
+</body>
+</html>
