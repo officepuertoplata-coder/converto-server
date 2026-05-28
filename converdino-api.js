@@ -1038,9 +1038,33 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       }
     ];
 
+    // History normalisieren: Rollen MÜSSEN alternieren (API-Anforderung).
+    // Aufeinanderfolgende gleiche Rollen zusammenfassen (passiert wenn
+    // Käufer mehrere Nachrichten schnell hintereinander schickt).
+    function normalizeHistory(hist) {
+      const out = [];
+      for (const m of hist) {
+        if (!m || !m.content) continue;
+        const last = out[out.length - 1];
+        if (last && last.role === m.role) {
+          last.content += '\n' + m.content;  // zusammenfassen
+        } else {
+          out.push({ role: m.role, content: m.content });
+        }
+      }
+      // Muss mit user-Rolle beginnen (sonst lehnt API ab)
+      while (out.length && out[0].role !== 'user') out.shift();
+      return out;
+    }
+
     const messages = userMessage === null
       ? [{ role: 'user', content: 'START: Begrüße den Käufer, präsentiere das Produkt überzeugend in 2-3 Sätzen und frage was ihn besonders interessiert.' }]
-      : session.history.map(m => ({ role: m.role, content: m.content }));
+      : normalizeHistory(session.history);
+
+    // Sicherheitsnetz: leere oder ungültige messages
+    if (messages.length === 0) {
+      messages.push({ role: 'user', content: userMessage || 'Hallo' });
+    }
 
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1061,8 +1085,10 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error('[CV Bot] API error:', response.status, errText.substring(0, 200));
-        await sendWAMessage(phoneId, phone, 'Entschuldigung, ich bin gerade kurz nicht verfügbar. Bitte versuchen Sie es in einer Minute nochmal.');
+        console.error('[CV Bot] API error:', response.status);
+        console.error('[CV Bot] Detail:', errText.substring(0, 500));
+        console.error('[CV Bot] messages waren:', JSON.stringify(messages).substring(0, 400));
+        await sendWAMessage(phoneId, phone, 'Einen kurzen Moment bitte — ich schaue mir Ihre Frage gerade an.');
         return;
       }
 
