@@ -971,7 +971,12 @@ ${(strategy.negotiation_steps || ['Halte Verkaufspreis', 'Kleines Zugeständnis'
 ABWICKLUNG & SICHERHEIT (so läuft der Kauf ab)
 ═══════════════════════════════════════════════════════
 - Die Kaufabwicklung läuft IMMER sicher und treuhänderisch über die Plattform ab. Es gibt KEINEN Privatverkauf, keine private Übergabe von Bargeld, kein direkter Geldtausch zwischen Käufer und Verkäufer.
-- ABLAUF BEI EINIGUNG: Wenn ihr euch einig seid und der Käufer reservieren/kaufen möchte → sichere zuerst Name + Kontakt (collect_contact) → dann rufe create_payment_link auf. Der Käufer zahlt eine Reservierungs-Anzahlung (z.B. 10%), der Restbetrag wird bei Übergabe fällig.
+- PFLICHT-ABLAUF BEI RESERVIERUNG/KAUF (genau diese Reihenfolge, KEINEN Schritt auslassen):
+  1. Käufer will kaufen/reservieren → erkläre kurz die Anzahlung + Treuhand-Sicherheit.
+  2. Frage nach Name + Telefonnummer (collect_contact).
+  3. SOBALD du Name + Nummer hast → rufe SOFORT create_payment_link auf. Das ist zwingend. Sage NICHT nur "danke" und höre auf — der Käufer wartet auf den Zahlungslink!
+  4. Das Tool create_payment_link verschickt den Link automatisch. Danach kannst du dich verabschieden (confirm_commitment).
+- NIEMALS bei "Perfekt, danke" stehenbleiben wenn noch kein Zahlungslink verschickt wurde. Wenn Name + Nummer da sind und der Käufer reservieren will, ist create_payment_link IMMER dein nächster Schritt.
 - Erkläre dem Käufer: "Mit der Anzahlung reservieren Sie verbindlich, das Geld ist sicher über unsere Treuhand geschützt. Der Restbetrag wird bei Übergabe fällig." Das ist ein echtes Sicherheits-Argument.
 - Erkläre bei Kaufinteresse sinngemäß: "Die Zahlung läuft sicher ab — Ihr Geld ist geschützt, und der Verkäufer versendet Artikel und Rechnung erst danach an Sie." Das ist ein echtes Vertrauens- und Sicherheits-Argument, nutze es aktiv besonders bei höherpreisigen Artikeln.
 - NENNE NIEMALS eine Provision, Gebühr oder einen Vermittlungsanteil. Der Käufer zahlt den verhandelten Preis — Punkt. Über interne Abläufe sprichst du nicht.
@@ -1019,6 +1024,8 @@ WICHTIG: confirm_commitment ist IMMER der allerletzte Schritt der ein Gespräch 
 WICHTIG zu Werkzeugen:
 - Du kannst in einem Zug Text schreiben UND ein Werkzeug aufrufen.
 - Erfinde NIEMALS Kontaktdaten oder Zeitfenster. Nutze nur was der Käufer wirklich genannt hat.
+- IMMER wenn der Käufer Name und/oder Telefonnummer nennt → rufe collect_contact mit den Daten auf. Antworte NIE nur mit Text wenn Kontaktdaten genannt wurden — das Werkzeug ist Pflicht, sonst gehen die Daten verloren.
+- Bei Reservierungs-/Kaufabsicht gilt der Pflicht-Ablauf: collect_contact → dann create_payment_link. Niemals mit "danke" enden bevor der Zahlungslink verschickt ist.
 
 STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur antworten. Niemals Fakten erfinden.`;
 
@@ -1264,6 +1271,25 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         session.history = [{ role: 'assistant', content: botReply }];
       }
       await persistSession(session);
+
+      // ── AUTO-FOLGEAKTION: Zahlungslink ──────────────────────
+      // Wenn der Bot gerade Kontakt gesichert ODER sich geeinigt hat,
+      // eine Reservierungs-/Kaufabsicht besteht und noch KEIN Zahlungslink
+      // verschickt wurde → erzwinge eine Folgerunde, die den Link schickt.
+      // Das verhindert das Steckenbleiben bei "Perfekt, danke!".
+      const calledContact = toolCalls.some(t => t.name === 'collect_contact' || t.name === 'agree_deal');
+      const calledLink = toolCalls.some(t => t.name === 'create_payment_link');
+      const closingNow = toolCalls.some(t => t.name === 'confirm_commitment');
+      if (calledContact && !calledLink && !session.paymentLinkSent && !closingNow
+          && cvStripe && session.buyerName && session.buyerPhone
+          && !session._autoLinkTried) {
+        session._autoLinkTried = true;  // nur einmal versuchen
+        console.log('[CV Bot] Auto-Folgeaktion: erzwinge create_payment_link');
+        // Direkt den Link erstellen und schicken — ohne erneuten Modell-Call,
+        // damit garantiert kein "danke" ohne Link passiert.
+        await cvHandleToolCall(session, phone, 'create_payment_link', { agreed_price: session.agreedPrice });
+        await persistSession(session);
+      }
 
       // Session NUR durch confirm_commitment schließen — das ist der
       // verbindliche gemeinsame Abschluss. Alles davor hält die Session offen,
