@@ -1488,7 +1488,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   // ── EVENT LOGGEN (Basis für Resend in Schritt D) ─────────
   async function cvLogEvent(session, buyerPhone, type, payload, silent) {
     try {
-      await supabase.from('cv_events').insert({
+      const { error: evtErr } = await supabase.from('cv_events').insert({
         session_id: session.dbSessionId || null,
         slot_id: session.slot.id,
         subscription_id: session.slot.subscription_id || null,
@@ -1497,7 +1497,11 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         payload: payload || {},
         notified: false
       });
-      console.log(`[CV Event] ${type} für Slot ${session.slot.id}, Käufer +${buyerPhone}`);
+      if (evtErr) {
+        console.error(`[CV Event] Insert-Fehler (${type}):`, evtErr.message);
+      } else {
+        console.log(`[CV Event] ${type} für Slot ${session.slot.id}, Käufer +${buyerPhone}`);
+      }
 
       // Verkäufer-Benachrichtigung (silent=true → nur loggen)
       if (!silent) {
@@ -1678,23 +1682,34 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       const meta = cs.metadata || {};
       try {
         const paidAmount = (cs.amount_total || 0) / 100;
-        const sessionId = meta.cv_session_id;
-        const slotId = meta.cv_slot_id;
+        // Leere Strings zu null (UUID-Spalten akzeptieren kein '')
+        const sessionId = meta.cv_session_id && meta.cv_session_id.trim() ? meta.cv_session_id.trim() : null;
+        const slotId = meta.cv_slot_id && meta.cv_slot_id.trim() ? meta.cv_slot_id.trim() : null;
 
         // Bot-Session als bezahlt markieren
         if (sessionId) {
-          await supabase.from('cv_bot_sessions').update({
+          const { error: updErr } = await supabase.from('cv_bot_sessions').update({
             paid_at: new Date().toISOString(),
             paid_amount: paidAmount,
             stripe_session_id: cs.id,
             status: 'deal'
           }).eq('id', sessionId);
+          if (updErr) console.error('[CV Stripe] Session-Update Fehler:', updErr.message);
+        }
+
+        // subscription_id über den Slot ermitteln (für cv_events)
+        let subId = null;
+        if (slotId) {
+          const { data: slotRow } = await supabase
+            .from('cv_slots').select('subscription_id').eq('id', slotId).maybeSingle();
+          subId = slotRow?.subscription_id || null;
         }
 
         // Event protokollieren
-        await supabase.from('cv_events').insert({
-          session_id: sessionId || null,
-          slot_id: slotId || null,
+        const { error: evtErr } = await supabase.from('cv_events').insert({
+          session_id: sessionId,
+          slot_id: slotId,
+          subscription_id: subId,
           type: 'paid',
           buyer_phone: meta.buyer_phone || null,
           payload: {
@@ -1706,6 +1721,8 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           },
           notified: false
         });
+        if (evtErr) console.error('[CV Stripe] cv_events Insert Fehler:', evtErr.message);
+        else console.log('[CV Stripe] cv_events paid-Event gespeichert');
 
         console.log(`[CV Stripe] ✅ Zahlung eingegangen: €${paidAmount} für Slot ${slotId}`);
 
