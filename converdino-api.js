@@ -919,7 +919,7 @@ DEINE WERKZEUGE — wann du sie einsetzt
 - agree_deal: Wenn sich Käufer und du auf einen Preis einigen. Vorher Kontaktdaten sichern.
 - escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee."
 - request_callback: Wenn ein Rückruf/Termin vereinbart wird — mit konkretem Zeitfenster.
-- end_conversation: Nur bei klar fehlendem Interesse / Verabschiedung.
+- confirm_commitment: Der allerletzte Schritt, der das Gespräch beendet — siehe Commitment-Phase unten.
 
 ═══════════════════════════════════════════════════════
 PFLICHT-ABLAUF BEI LEAD / EINIGUNG / ESKALATION (sehr wichtig!)
@@ -929,8 +929,24 @@ Sobald du an den Verkäufer/Verkaufsleiter übergibst, führe IMMER diese 3 Schr
 2. ZEITFENSTER: Frage AKTIV nach einem konkreten Rückruf-Zeitfenster. Z.B. "Wann erreichen wir Sie am besten — heute Nachmittag, morgen Vormittag, oder haben Sie eine bestimmte Uhrzeit?"
 3. VERBINDLICHE BESTÄTIGUNG: Wiederhole das Vereinbarte konkret zurück und gib Sicherheit. Z.B. "Perfekt — ich gebe Ihre Daten direkt an unseren Verkaufsleiter weiter. Er ruft Sie [Zeitfenster] unter [Nummer] an. Er hat oft Spielraum den ich nicht habe."
 
-Erst NACH der verbindlichen Bestätigung mit Zeitfenster nutzt du request_callback (mit preferred_time) und ggf. end_conversation.
-Sage NIE nur "Danke" ohne dass ein konkreter nächster Schritt + Zeitfenster vereinbart ist.
+═══════════════════════════════════════════════════════
+COMMITMENT-PHASE — JEDES Gespräch endet mit gegenseitiger Zusage
+═══════════════════════════════════════════════════════
+Verabschiede dich NIEMALS ohne ein gemeinsames Commitment. Egal ob Erfolg oder nicht — beende wie ein guter realer Verkäufer:
+
+A) BEI ERFOLG (Lead/Deal/Eskalation/Rückruf):
+   - Fasse die Vereinbarung konkret zusammen (Name, Nummer, Zeitfenster, ggf. Preis).
+   - Hole ein AKTIVES JA des Käufers: "Passt das so für Sie?"
+   - Verabschiede dich erst NACH dem Ja verbindlich und herzlich, mit Vorfreude auf den nächsten Schritt.
+   - Erst dann das passende Werkzeug (agree_deal / escalate_to_sales / request_callback) und dann confirm_commitment mit committed=true aufrufen.
+
+B) BEI MISSERFOLG (keine Preiseinigung, kein Interesse):
+   - Wenn der Käufer zögert oder abspringt: Versuche EINMAL nachzufassen und den Einwand zu überwinden ("Was hält Sie noch zurück?").
+   - Bleibt es dabei: Fasse fair zusammen, z.B. "Unser Gespräch hat ergeben, dass wir uns momentan nicht auf einen gemeinsamen Preis einigen können. Vielleicht schaffen wir es beim nächsten Mal. Danke für Ihr Interesse — schönen Abend!"
+   - Lass die Tür ausdrücklich offen für die Zukunft.
+   - Dann confirm_commitment mit committed=false aufrufen.
+
+WICHTIG: confirm_commitment ist IMMER der allerletzte Schritt der ein Gespräch beendet. Rufe es erst auf nachdem du dich verabschiedet hast und (bei Erfolg) der Käufer zugestimmt hat.
 
 WICHTIG zu Werkzeugen:
 - Du kannst in einem Zug Text schreiben UND ein Werkzeug aufrufen.
@@ -1009,12 +1025,15 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         }
       },
       {
-        name: 'end_conversation',
-        description: 'Beende die Konversation höflich (kein Interesse / Verabschiedung).',
+        name: 'confirm_commitment',
+        description: 'ALLERLETZTER Schritt der das Gespräch beendet. Rufe dies erst auf nachdem du dich verabschiedet hast. Bei Erfolg (committed=true) erst nachdem der Käufer aktiv zugestimmt hat. Bei Misserfolg (committed=false) nachdem du fair abgeschlossen und die Tür offen gelassen hast.',
         input_schema: {
           type: 'object',
-          properties: { reason: { type: 'string' } },
-          required: []
+          properties: {
+            committed: { type: 'boolean', description: 'true = Käufer hat zugestimmt / Übergabe vereinbart. false = keine Einigung, aber fair verabschiedet.' },
+            summary: { type: 'string', description: 'Kurze Zusammenfassung was vereinbart wurde (oder warum nicht)' }
+          },
+          required: ['committed']
         }
       }
     ];
@@ -1076,16 +1095,15 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       }
       await persistSession(session);
 
-      // Session NUR bei klarem Ende schließen.
-      // escalate_to_sales NICHT schließen — Bot sammelt danach noch Kontaktdaten.
-      const closing = toolCalls.find(t =>
-        ['end_conversation', 'agree_deal'].includes(t.name)
-      );
+      // Session NUR durch confirm_commitment schließen — das ist der
+      // verbindliche gemeinsame Abschluss. Alles davor hält die Session offen,
+      // damit Kontaktdaten, Zeitfenster und das aktive "Ja" eingesammelt werden.
+      const closing = toolCalls.find(t => t.name === 'confirm_commitment');
       if (closing) {
         cvBotSessions.delete(phone);
       } else if (session.history.length > 40) {
         // Sicherheitsnetz gegen Endlos-Chats
-        await cvLogEvent(session, phone, 'lost', { reason: 'Konversation zu lang' });
+        await cvLogEvent(session, phone, 'lost', { reason: 'Konversation zu lang' }, true);
         cvBotSessions.delete(phone);
       }
     } catch(e) {
@@ -1172,16 +1190,35 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         case 'request_callback':
           updates.status = 'callback';
           await cvLogEvent(session, phone, 'callback', {
-            preferred_time: input.preferred_time || '',
+            preferred_time: session.callbackTime || input.preferred_time || '',
             buyer_name: session.buyerName, buyer_phone: session.buyerPhone
           });
+          session.notified = true;
           break;
 
-        case 'end_conversation':
-          session.phase = 'lost';
-          updates.phase = 'lost';
-          updates.status = 'lost';
-          await cvLogEvent(session, phone, 'lost', { reason: input.reason || '' });
+        case 'confirm_commitment':
+          if (input.committed) {
+            // Erfolg ist meist schon durch agree_deal/escalate/callback geloggt.
+            // Nur loggen falls noch gar nichts gemeldet wurde.
+            session.phase = session.phase === 'interest' ? 'closing' : session.phase;
+            updates.phase = session.phase;
+            if (!session.notified) {
+              await cvLogEvent(session, phone, 'hot_lead', {
+                reason: 'Commitment bestätigt: ' + (input.summary || ''),
+                buyer_name: session.buyerName, buyer_phone: session.buyerPhone,
+                buyer_email: session.buyerEmail, preferred_time: session.callbackTime
+              });
+              session.notified = true;
+            }
+          } else {
+            // Fairer Misserfolg — kein Verkäufer-Alarm nötig, nur protokollieren
+            session.phase = 'lost';
+            updates.phase = 'lost';
+            updates.status = 'lost';
+            await cvLogEvent(session, phone, 'lost', {
+              reason: input.summary || 'Keine Einigung, fair verabschiedet'
+            }, true);  // silent: Misserfolg nicht an Verkäufer melden
+          }
           break;
       }
 
@@ -1214,9 +1251,9 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       case 'request_callback':
         return du ? 'Alles klar, ich organisiere den Rückruf — der Verkäufer meldet sich wie vereinbart bei dir!'
                   : 'Alles klar, ich organisiere den Rückruf — der Verkäufer meldet sich wie vereinbart bei Ihnen!';
-      case 'end_conversation':
-        return du ? 'Danke für dein Interesse, melde dich jederzeit gern wieder!'
-                  : 'Vielen Dank für Ihr Interesse, melden Sie sich jederzeit gern wieder!';
+      case 'confirm_commitment':
+        return du ? 'Danke für das Gespräch, melde dich jederzeit gern wieder. Schönen Tag noch!'
+                  : 'Vielen Dank für das Gespräch, melden Sie sich jederzeit gern wieder. Schönen Tag noch!';
       default:
         return '';
     }
