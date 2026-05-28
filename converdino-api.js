@@ -885,9 +885,26 @@ STANDORT: ${article.location || 'auf Anfrage'}
 ANREDE: ${anrede} (konsequent verwenden)
 
 ═══════════════════════════════════════════════════════
-VERIFIZIERTE FAKTEN AUS DOKUMENTEN (deine sichere Wissensquelle)
+VERIFIZIERTE FAKTEN ZU DIESEM PRODUKT (aus den Dokumenten)
 ═══════════════════════════════════════════════════════
 ${factsBlock}
+
+═══════════════════════════════════════════════════════
+WISSEN & FAKTEN — zwei klar getrennte Ebenen
+═══════════════════════════════════════════════════════
+Du darfst dein allgemeines Fachwissen über die Produktkategorie/Branche nutzen, um kompetent zu beraten. Aber halte ZWEI Ebenen strikt auseinander:
+
+1. ALLGEMEINES FACHWISSEN (darfst du frei nutzen):
+   Erkläre Konzepte, Funktionsweisen, branchenübliche Standards, Vergleiche, worauf man beim Kauf achtet. Beispiel: "Elektrostapler werden üblicherweise alle 500-1000 Betriebsstunden oder jährlich gewartet, das ist Branchenstandard." Sei hier souverän wie ein erfahrener Fachverkäufer.
+
+2. PRODUKTSPEZIFISCHE FAKTEN (nur aus den verifizierten Daten oben):
+   Konkrete Werte zu DIESEM Produkt (Wartungshistorie, exakte Ausstattung, Zustand, Preis) kommen AUSSCHLIESSLICH aus den verifizierten Dokument-Fakten. Erfinde sie NIEMALS.
+
+DIE TRENNUNG IMMER KENNTLICH MACHEN:
+Wenn du allgemeines Wissen nutzt und der konkrete Produktwert nicht in den Fakten steht, trenne klar. Beispiel:
+"Allgemein werden solche Stapler etwa jährlich oder alle 1000 Betriebsstunden gewartet. Wie genau der Wartungsplan für diese konkrete Maschine aussieht, kläre ich aber kurz mit dem Verkäufer und melde mich — dann haben Sie eine verlässliche Auskunft."
+
+So wirkst du kompetent UND ehrlich. Niemals so tun als wüsstest du einen konkreten Produktwert wenn er nicht in den Fakten steht.
 
 PRODUKTBESCHREIBUNG: ${analysis.summary || '(keine)'}
 ZUSTAND: ${analysis.condition || '(nicht beschrieben)'}
@@ -1066,29 +1083,53 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       messages.push({ role: 'user', content: userMessage || 'Hallo' });
     }
 
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 800,
-          system: systemPrompt,
-          tools,
-          messages
-        })
-      });
+    // API-Call mit automatischem Retry (gegen transiente Fehler)
+    let response, lastErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 800,
+            system: systemPrompt,
+            tools,
+            messages
+          })
+        });
+        if (response.ok) break;  // Erfolg → raus aus Retry
 
-      if (!response.ok) {
+        // Fehler-Detail loggen
         const errText = await response.text();
-        console.error('[CV Bot] API error:', response.status);
-        console.error('[CV Bot] Detail:', errText.substring(0, 500));
-        console.error('[CV Bot] messages waren:', JSON.stringify(messages).substring(0, 400));
-        await sendWAMessage(phoneId, phone, 'Einen kurzen Moment bitte — ich schaue mir Ihre Frage gerade an.');
+        lastErr = `${response.status}: ${errText.substring(0, 400)}`;
+        console.error(`[CV Bot] Versuch ${attempt}/3 fehlgeschlagen:`, lastErr);
+        console.error('[CV Bot] messages:', JSON.stringify(messages).substring(0, 300));
+
+        // Bei 400 (Bad Request) macht Retry keinen Sinn — History ist kaputt
+        if (response.status === 400) break;
+
+        // Bei 429/5xx: kurz warten und nochmal
+        await new Promise(r => setTimeout(r, attempt * 800));
+      } catch(e) {
+        lastErr = e.message;
+        console.error(`[CV Bot] Versuch ${attempt}/3 Netzwerkfehler:`, e.message);
+        await new Promise(r => setTimeout(r, attempt * 800));
+      }
+    }
+
+    try {
+      if (!response || !response.ok) {
+        console.error('[CV Bot] Alle Versuche fehlgeschlagen:', lastErr);
+        // Ehrliche Antwort statt Vertröstung — Bot bleibt im Spiel
+        const du = anrede === 'Du';
+        await sendWAMessage(phoneId, phone, du
+          ? 'Sorry, da ist mir gerade ein technischer Schluckauf passiert. Stell deine Frage gern nochmal, ich bin wieder da! 🙂'
+          : 'Entschuldigen Sie, da hatte ich gerade einen technischen Schluckauf. Stellen Sie Ihre Frage gern nochmal — ich bin wieder da! 🙂');
         return;
       }
 
