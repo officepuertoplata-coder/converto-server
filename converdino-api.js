@@ -1061,12 +1061,18 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     function normalizeHistory(hist) {
       const out = [];
       for (const m of hist) {
-        if (!m || !m.content) continue;
+        // Nur gültige Einträge mit nicht-leerem String-Content
+        if (!m || !m.role) continue;
+        if (m.role !== 'user' && m.role !== 'assistant') continue;
+        let c = m.content;
+        if (typeof c !== 'string') c = String(c || '');
+        c = c.trim();
+        if (!c) continue;  // leere Nachrichten raus
         const last = out[out.length - 1];
         if (last && last.role === m.role) {
-          last.content += '\n' + m.content;  // zusammenfassen
+          last.content += '\n' + c;  // zusammenfassen
         } else {
-          out.push({ role: m.role, content: m.content });
+          out.push({ role: m.role, content: c });
         }
       }
       // Muss mit user-Rolle beginnen (sonst lehnt API ab)
@@ -1123,13 +1129,48 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     }
 
     try {
+      // LETZTE RETTUNG: Wenn alles fehlschlug (oft Tool-Schema/History-Problem),
+      // versuche einen einfachen Call OHNE Tools — Hauptsache der Käufer
+      // bekommt eine echte fachliche Antwort statt einer Sackgasse.
       if (!response || !response.ok) {
-        console.error('[CV Bot] Alle Versuche fehlgeschlagen:', lastErr);
-        // Ehrliche Antwort statt Vertröstung — Bot bleibt im Spiel
+        console.error('[CV Bot] Haupt-Call fehlgeschlagen, versuche Fallback ohne Tools. lastErr:', lastErr);
+        try {
+          const fb = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-6',
+              max_tokens: 700,
+              system: systemPrompt + '\n\nWICHTIG: Antworte in diesem Fall NUR mit normalem Text, ohne Werkzeuge.',
+              messages
+            })
+          });
+          if (fb.ok) {
+            const fbData = await fb.json();
+            const fbText = (fbData.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+            if (fbText) {
+              await sendWAMessage(phoneId, phone, fbText);
+              session.history.push({ role: 'assistant', content: fbText });
+              await persistSession(session);
+              return;
+            }
+          } else {
+            const fbErr = await fb.text();
+            console.error('[CV Bot] Fallback ohne Tools auch fehlgeschlagen:', fb.status, fbErr.substring(0, 300));
+          }
+        } catch(fbE) {
+          console.error('[CV Bot] Fallback-Exception:', fbE.message);
+        }
+
+        // Wenn selbst der Fallback scheitert: ehrliche Nachricht, Bot bleibt im Spiel
         const du = anrede === 'Du';
         await sendWAMessage(phoneId, phone, du
-          ? 'Sorry, da ist mir gerade ein technischer Schluckauf passiert. Stell deine Frage gern nochmal, ich bin wieder da! 🙂'
-          : 'Entschuldigen Sie, da hatte ich gerade einen technischen Schluckauf. Stellen Sie Ihre Frage gern nochmal — ich bin wieder da! 🙂');
+          ? 'Sorry, da war kurz eine technische Störung. Stell deine Frage gern nochmal — ich bin gleich wieder voll da! 🙂'
+          : 'Entschuldigen Sie, da war kurz eine technische Störung. Stellen Sie Ihre Frage gern nochmal — ich bin gleich wieder voll da! 🙂');
         return;
       }
 
