@@ -1063,9 +1063,10 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       }
       await persistSession(session);
 
-      // Session beenden falls end_conversation / agree_deal / escalate
+      // Session NUR bei klarem Ende schließen.
+      // escalate_to_sales NICHT schließen — Bot sammelt danach noch Kontaktdaten.
       const closing = toolCalls.find(t =>
-        ['end_conversation', 'agree_deal', 'escalate_to_sales'].includes(t.name)
+        ['end_conversation', 'agree_deal'].includes(t.name)
       );
       if (closing) {
         cvBotSessions.delete(phone);
@@ -1097,19 +1098,36 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           session.phase = 'closing';
           updates.phase = 'closing';
           updates.lead_flagged_at = new Date().toISOString();
-          await cvLogEvent(session, phone, 'hot_lead', {
-            reason: input.reason || '',
-            buyer_name: session.buyerName, buyer_phone: session.buyerPhone
-          });
+          if (!session.notified) {
+            await cvLogEvent(session, phone, 'hot_lead', {
+              reason: input.reason || '',
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone
+            });
+            session.notified = true;
+          } else {
+            await cvLogEvent(session, phone, 'hot_lead', {
+              reason: 'Update: ' + (input.reason || 'weitere Infos'),
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone
+            }, true);  // silent: nur loggen, nicht nochmal melden
+          }
           break;
 
         case 'collect_contact':
           session.phase = 'closing';
           updates.phase = 'closing';
-          await cvLogEvent(session, phone, 'hot_lead', {
-            reason: 'Kontaktdaten erfasst',
-            buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
-          });
+          // Wenn schon eskaliert/gemeldet: Verkäufer mit Kontaktdaten-Update versorgen
+          if (session.notified) {
+            await cvLogEvent(session, phone, 'contact_added', {
+              reason: 'Kontaktdaten zum Lead',
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
+            });
+          } else {
+            await cvLogEvent(session, phone, 'hot_lead', {
+              reason: 'Kontaktdaten erfasst',
+              buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
+            });
+            session.notified = true;
+          }
           break;
 
         case 'agree_deal':
@@ -1121,6 +1139,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
             agreed_price: input.agreed_price,
             buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
           });
+          session.notified = true;
           break;
 
         case 'escalate_to_sales':
@@ -1132,6 +1151,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
             min_price: session.article.min_price,
             buyer_name: session.buyerName, buyer_phone: session.buyerPhone
           });
+          session.notified = true;
           break;
 
         case 'request_callback':
@@ -1188,7 +1208,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   }
 
   // ── EVENT LOGGEN (Basis für Resend in Schritt D) ─────────
-  async function cvLogEvent(session, buyerPhone, type, payload) {
+  async function cvLogEvent(session, buyerPhone, type, payload, silent) {
     try {
       await supabase.from('cv_events').insert({
         session_id: session.dbSessionId || null,
@@ -1201,8 +1221,10 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       });
       console.log(`[CV Event] ${type} für Slot ${session.slot.id}, Käufer +${buyerPhone}`);
 
-      // Verkäufer-Benachrichtigung (aktuell WA-Fallback, Resend folgt in Schritt D)
-      await cvNotifySeller(session, buyerPhone, type, payload);
+      // Verkäufer-Benachrichtigung (silent=true → nur loggen)
+      if (!silent) {
+        await cvNotifySeller(session, buyerPhone, type, payload);
+      }
     } catch(e) {
       console.error('[CV logEvent]', e.message);
     }
@@ -1230,11 +1252,12 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
 
       // Nachricht je nach Event-Typ aufbauen
       const titles = {
-        hot_lead:  '🔥 Heißer Lead!',
-        agreed:    '🎉 Einigung erzielt!',
-        escalated: '⚠️ Eskalation — Verkaufsleiter gefragt',
-        callback:  '📞 Rückruf gewünscht',
-        lost:      '📋 Gespräch beendet'
+        hot_lead:     '🔥 Heißer Lead!',
+        contact_added:'📇 Kontaktdaten zum Lead',
+        agreed:       '🎉 Einigung erzielt!',
+        escalated:    '⚠️ Eskalation — Verkaufsleiter gefragt',
+        callback:     '📞 Rückruf gewünscht',
+        lost:         '📋 Gespräch beendet'
       };
       const title = titles[type] || '📋 Bot-Update';
 
