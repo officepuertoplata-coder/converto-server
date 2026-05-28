@@ -560,8 +560,11 @@ JSON-FORMAT (exakt diese Felder):
       },
       body: JSON.stringify({
         model: 'claude-opus-4-6',
-        max_tokens: 3000,
-        messages: [{ role: 'user', content }]
+        max_tokens: 5000,
+        messages: [
+          { role: 'user', content },
+          { role: 'assistant', content: '{' }   // Prefill: zwingt Opus direkt ins JSON
+        ]
       })
     });
 
@@ -571,15 +574,58 @@ JSON-FORMAT (exakt diese Felder):
     }
 
     const data = await response.json();
-    const text = data.content?.[0]?.text || '';
-    const cleaned = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
-    try {
-      return JSON.parse(cleaned);
-    } catch(e) {
-      console.error('[CV Analyse] JSON parse failed. Raw:', text.substring(0, 500));
-      return { error: 'Analyse-Output ungültig', raw_text: text.substring(0, 1000) };
+    // stop_reason prüfen: bei max_tokens ist JSON abgeschnitten
+    const stopReason = data.stop_reason;
+    let text = data.content?.[0]?.text || '';
+
+    // Prefill '{' wieder voranstellen (API gibt es nicht zurück)
+    if (!text.trim().startsWith('{')) {
+      text = '{' + text;
     }
+
+    if (stopReason === 'max_tokens') {
+      console.error('[CV Analyse] Opus wurde durch max_tokens abgeschnitten. Output unvollständig.');
+    }
+
+    // Robustes JSON-Parsing: mehrere Strategien
+    const parsed = cvParseJson(text);
+    if (parsed) return parsed;
+
+    console.error('[CV Analyse] JSON parse failed. stop_reason:', stopReason, 'Raw:', text.substring(0, 800));
+    return {
+      error: stopReason === 'max_tokens'
+        ? 'Analyse zu lang (abgeschnitten) — bitte erneut versuchen'
+        : 'Analyse-Output ungültig',
+      raw_text: text.substring(0, 1500)
+    };
+  }
+
+  // JSON aus KI-Text extrahieren — mehrere Fallback-Strategien
+  function cvParseJson(text) {
+    if (!text) return null;
+
+    // Strategie 1: Markdown-Fences entfernen, direkt parsen
+    let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    try { return JSON.parse(cleaned); } catch(e) {}
+
+    // Strategie 2: Erstes { bis letztes } herausschneiden
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      const slice = cleaned.substring(start, end + 1);
+      try { return JSON.parse(slice); } catch(e) {}
+
+      // Strategie 3: häufige Fehler reparieren (trailing commas)
+      try {
+        const repaired = slice
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*]/g, ']');
+        return JSON.parse(repaired);
+      } catch(e) {}
+    }
+
+    return null;
   }
 
 
