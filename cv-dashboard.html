@@ -223,9 +223,21 @@ let activeSlotId = null;
     auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
   } catch(e) { auth = null; }
 
+  // ── LOGIN-SCHUTZ ──
+  // Kein gültiger Login → zur Anmeldeseite
   if (!auth || !auth.role) {
-    // Für Schritt 3-Tests: erlaube admin-Bypass falls nicht eingeloggt
-    auth = { role: 'admin', username: 'admin', name: 'admin' };
+    window.location.href = 'login.html?redirect=cv-dashboard.html';
+    return;
+  }
+
+  // Session-Ablauf prüfen (12 Stunden) — loggedInAt ist ISO-String aus login.html
+  if (auth.loggedInAt) {
+    var ageMs = Date.now() - new Date(auth.loggedInAt).getTime();
+    if (ageMs > 12 * 60 * 60 * 1000) {
+      localStorage.removeItem(AUTH_KEY);
+      window.location.href = 'login.html?redirect=cv-dashboard.html';
+      return;
+    }
   }
 
   document.getElementById('navUser').textContent = auth.username || auth.name || 'admin';
