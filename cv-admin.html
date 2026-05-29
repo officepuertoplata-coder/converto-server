@@ -49,8 +49,9 @@
   .tag-green { background: #e7f8ee; color: #0f7a3d; }
   .tag-mu { background: #eef2f0; color: var(--mu); }
   .login-name { font-family: monospace; font-weight: 700; }
-  .slot-cell { display: flex; align-items: center; gap: 8px; }
-  .slot-cell input { width: 64px; padding: 7px 9px; text-align: center; }
+  .btn-red { background: var(--red); }
+  .slot-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .slot-cell input { width: 80px; padding: 7px 9px; text-align: center; }
   .empty { text-align: center; color: var(--mu); padding: 40px 0; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -257,17 +258,18 @@ async function loadCustomers() {
         '<td>' + esc(company) + '<br><span style="color:var(--mu);font-size:13px;">' + esc(contact) + ' · ' + esc(phone) + '</span></td>' +
         '<td>' + comm + '</td>' +
         '<td>' + statusTag + '</td>' +
-        '<td>' + c.slots_created + ' Slots</td>' +
+        '<td><strong>' + c.slots_created + '</strong> Slots</td>' +
         '<td><div class="slot-cell">' +
-          '<input type="number" min="1" max="100" value="1" id="slotcount-' + c.id + '">' +
-          '<button type="button" class="btn btn-g btn-sm" onclick="addSlots(\'' + c.id + '\')">+ Slots</button>' +
+          '<input type="number" min="1" max="100" placeholder="Anzahl" id="slotcount-' + c.id + '">' +
+          '<button type="button" class="btn btn-g btn-sm" onclick="addSlots(\'' + c.id + '\')">+ Hinzufügen</button>' +
+          '<button type="button" class="btn btn-red btn-sm" onclick="removeSlots(\'' + c.id + '\')">− Entfernen</button>' +
         '</div></td>' +
       '</tr>';
     }
     area.innerHTML =
       '<table><thead><tr>' +
         '<th>Login</th><th>Firma / Kontakt</th><th>Provision</th>' +
-        '<th>Status</th><th>Slots</th><th>Slots zuweisen</th>' +
+        '<th>Status</th><th>Aktuell</th><th>Anzahl ändern</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>';
   } catch(e) {
     area.innerHTML = '';
@@ -295,6 +297,36 @@ async function addSlots(subId) {
       showMsg('listMsg', d.error || 'Slot-Zuweisung fehlgeschlagen.', false);
     } else {
       showMsg('listMsg', '✅ ' + d.added + ' Slot(s) zugewiesen. Gesamt: ' + d.slots_total + '.', true);
+      loadCustomers();
+    }
+  } catch(e) {
+    showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false);
+  }
+}
+
+// ── Slots entfernen (nur leere) ──
+async function removeSlots(subId) {
+  clearMsg('listMsg');
+  const input = document.getElementById('slotcount-' + subId);
+  const count = parseInt(input.value, 10);
+  if (!count || count < 1) {
+    showMsg('listMsg', 'Bitte im Feld eine Anzahl eingeben, die entfernt werden soll.', false);
+    return;
+  }
+  if (!confirm(count + ' leere Slot(s) entfernen? Belegte Slots bleiben erhalten.')) return;
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers/' + subId + '/slots/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('listMsg', d.error || 'Entfernen fehlgeschlagen.', false);
+    } else {
+      let m = '✅ ' + d.removed + ' Slot(s) entfernt. Gesamt jetzt: ' + d.slots_total + '.';
+      if (d.note) m += ' ' + d.note;
+      showMsg('listMsg', m, true);
       loadCustomers();
     }
   } catch(e) {
