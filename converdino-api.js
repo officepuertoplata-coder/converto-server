@@ -798,9 +798,10 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
         }).eq('id', article.id);
 
         // Bot-Assets generieren
-        const botCode = 'BOT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const botCode = 'Anfrage-' + Math.random().toString(36).substring(2, 6).toUpperCase();
         const waNumber = (process.env.WA_BOT_NUMBER || '4367764118066').replace(/[^0-9]/g, '');
-        const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(botCode)}`;
+        const startMsg = `Hallo, ich interessiere mich für ${article.title}. ${botCode}`;
+        const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(startMsg)}`;
         const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
         const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
 
@@ -814,7 +815,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
           updated_at: new Date().toISOString()
         }).eq('id', slotId);
 
-        console.log(`[CV] Slot ${slotId} aktiv. BOT-Code: ${botCode}`);
+        console.log(`[CV] Slot ${slotId} aktiv. Anfrage-Code: ${botCode}`);
       })().catch(e => console.error('[CV] Hintergrund-Fehler:', e));
     } catch(e) {
       console.error('[CV /activate]', e);
@@ -908,7 +909,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
       .maybeSingle();
 
     if (!slot) {
-      await sendWAMessage(phoneId, phone, '❌ Dieser Bot-Code ist nicht aktiv oder ungültig.');
+      await sendWAMessage(phoneId, phone, '❌ Diese Anfrage-Nummer ist nicht mehr aktiv oder ungültig.');
       return false;
     }
 
