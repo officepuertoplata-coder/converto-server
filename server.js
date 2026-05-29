@@ -127,10 +127,16 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           }
           // ── BOT-SLOT ROUTING ─────────────────────────────────
           const rawText = msg.text?.body || '';
-          const botCodeMatch = rawText.trim().match(/^(BOT-[A-Z0-9]{4,8})$/i);
+          // Erkennt den Anfrage-Code irgendwo im Text (auch eingebettet in einen Satz).
+          // Neues Format "Anfrage-XXXX" und altes Format "BOT-XXXX" werden beide akzeptiert.
+          const botCodeMatch = rawText.match(/\b(Anfrage|BOT)-([A-Z0-9]{4,8})\b/i);
           if (botCodeMatch && msgType === 'text') {
             try {
-              await cvAPI.handleBotStart(from, botCodeMatch[1].toUpperCase(), phoneId);
+              // Auf das in der DB gespeicherte Format normalisieren:
+              // Präfix "Anfrage-" bzw. "BOT-", Code-Teil immer GROSS.
+              const prefix = botCodeMatch[1].toLowerCase() === 'bot' ? 'BOT-' : 'Anfrage-';
+              const normalizedCode = prefix + botCodeMatch[2].toUpperCase();
+              await cvAPI.handleBotStart(from, normalizedCode, phoneId);
               continue;
             } catch(botErr) { console.error('Bot slot start error:', botErr.message); }
           }
