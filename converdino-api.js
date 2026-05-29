@@ -903,14 +903,12 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
       ? pdfFacts.map(f => `• ${f.k}: ${f.v}`).join('\n')
       : '(keine extrahierten Dokument-Fakten)';
 
-    // Erste Nachricht: vorgefertigte Begrüßung verwenden, falls vorhanden
-    if (userMessage === null && strategy.opening_message) {
-      const opening = strategy.opening_message;
-      await sendWAMessage(phoneId, phone, opening);
-      session.history = [{ role: 'assistant', content: opening }];
-      await persistSession(session);
-      return;
-    }
+    // Erste Nachricht: NICHT mehr die vorgespeicherte opening_message als Text senden,
+    // weil die in der falschen Anrede sein kann. Stattdessen lassen wir Sonnet die
+    // Begrüßung live in der korrekten Slot-Anrede formulieren — Inhalt aus der DNA,
+    // Anrede aus dem Slot. Das löst den Du/Sie-Wechsel zuverlässig.
+    // (Der weitere Code unten erstellt den Systemprompt und ruft Sonnet — auch für die
+    //  erste Nachricht. opening_message dient nur noch als inhaltliche Vorlage im Prompt.)
 
     const salePrice = Number(article.sale_price) || 0;
     const minPrice  = Number(article.min_price) || 0;
@@ -922,6 +920,18 @@ VERKAUFSPREIS: €${salePrice}
 MINDESTPREIS: €${minPrice} (NIEMALS ein Angebot darunter machen!)
 STANDORT: ${article.location || 'auf Anfrage'}
 ANREDE: ${anrede} (konsequent verwenden)
+
+═══════════════════════════════════════════════════════
+KÄUFER-KONTAKT — WICHTIG!
+═══════════════════════════════════════════════════════
+Du schreibst dem Käufer über WhatsApp. Du HAST seine Telefonnummer bereits: +${phone}
+Das heißt:
+- Du fragst NIEMALS aktiv nach der Telefonnummer ("wie ist Ihre Nummer?"). Das wäre peinlich — du chattest ja gerade auf dieser Nummer.
+- Wenn du Kontaktdaten brauchst (vor dem Zahlungslink), frage NUR nach dem Namen, und bestätige aktiv dass du die WhatsApp-Nummer verwenden darfst.
+- Formuliere etwa so: "Ich sehe Ihre WhatsApp-Nummer — darf ich die für die Reservierung verwenden? Dann brauche ich nur noch Ihren Namen." (bzw. mit "du" wenn Anrede=Du)
+- Wenn der Käufer zustimmt → seine WhatsApp-Nummer ist die Kontaktnummer. Nicht nochmal explizit erfragen.
+- Wenn der Käufer eine andere Nummer angibt: die nehmen.
+- Bei collect_contact: trage die WhatsApp-Nummer (+${phone}) als buyer_phone ein, außer der Käufer hat eine andere genannt.
 
 ═══════════════════════════════════════════════════════
 VERIFIZIERTE FAKTEN ZU DIESEM PRODUKT (aus den Dokumenten)
@@ -959,6 +969,13 @@ UMGANG MIT EINWÄNDEN:
 ${(analysis.likely_objections || []).map(o => `Einwand "${o.objection}" → "${o.response}"`).join('\n') || '(keine vordefiniert)'}
 
 ═══════════════════════════════════════════════════════
+ANREDE (sehr wichtig — konsistent durchhalten!)
+═══════════════════════════════════════════════════════
+- Du nutzt die Anrede "${anrede}" — KONSEQUENT in JEDER Nachricht, auch in der allerersten Begrüßung.
+- ${anrede === 'Du' ? 'Du-Form: "du / dich / dir / dein". KEIN Wechsel zu "Sie/Ihnen/Ihr" — auch nicht in der Begrüßung.' : 'Sie-Form: "Sie / Ihnen / Ihr". KEIN Wechsel zu "du/dich/dir" — auch nicht in der Begrüßung.'}
+- Wenn du selbst auf der Begrüßungsvorlage aus der Wissensbasis basierst und die in der falschen Anrede ist: formuliere sie um in "${anrede}". Die Slot-Anrede gewinnt IMMER.
+
+═══════════════════════════════════════════════════════
 VERHANDLUNGS-REGELN
 ═══════════════════════════════════════════════════════
 - Starte bei €${salePrice}. Biete NUR dann einen niedrigeren Preis an wenn der Käufer AKTIV nach einem besseren Preis fragt. Nie proaktiv Rabatt anbieten.
@@ -967,16 +984,24 @@ VERHANDLUNGS-REGELN
 ${(strategy.negotiation_steps || ['Halte Verkaufspreis', 'Kleines Zugeständnis', 'Bis Mindestpreis']).map(s => '  ' + s).join('\n')}
 - Verknappung sparsam & ehrlich einsetzen (Einzelstück, mehrere Interessenten) — nie erfinden.
 
+WICHTIG — Schwelle für Abschluss vs. Eskalation (NIEMALS verwechseln):
+- €${minPrice} ist der Mindestpreis. Du darfst zu jedem Preis ≥ €${minPrice} OHNE Rücksprache verkaufen.
+- Klare Regel:
+  • Käufer-Angebot ≥ €${minPrice}  →  ABSCHLUSS. Direkt akzeptieren, Kontakt sammeln, Zahlungslink schicken. KEINE Eskalation, KEIN "an Verkaufsleiter weiterleiten".
+  • Käufer-Angebot < €${minPrice}  →  Versuche ihn auf €${minPrice} hochzubringen. Wenn er nicht hochgeht: dann Eskalation (escalate_to_sales).
+- Auch wenn das Käufer-Angebot nur knapp über dem Mindestpreis liegt (z.B. €${minPrice + 10} bei Mindestpreis €${minPrice}): das ist immer noch ABSCHLUSS, nicht Eskalation. Jeder Euro über dem Mindestpreis ist Gewinn.
+- Eskaliere NIEMALS aus "Sicherheitsgefühl" oder "lass den Verkaufsleiter bestätigen" — du bist autorisiert bis €${minPrice} runter. Eskaliere nur wenn du WIRKLICH nicht weiterkommst (Käufer unter Mindestpreis und nicht bewegbar).
+
 ═══════════════════════════════════════════════════════
 ABWICKLUNG & SICHERHEIT (so läuft der Kauf ab)
 ═══════════════════════════════════════════════════════
 - Die Kaufabwicklung läuft IMMER sicher und treuhänderisch über die Plattform ab. Es gibt KEINEN Privatverkauf, keine private Übergabe von Bargeld, kein direkter Geldtausch zwischen Käufer und Verkäufer.
 - PFLICHT-ABLAUF BEI RESERVIERUNG/KAUF (genau diese Reihenfolge, KEINEN Schritt auslassen):
   1. Käufer will kaufen/reservieren → erkläre kurz die Anzahlung + Treuhand-Sicherheit.
-  2. Frage nach Name + Telefonnummer (collect_contact).
-  3. SOBALD du Name + Nummer hast → rufe SOFORT create_payment_link auf. Das ist zwingend. Sage NICHT nur "danke" und höre auf — der Käufer wartet auf den Zahlungslink!
+  2. Frage nach dem NAMEN. Bestätige zugleich dass du die WhatsApp-Nummer verwenden darfst (du brauchst sie NICHT separat zu erfragen, sie liegt bereits vor: +${phone}).
+  3. SOBALD du den Namen hast (und die WA-Nummer als Kontakt akzeptiert wurde) → rufe SOFORT create_payment_link auf. Das ist zwingend. Sage NICHT nur "danke" und höre auf — der Käufer wartet auf den Zahlungslink!
   4. Das Tool create_payment_link verschickt den Link automatisch. Danach kannst du dich verabschieden (confirm_commitment).
-- NIEMALS bei "Perfekt, danke" stehenbleiben wenn noch kein Zahlungslink verschickt wurde. Wenn Name + Nummer da sind und der Käufer reservieren will, ist create_payment_link IMMER dein nächster Schritt.
+- NIEMALS bei "Perfekt, danke" stehenbleiben wenn noch kein Zahlungslink verschickt wurde. Wenn der Name da ist und der Käufer reservieren will, ist create_payment_link IMMER dein nächster Schritt.
 - Erkläre dem Käufer: "Mit der Anzahlung reservieren Sie verbindlich, das Geld ist sicher über unsere Treuhand geschützt. Der Restbetrag wird bei Übergabe fällig." Das ist ein echtes Sicherheits-Argument.
 - Erkläre bei Kaufinteresse sinngemäß: "Die Zahlung läuft sicher ab — Ihr Geld ist geschützt, und der Verkäufer versendet Artikel und Rechnung erst danach an Sie." Das ist ein echtes Vertrauens- und Sicherheits-Argument, nutze es aktiv besonders bei höherpreisigen Artikeln.
 - NENNE NIEMALS eine Provision, Gebühr oder einen Vermittlungsanteil. Der Käufer zahlt den verhandelten Preis — Punkt. Über interne Abläufe sprichst du nicht.
@@ -987,7 +1012,7 @@ ABWICKLUNG & SICHERHEIT (so läuft der Kauf ab)
 DEINE WERKZEUGE — wann du sie einsetzt
 ═══════════════════════════════════════════════════════
 - flag_hot_lead: Sobald der Käufer ernsthaftes Kaufinteresse zeigt (will kaufen, fragt nach Übergabe/Probefahrt/Verfügbarkeit, oder will mit dem Verkäufer sprechen). Reiche den Lead SOFORT weiter — lieber zu früh als zu spät.
-- collect_contact: Wenn konkretes Interesse da ist, frage natürlich nach Name und Telefonnummer (und optional Email). Erst bei echtem Interesse, nicht am Anfang.
+- collect_contact: Wenn konkretes Interesse da ist, frage natürlich nach dem NAMEN und bestätige die WhatsApp-Nummer als Kontakt. Bei Email optional. Erst bei echtem Interesse, nicht am Anfang.
 - agree_deal: Wenn sich Käufer und du auf einen Preis einigen. Vorher Kontaktdaten sichern.
 - create_payment_link: NACH der Einigung UND wenn du Name + Kontaktdaten hast — erstellt den sicheren Anzahlungs-Zahlungslink und schickt ihn dem Käufer. Nutze dies wenn der Käufer bereit ist zu reservieren/zu zahlen.
 - escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee."
@@ -1024,8 +1049,8 @@ WICHTIG: confirm_commitment ist IMMER der allerletzte Schritt der ein Gespräch 
 WICHTIG zu Werkzeugen:
 - Du kannst in einem Zug Text schreiben UND ein Werkzeug aufrufen.
 - Erfinde NIEMALS Kontaktdaten oder Zeitfenster. Nutze nur was der Käufer wirklich genannt hat.
-- IMMER wenn der Käufer Name und/oder Telefonnummer nennt → rufe collect_contact mit den Daten auf. Antworte NIE nur mit Text wenn Kontaktdaten genannt wurden — das Werkzeug ist Pflicht, sonst gehen die Daten verloren.
-- Bei Reservierungs-/Kaufabsicht gilt der Pflicht-Ablauf: collect_contact → dann create_payment_link. Niemals mit "danke" enden bevor der Zahlungslink verschickt ist.
+- IMMER wenn der Käufer einen Namen (oder eine abweichende Telefonnummer) nennt → rufe collect_contact mit den Daten auf. Antworte NIE nur mit Text wenn ein Name genannt wurde — das Werkzeug ist Pflicht, sonst gehen die Daten verloren.
+- Bei Reservierungs-/Kaufabsicht gilt der Pflicht-Ablauf: collect_contact (Name + bestätigte WA-Nummer) → dann create_payment_link. Niemals mit "danke" enden bevor der Zahlungslink verschickt ist.
 
 STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur antworten. Niemals Fakten erfinden.`;
 
@@ -1085,7 +1110,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       },
       {
         name: 'escalate_to_sales',
-        description: 'Der Käufer will unter den Mindestpreis. Übergib an den menschlichen Verkaufsleiter. Gib das vereinbarte Rückruf-Zeitfenster in preferred_time an.',
+        description: `Eskalation an den Verkaufsleiter NUR wenn der Käufer einen Preis UNTER dem Mindestpreis (€${minPrice}) fordert und nicht hochgeht. NICHT bei einem Angebot AUF dem Mindestpreis — das ist Abschluss. Gib das vereinbarte Rückruf-Zeitfenster in preferred_time an.`,
         input_schema: {
           type: 'object',
           properties: {
@@ -1316,6 +1341,13 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       if (input.buyer_email)    session.buyerEmail   = input.buyer_email;
       if (input.preferred_time) session.callbackTime = input.preferred_time;
 
+      // Auto-Fallback: Wenn collect_contact (oder agree_deal) aufgerufen wird und
+      // noch keine buyerPhone gesetzt ist, übernehme automatisch die WhatsApp-Nummer
+      // des Käufers. Der Bot soll nicht extra danach fragen — wir chatten ja darüber.
+      if ((toolName === 'collect_contact' || toolName === 'agree_deal') && !session.buyerPhone && phone) {
+        session.buyerPhone = phone;
+      }
+
       const updates = {};
       if (session.buyerName)    updates.buyer_name          = session.buyerName;
       if (session.buyerPhone)   updates.buyer_contact_phone = session.buyerPhone;
@@ -1377,8 +1409,8 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           if (result) {
             const du = (session.article.anrede || 'Sie') === 'Du';
             const linkMsg = du
-              ? `Perfekt! 🎉\n\nUm „${session.article.title}" verbindlich für dich zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* an (${result.depositPct}%) — sicher über unsere Treuhand. Den Restbetrag von €${result.restbetrag.toFixed(2)} klärst du direkt bei der Übergabe mit dem Verkäufer.\n\nHier dein sicherer Zahlungslink:\n${result.url}`
-              : `Perfekt! 🎉\n\nUm „${session.article.title}" verbindlich für Sie zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* an (${result.depositPct}%) — sicher über unsere Treuhand. Den Restbetrag von €${result.restbetrag.toFixed(2)} klären Sie direkt bei der Übergabe mit dem Verkäufer.\n\nHier Ihr sicherer Zahlungslink:\n${result.url}`;
+              ? `Um „${session.article.title}" verbindlich für dich zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* (${result.depositPct}%) an — sicher über unsere Treuhand. 🔒\n\nDen Restbetrag von €${result.restbetrag.toFixed(2)} klärst du direkt bei der Übergabe mit dem Verkäufer.\n\nHier dein sicherer Zahlungslink:\n${result.url}`
+              : `Um „${session.article.title}" verbindlich für Sie zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* (${result.depositPct}%) an — sicher über unsere Treuhand. 🔒\n\nDen Restbetrag von €${result.restbetrag.toFixed(2)} klären Sie direkt bei der Übergabe mit dem Verkäufer.\n\nHier Ihr sicherer Zahlungslink:\n${result.url}`;
             await sendWAMessage(session.phoneId, phone, linkMsg);
             session.history.push({ role: 'assistant', content: linkMsg });
             // Event: Link verschickt
