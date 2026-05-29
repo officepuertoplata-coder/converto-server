@@ -2117,6 +2117,57 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   });
 
 
+  // POST /api/cv/admin/customers/:subId/slots/remove — leere Slots entfernen
+  // Entfernt bis zu 'count' LEERE Slots (höchste Nummern zuerst). Belegte bleiben unangetastet.
+  app.post('/api/cv/admin/customers/:subId/slots/remove', async (req, res) => {
+    try {
+      const subId = req.params.subId;
+      const count = parseInt(req.body.count, 10);
+      if (!count || count < 1) {
+        return res.status(400).json({ error: 'Bitte eine Anzahl ab 1 angeben' });
+      }
+
+      const { data: sub, error: subErr } = await supabase
+        .from('cv_subscriptions').select('*').eq('id', subId).maybeSingle();
+      if (subErr) return res.status(500).json({ error: subErr.message });
+      if (!sub) return res.status(404).json({ error: 'Kunde nicht gefunden' });
+
+      // Nur LEERE Slots holen, höchste Nummer zuerst
+      const { data: emptySlots, error: emptyErr } = await supabase
+        .from('cv_slots')
+        .select('id, slot_number')
+        .eq('subscription_id', subId)
+        .eq('status', 'empty')
+        .order('slot_number', { ascending: false });
+      if (emptyErr) return res.status(500).json({ error: emptyErr.message });
+
+      const available = emptySlots || [];
+      if (available.length === 0) {
+        return res.status(409).json({ error: 'Keine leeren Slots vorhanden — belegte Slots werden nicht entfernt.' });
+      }
+
+      const toRemove = available.slice(0, count);
+      const removeIds = toRemove.map(s => s.id);
+      const { error: delErr } = await supabase.from('cv_slots').delete().in('id', removeIds);
+      if (delErr) return res.status(400).json({ error: 'Löschen: ' + delErr.message });
+
+      // slots_total neu berechnen (tatsächliche Anzahl nach dem Löschen)
+      const { data: remaining } = await supabase
+        .from('cv_slots').select('id').eq('subscription_id', subId);
+      const newTotal = (remaining || []).length;
+      await supabase.from('cv_subscriptions').update({ slots_total: newTotal }).eq('id', subId);
+
+      res.json({
+        success: true,
+        removed: removeIds.length,
+        requested: count,
+        slots_total: newTotal,
+        note: removeIds.length < count ? 'Es konnten nur leere Slots entfernt werden.' : undefined
+      });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+
   console.log(`✅ Converdino API geladen — /api/cv/* aktiv + WhatsApp-Handler + Email (${cvResend ? 'AKTIV' : 'inaktiv'})`);
 
   // Rückgabe: Handler für server.js
