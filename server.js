@@ -11,6 +11,27 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+// ── PASSWORT-SICHERHEIT (bcrypt, defensiv) ──────────────────
+// Lädt bcryptjs; fällt auf Klartext zurück, falls Paket fehlt,
+// damit niemand ausgesperrt wird.
+let bcrypt = null;
+try { bcrypt = require('bcryptjs'); console.log('[AUTH] bcryptjs geladen — Passwort-Hashing aktiv'); }
+catch(e) { console.warn('[AUTH] bcryptjs nicht verfügbar — Klartext-Fallback'); }
+function isHashed(s) { return typeof s === 'string' && /^\$2[aby]\$/.test(s); }
+async function verifyPassword(plain, stored) {
+  if (stored == null) return false;
+  if (isHashed(stored)) {
+    if (!bcrypt) return false;
+    try { return await bcrypt.compare(plain, stored); } catch(e) { return false; }
+  }
+  return plain === stored; // Legacy-Klartext
+}
+async function hashPassword(plain) {
+  if (bcrypt) { try { return await bcrypt.hash(plain, 10); } catch(e) {} }
+  return plain;
+}
+
 // ── KI MODEL CONFIG ──────────────────────────────────────────
 const AI = {
   grouping:   'claude-haiku-4-5-20251001',
@@ -24,40 +45,6 @@ const AI = {
 app.use(cors({ origin: '*' }));
 const path = require('path');
 app.use(express.static(__dirname));
-
-// ============================================================
-// PASSWORT-SICHERHEIT (bcrypt mit sanfter Migration)
-// ============================================================
-// bcryptjs wird defensiv geladen: fehlt das Paket, faellt der Code auf
-// den bisherigen Klartext-Vergleich zurueck (kein Absturz, kein Aussperren).
-// Sobald bcryptjs installiert ist, werden Passwoerter gehasht geprueft und
-// alte Klartext-Passwoerter beim naechsten erfolgreichen Login automatisch
-// in einen sicheren Hash umgewandelt.
-let bcrypt = null;
-try { bcrypt = require('bcryptjs'); console.log('[AUTH] bcryptjs geladen — Passwort-Hashing aktiv'); }
-catch(e) { console.warn('[AUTH] bcryptjs NICHT installiert — Passwoerter vorerst im Klartext (bitte bcryptjs zur package.json hinzufuegen)'); }
-
-function isHashed(stored) {
-  return typeof stored === 'string' && /^\$2[aby]\$/.test(stored);
-}
-
-// Prueft ein Passwort gegen den gespeicherten Wert (Hash ODER Klartext).
-async function verifyPassword(plain, stored) {
-  if (stored == null) return false;
-  if (isHashed(stored)) {
-    if (!bcrypt) return false; // gehasht, aber kein bcrypt -> nicht pruefbar
-    try { return await bcrypt.compare(plain, stored); } catch(e) { return false; }
-  }
-  // Klartext-Vergleich (Alt-Bestand)
-  return plain === stored;
-}
-
-// Erzeugt einen Hash (oder gibt Klartext zurueck, falls bcrypt fehlt).
-async function hashPassword(plain) {
-  if (!bcrypt) return plain;
-  try { return await bcrypt.hash(plain, 10); } catch(e) { return plain; }
-}
-
 
 // No-cache für alle API-Endpoints (verhindert 304)
 app.use('/api/', function(req, res, next) {
@@ -115,36 +102,45 @@ app.post('/api/auth/login', async (req, res) => {
     const { data: user, error: uErr } = await supabase.from('users').select('*').eq('username', username.toLowerCase().trim()).single();
     if (user && !uErr) {
       if (!user.active) return res.status(401).json({ error: 'Account deaktiviert' });
-      const okPw = await verifyPassword(password, user.password);
-      if (!okPw) return res.status(401).json({ error: 'Falsches Passwort' });
-      // Sanfte Migration: war es Klartext, jetzt als Hash speichern
-      if (bcrypt && !isHashed(user.password)) {
-        try { const h = await hashPassword(password); await supabase.from('users').update({ password: h }).eq('id', user.id); }
-        catch(e) { console.warn('[AUTH] Passwort-Migration fehlgeschlagen:', e.message); }
+      const pwOk = await verifyPassword(password, user.password);
+      if (!pwOk) return res.status(401).json({ error: 'Falsches Passwort' });
+      // Sanfte Migration: Klartext-Passwort beim ersten Login in Hash umwandeln
+      if (!isHashed(user.password)) {
+        try { const h = await hashPassword(password); await supabase.from('users').update({ password: h }).eq('id', user.id); } catch(e) {}
       }
       await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', user.id);
       if (user.role === 'superadmin') { const { data: merchants } = await supabase.from('merchants').select('id, name, slug, status').order('name'); return res.json({ success: true, role: 'superadmin', user: { id: user.id, name: user.name, username: user.username }, merchants: merchants || [] }); }
       if (user.role === 'staff') { const { data: access } = await supabase.from('user_merchant_access').select('merchant_id, merchants(id, name, slug, status)').eq('user_id', user.id); const merchants = (access || []).map(a => a.merchants).filter(Boolean); return res.json({ success: true, role: 'staff', user: { id: user.id, name: user.name, username: user.username }, merchants }); }
-      if (user.role === 'merchant') { const { data: merchant } = await supabase.from('merchants').select('*').eq('id', user.merchant_id).single(); return res.json({ success: true, role: 'merchant', user: { id: user.id, name: user.name, username: user.username }, merchant }); }
+      if (user.role === 'merchant') {
+        // Converdino-Kunde hat ggf. keine merchant_id (kein altes Geschäft) — kein Absturz
+        let merchant = null;
+        if (user.merchant_id) {
+          const { data: m } = await supabase.from('merchants').select('*').eq('id', user.merchant_id).maybeSingle();
+          merchant = m || null;
+        }
+        return res.json({ success: true, role: 'merchant', user: { id: user.id, name: user.name, username: user.username }, merchant });
+      }
     }
     const { data: merchant, error: mErr } = await supabase.from('merchants').select('id, name, slug, admin_password, wa_enabled, meta_phone_number_id').eq('slug', username).single();
-    if (!mErr && merchant && await verifyPassword(password, merchant.admin_password)) {
-      if (bcrypt && !isHashed(merchant.admin_password)) {
-        try { const h = await hashPassword(password); await supabase.from('merchants').update({ admin_password: h }).eq('id', merchant.id); }
-        catch(e) { console.warn('[AUTH] Merchant-Passwort-Migration fehlgeschlagen:', e.message); }
+    if (!mErr && merchant) {
+      const ok = await verifyPassword(password, merchant.admin_password);
+      if (ok) {
+        if (!isHashed(merchant.admin_password)) {
+          try { const h = await hashPassword(password); await supabase.from('merchants').update({ admin_password: h }).eq('id', merchant.id); } catch(e) {}
+        }
+        return res.json({ success: true, role: 'merchant', merchant, legacy: true });
       }
-      return res.json({ success: true, role: 'merchant', merchant, legacy: true });
     }
     return res.status(401).json({ error: 'Ungueltige Zugangsdaten' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/users', async (req, res) => { try { const { data, error } = await supabase.from('users').select('id, username, role, name, email, active, merchant_id, last_login, created_at').order('created_at', { ascending: false }); if (error) return res.status(500).json({ error: error.message }); res.json(data || []); } catch(e) { res.status(500).json({ error: e.message }); } });
-app.post('/api/users', async (req, res) => { try { const { username, password, role, name, email, merchant_id, merchant_ids } = req.body; if (!username || !password || !role) return res.status(400).json({ error: 'Username, Passwort und Rolle erforderlich' }); const hashedPw = await hashPassword(password); const { data: user, error } = await supabase.from('users').insert({ username: username.toLowerCase().trim(), password: hashedPw, role, name, email, merchant_id: merchant_id || null }).select().single(); if (error) return res.status(400).json({ error: error.message }); if (role === 'staff' && merchant_ids?.length > 0) await supabase.from('user_merchant_access').insert(merchant_ids.map(mid => ({ user_id: user.id, merchant_id: mid }))); res.json({ success: true, user }); } catch(e) { res.status(500).json({ error: e.message }); } });
-app.put('/api/users/:id', async (req, res) => { try { const { password, name, email, active, merchant_id, merchant_ids } = req.body; const updates = {}; if (password) updates.password = await hashPassword(password); if (name !== undefined) updates.name = name; if (email !== undefined) updates.email = email; if (active !== undefined) updates.active = active; if (merchant_id !== undefined) updates.merchant_id = merchant_id; const { data, error } = await supabase.from('users').update(updates).eq('id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); if (merchant_ids !== undefined) { await supabase.from('user_merchant_access').delete().eq('user_id', req.params.id); if (merchant_ids.length > 0) await supabase.from('user_merchant_access').insert(merchant_ids.map(mid => ({ user_id: req.params.id, merchant_id: mid }))); } res.json({ success: true, user: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
+app.post('/api/users', async (req, res) => { try { const { username, password, role, name, email, merchant_id, merchant_ids } = req.body; if (!username || !password || !role) return res.status(400).json({ error: 'Username, Passwort und Rolle erforderlich' }); const { data: user, error } = await supabase.from('users').insert({ username: username.toLowerCase().trim(), password, role, name, email, merchant_id: merchant_id || null }).select().single(); if (error) return res.status(400).json({ error: error.message }); if (role === 'staff' && merchant_ids?.length > 0) await supabase.from('user_merchant_access').insert(merchant_ids.map(mid => ({ user_id: user.id, merchant_id: mid }))); res.json({ success: true, user }); } catch(e) { res.status(500).json({ error: e.message }); } });
+app.put('/api/users/:id', async (req, res) => { try { const { password, name, email, active, merchant_id, merchant_ids } = req.body; const updates = {}; if (password) updates.password = password; if (name !== undefined) updates.name = name; if (email !== undefined) updates.email = email; if (active !== undefined) updates.active = active; if (merchant_id !== undefined) updates.merchant_id = merchant_id; const { data, error } = await supabase.from('users').update(updates).eq('id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); if (merchant_ids !== undefined) { await supabase.from('user_merchant_access').delete().eq('user_id', req.params.id); if (merchant_ids.length > 0) await supabase.from('user_merchant_access').insert(merchant_ids.map(mid => ({ user_id: req.params.id, merchant_id: mid }))); } res.json({ success: true, user: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.delete('/api/users/:id', async (req, res) => { try { const { error } = await supabase.from('users').delete().eq('id', req.params.id); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true }); } catch(e) { res.status(500).json({ error: e.message }); } });
-app.post('/api/merchants', async (req, res) => { try { const { name, slug, admin_password, currency, wa_number, description } = req.body; if (!name || !slug || !admin_password) return res.status(400).json({ error: 'Name, Slug und Passwort erforderlich' }); const hashedPw = await hashPassword(admin_password); const { data, error } = await supabase.from('merchants').insert({ name, slug: slug.toLowerCase().trim(), admin_password: hashedPw, currency: currency || 'EUR', wa_number: wa_number || null, description: description || null, status: 'active' }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, merchant: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
-app.put('/api/merchants/:id', async (req, res) => { try { const updates = req.body; delete updates.id; if (updates.admin_password) { updates.admin_password = await hashPassword(updates.admin_password); } const { data, error } = await supabase.from('merchants').update(updates).eq('id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, merchant: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
+app.post('/api/merchants', async (req, res) => { try { const { name, slug, admin_password, currency, wa_number, description } = req.body; if (!name || !slug || !admin_password) return res.status(400).json({ error: 'Name, Slug und Passwort erforderlich' }); const { data, error } = await supabase.from('merchants').insert({ name, slug: slug.toLowerCase().trim(), admin_password, currency: currency || 'EUR', wa_number: wa_number || null, description: description || null, status: 'active' }).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, merchant: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
+app.put('/api/merchants/:id', async (req, res) => { try { const updates = req.body; delete updates.id; const { data, error } = await supabase.from('merchants').update(updates).eq('id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); res.json({ success: true, merchant: data }); } catch(e) { res.status(500).json({ error: e.message }); } });
 app.get('/api/merchants', async (req, res) => { const { data, error } = await supabase.from('merchants').select('id, name, slug, status, currency, created_at').order('created_at', { ascending: false }); if (error) return res.status(500).json({ error: error.message }); res.json(data); });
 app.get('/api/merchants/:slug', async (req, res) => { const { data, error } = await supabase.from('merchants').select('*').eq('slug', req.params.slug).single(); if (error) return res.status(404).json({ error: 'Nicht gefunden' }); res.json(data); });
 
@@ -173,16 +169,10 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           }
           // ── BOT-SLOT ROUTING ─────────────────────────────────
           const rawText = msg.text?.body || '';
-          // Erkennt den Anfrage-Code irgendwo im Text (auch eingebettet in einen Satz).
-          // Neues Format "Anfrage-XXXX" und altes Format "BOT-XXXX" werden beide akzeptiert.
-          const botCodeMatch = rawText.match(/\b(Anfrage|BOT)-([A-Z0-9]{4,8})\b/i);
+          const botCodeMatch = rawText.trim().match(/^(BOT-[A-Z0-9]{4,8})$/i);
           if (botCodeMatch && msgType === 'text') {
             try {
-              // Auf das in der DB gespeicherte Format normalisieren:
-              // Präfix "Anfrage-" bzw. "BOT-", Code-Teil immer GROSS.
-              const prefix = botCodeMatch[1].toLowerCase() === 'bot' ? 'BOT-' : 'Anfrage-';
-              const normalizedCode = prefix + botCodeMatch[2].toUpperCase();
-              await cvAPI.handleBotStart(from, normalizedCode, phoneId);
+              await cvAPI.handleBotStart(from, botCodeMatch[1].toUpperCase(), phoneId);
               continue;
             } catch(botErr) { console.error('Bot slot start error:', botErr.message); }
           }
