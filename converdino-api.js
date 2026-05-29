@@ -2266,6 +2266,148 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   });
 
 
+  // ============================================================
+  // PASSWORT — Kunde ändert selbst / "Passwort vergessen" (Schritt 1c)
+  // ============================================================
+
+  // Verify-Helfer (passend zu cvHashPassword; Klartext-Fallback)
+  async function cvVerifyPassword(plain, stored) {
+    if (stored == null) return false;
+    const looksHashed = typeof stored === 'string' && /^\$2[aby]\$/.test(stored);
+    if (looksHashed) {
+      if (!cvBcrypt) return false;
+      try { return await cvBcrypt.compare(plain, stored); } catch(e) { return false; }
+    }
+    return plain === stored;
+  }
+
+  function cvMakeToken() {
+    // 48 Hex-Zeichen, ausreichend zufällig
+    try {
+      const crypto = require('crypto');
+      return crypto.randomBytes(24).toString('hex');
+    } catch(e) {
+      return (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).slice(0, 48);
+    }
+  }
+
+  // POST /api/cv/account/change-password — eingeloggter Kunde ändert sein Passwort
+  app.post('/api/cv/account/change-password', async (req, res) => {
+    try {
+      const login = String(req.body.user_login || '').toLowerCase().trim();
+      const oldPw = req.body.old_password;
+      const newPw = req.body.new_password;
+      if (!login || !oldPw || !newPw) {
+        return res.status(400).json({ error: 'Bitte alle Felder ausfüllen' });
+      }
+      if (String(newPw).length < 6) {
+        return res.status(400).json({ error: 'Neues Passwort muss mindestens 6 Zeichen haben' });
+      }
+
+      const { data: user } = await supabase
+        .from('users').select('id, password').eq('username', login).maybeSingle();
+      if (!user) return res.status(404).json({ error: 'Konto nicht gefunden' });
+
+      const ok = await cvVerifyPassword(oldPw, user.password);
+      if (!ok) return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
+
+      const hashed = await cvHashPassword(newPw);
+      const { error } = await supabase.from('users').update({ password: hashed }).eq('id', user.id);
+      if (error) return res.status(400).json({ error: error.message });
+
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/cv/account/forgot-password — Reset-Link per E-Mail anfordern
+  // Antwortet aus Sicherheitsgründen IMMER mit success (verrät nicht, ob ein Konto existiert)
+  app.post('/api/cv/account/forgot-password', async (req, res) => {
+    try {
+      const ident = String(req.body.identifier || '').trim();
+      if (!ident) return res.status(400).json({ error: 'Bitte Login-Name oder E-Mail eingeben' });
+
+      const identLower = ident.toLowerCase();
+
+      // Konto über Login ODER E-Mail finden
+      let user = null;
+      const byLogin = await supabase
+        .from('users').select('id, username, email').eq('username', identLower).maybeSingle();
+      if (byLogin.data) user = byLogin.data;
+      if (!user) {
+        const byEmail = await supabase
+          .from('users').select('id, username, email').eq('email', ident).maybeSingle();
+        if (byEmail.data) user = byEmail.data;
+      }
+
+      // E-Mail bestimmen: users.email ODER seller_email aus Subscription
+      let targetEmail = user?.email || null;
+      if (user && !targetEmail) {
+        const { data: sub } = await supabase
+          .from('cv_subscriptions').select('seller_email').eq('user_login', user.username).maybeSingle();
+        targetEmail = sub?.seller_email || null;
+      }
+
+      if (user && targetEmail) {
+        const token = cvMakeToken();
+        const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 Stunde gültig
+        await supabase.from('cv_password_resets').insert({
+          user_login: user.username, token, expires_at: expires, used: false
+        });
+
+        const link = `${CV_BASE_URL}/cv-passwort-neu.html?token=${token}`;
+        const subject = 'Converdino — Passwort zurücksetzen';
+        const html = `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a2e24;">
+            <h2 style="color:#128C7E;">Passwort zurücksetzen</h2>
+            <p>Es wurde angefordert, das Passwort für <strong>${user.username}</strong> zurückzusetzen.</p>
+            <p>Klicke auf den folgenden Link, um ein neues Passwort zu vergeben. Der Link ist 1 Stunde gültig:</p>
+            <p style="margin:24px 0;">
+              <a href="${link}" style="background:#25D366;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Neues Passwort setzen</a>
+            </p>
+            <p style="color:#6b7e74;font-size:13px;">Falls du das nicht warst, kannst du diese E-Mail ignorieren — dein Passwort bleibt unverändert.</p>
+          </div>`;
+        const text = `Passwort zurücksetzen für ${user.username}\n\nLink (1 Stunde gültig):\n${link}\n\nFalls du das nicht warst, ignoriere diese E-Mail.`;
+        await cvSendEmail(targetEmail, subject, html, text);
+      } else {
+        console.log('[CV Reset] Kein Konto/keine E-Mail für:', ident, '— sende trotzdem neutrale Antwort');
+      }
+
+      // Immer neutral antworten
+      res.json({ success: true });
+    } catch(e) {
+      console.error('[CV Reset] forgot-password Fehler:', e.message);
+      // Auch im Fehlerfall neutral bleiben
+      res.json({ success: true });
+    }
+  });
+
+  // POST /api/cv/account/reset-password — neues Passwort mit Token setzen
+  app.post('/api/cv/account/reset-password', async (req, res) => {
+    try {
+      const token = String(req.body.token || '').trim();
+      const newPw = req.body.new_password;
+      if (!token || !newPw) return res.status(400).json({ error: 'Token und neues Passwort erforderlich' });
+      if (String(newPw).length < 6) return res.status(400).json({ error: 'Neues Passwort muss mindestens 6 Zeichen haben' });
+
+      const { data: reset } = await supabase
+        .from('cv_password_resets').select('*').eq('token', token).maybeSingle();
+      if (!reset) return res.status(400).json({ error: 'Link ungültig' });
+      if (reset.used) return res.status(400).json({ error: 'Dieser Link wurde bereits verwendet' });
+      if (new Date(reset.expires_at) < new Date()) return res.status(400).json({ error: 'Link ist abgelaufen — bitte neu anfordern' });
+
+      const hashed = await cvHashPassword(newPw);
+      const { error: upErr } = await supabase
+        .from('users').update({ password: hashed }).eq('username', reset.user_login);
+      if (upErr) return res.status(400).json({ error: upErr.message });
+
+      // Token verbrauchen
+      await supabase.from('cv_password_resets').update({ used: true }).eq('id', reset.id);
+
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+
   console.log(`✅ Converdino API geladen — /api/cv/* aktiv + WhatsApp-Handler + Email (${cvResend ? 'AKTIV' : 'inaktiv'})`);
 
   // Rückgabe: Handler für server.js
