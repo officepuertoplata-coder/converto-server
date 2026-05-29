@@ -2169,6 +2169,103 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   });
 
 
+  // PUT /api/cv/admin/customers/:subId — Stammdaten ändern
+  app.put('/api/cv/admin/customers/:subId', async (req, res) => {
+    try {
+      const subId = req.params.subId;
+      const { company_name, contact_name, contact_phone, seller_email, commission_pct } = req.body;
+
+      const { data: sub, error: subErr } = await supabase
+        .from('cv_subscriptions').select('user_login').eq('id', subId).maybeSingle();
+      if (subErr) return res.status(500).json({ error: subErr.message });
+      if (!sub) return res.status(404).json({ error: 'Kunde nicht gefunden' });
+
+      const updates = {};
+      if (company_name !== undefined)  updates.company_name  = company_name || null;
+      if (contact_name !== undefined)  updates.contact_name  = contact_name || null;
+      if (contact_phone !== undefined) updates.contact_phone = contact_phone || null;
+      if (seller_email !== undefined)  updates.seller_email  = seller_email || null;
+      if (commission_pct !== undefined) {
+        updates.commission_pct = (commission_pct !== '' && commission_pct != null) ? parseFloat(commission_pct) : null;
+      }
+
+      const { error: upErr } = await supabase
+        .from('cv_subscriptions').update(updates).eq('id', subId);
+      if (upErr) return res.status(400).json({ error: upErr.message });
+
+      // E-Mail/Name auch im users-Login spiegeln (für Konsistenz)
+      const userUpdates = {};
+      if (seller_email !== undefined) userUpdates.email = seller_email || null;
+      if (company_name !== undefined || contact_name !== undefined) {
+        userUpdates.name = company_name || contact_name || sub.user_login;
+      }
+      if (Object.keys(userUpdates).length > 0) {
+        await supabase.from('users').update(userUpdates).eq('username', sub.user_login);
+      }
+
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/cv/admin/customers/:subId/password — Passwort zurücksetzen
+  app.post('/api/cv/admin/customers/:subId/password', async (req, res) => {
+    try {
+      const subId = req.params.subId;
+      const newPw = req.body.password;
+      if (!newPw || String(newPw).length < 4) {
+        return res.status(400).json({ error: 'Passwort muss mindestens 4 Zeichen haben' });
+      }
+      const { data: sub } = await supabase
+        .from('cv_subscriptions').select('user_login').eq('id', subId).maybeSingle();
+      if (!sub) return res.status(404).json({ error: 'Kunde nicht gefunden' });
+
+      const hashed = await cvHashPassword(newPw);
+      const { error } = await supabase
+        .from('users').update({ password: hashed }).eq('username', sub.user_login);
+      if (error) return res.status(400).json({ error: error.message });
+
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/cv/admin/customers/:subId/active — Kunde aktivieren/deaktivieren
+  app.post('/api/cv/admin/customers/:subId/active', async (req, res) => {
+    try {
+      const subId = req.params.subId;
+      const active = req.body.active === true || req.body.active === 'true';
+
+      const { data: sub } = await supabase
+        .from('cv_subscriptions').select('user_login').eq('id', subId).maybeSingle();
+      if (!sub) return res.status(404).json({ error: 'Kunde nicht gefunden' });
+
+      // Login sperren/freigeben
+      await supabase.from('users').update({ active }).eq('username', sub.user_login);
+      // Subscription-Status mitführen (deaktiviert = paused, aktiv = active)
+      await supabase.from('cv_subscriptions')
+        .update({ status: active ? 'active' : 'paused' }).eq('id', subId);
+
+      res.json({ success: true, active });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // DELETE /api/cv/admin/customers/:subId — Kunde endgültig löschen
+  app.delete('/api/cv/admin/customers/:subId', async (req, res) => {
+    try {
+      const subId = req.params.subId;
+      const { data: sub } = await supabase
+        .from('cv_subscriptions').select('user_login').eq('id', subId).maybeSingle();
+      if (!sub) return res.status(404).json({ error: 'Kunde nicht gefunden' });
+
+      // Slots entfernen, dann Subscription, dann Login
+      await supabase.from('cv_slots').delete().eq('subscription_id', subId);
+      await supabase.from('cv_subscriptions').delete().eq('id', subId);
+      await supabase.from('users').delete().eq('username', sub.user_login);
+
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+
   console.log(`✅ Converdino API geladen — /api/cv/* aktiv + WhatsApp-Handler + Email (${cvResend ? 'AKTIV' : 'inaktiv'})`);
 
   // Rückgabe: Handler für server.js
