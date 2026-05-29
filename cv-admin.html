@@ -50,6 +50,17 @@
   .tag-mu { background: #eef2f0; color: var(--mu); }
   .login-name { font-family: monospace; font-weight: 700; }
   .btn-red { background: var(--red); }
+  .btn-dark { background: var(--dark); }
+  .edit-panel { background: #f7faf8; border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin: 4px 0; }
+  .edit-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .edit-grid label { font-size: 12px; }
+  .edit-actions { margin-bottom: 16px; }
+  .edit-sub { border-top: 1px solid var(--border); padding-top: 14px; margin-bottom: 14px; }
+  .edit-sub label { font-size: 12px; }
+  .pwreset { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pwreset input { width: 220px; font-family: monospace; }
+  .edit-danger { border-top: 1px solid var(--border); padding-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+  @media (max-width: 720px) { .edit-grid { grid-template-columns: 1fr; } }
   .slot-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .slot-cell input { width: 80px; padding: 7px 9px; text-align: center; }
   .empty { text-align: center; color: var(--mu); padding: 40px 0; }
@@ -250,7 +261,8 @@ async function loadCustomers() {
       const contact = c.contact_name || '—';
       const phone = c.contact_phone || '—';
       const comm = (c.commission_pct != null) ? (c.commission_pct + ' %') : '—';
-      const statusTag = c.status === 'active'
+      const isActive = c.status === 'active';
+      const statusTag = isActive
         ? '<span class="tag tag-green">aktiv</span>'
         : '<span class="tag tag-mu">' + esc(c.status) + '</span>';
       rows += '<tr>' +
@@ -264,12 +276,42 @@ async function loadCustomers() {
           '<button type="button" class="btn btn-g btn-sm" onclick="addSlots(\'' + c.id + '\')">+ Hinzufügen</button>' +
           '<button type="button" class="btn btn-red btn-sm" onclick="removeSlots(\'' + c.id + '\')">− Entfernen</button>' +
         '</div></td>' +
+        '<td><button type="button" class="btn btn-dark btn-sm" onclick="toggleEdit(\'' + c.id + '\')">Bearbeiten</button></td>' +
       '</tr>';
+
+      // Aufklappbare Bearbeitungszeile (zunächst versteckt)
+      rows += '<tr id="editrow-' + c.id + '" class="editrow" style="display:none;"><td colspan="7">' +
+        '<div class="edit-panel">' +
+          '<div class="edit-grid">' +
+            '<div><label>Firmenname</label><input id="e-company-' + c.id + '" value="' + esc(c.company_name || '') + '"></div>' +
+            '<div><label>Ansprechpartner</label><input id="e-contact-' + c.id + '" value="' + esc(c.contact_name || '') + '"></div>' +
+            '<div><label>Telefon</label><input id="e-phone-' + c.id + '" value="' + esc(c.contact_phone || '') + '"></div>' +
+            '<div><label>E-Mail</label><input id="e-email-' + c.id + '" value="' + esc(c.seller_email || '') + '"></div>' +
+            '<div><label>Provision %</label><input id="e-comm-' + c.id + '" value="' + esc(c.commission_pct != null ? c.commission_pct : '') + '"></div>' +
+          '</div>' +
+          '<div class="edit-actions">' +
+            '<button type="button" class="btn btn-g btn-sm" onclick="saveCustomer(\'' + c.id + '\')">Speichern</button>' +
+          '</div>' +
+          '<div class="edit-sub">' +
+            '<label>Passwort zurücksetzen</label>' +
+            '<div class="pwreset">' +
+              '<input id="e-pw-' + c.id + '" placeholder="neues Passwort">' +
+              '<button type="button" class="btn btn-sm" style="background:var(--g2);" onclick="suggestEditPw(\'' + c.id + '\')">Vorschlag</button>' +
+              '<button type="button" class="btn btn-dark btn-sm" onclick="resetPw(\'' + c.id + '\')">Setzen</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="edit-danger">' +
+            '<button type="button" class="btn btn-sm" style="background:var(--amber);" onclick="toggleActive(\'' + c.id + '\',' + (!isActive) + ')">' +
+              (isActive ? 'Kunde deaktivieren' : 'Kunde aktivieren') + '</button>' +
+            '<button type="button" class="btn btn-red btn-sm" onclick="deleteCustomer(\'' + c.id + '\',\'' + esc(c.user_login) + '\')">Endgültig löschen</button>' +
+          '</div>' +
+        '</div>' +
+      '</td></tr>';
     }
     area.innerHTML =
       '<table><thead><tr>' +
         '<th>Login</th><th>Firma / Kontakt</th><th>Provision</th>' +
-        '<th>Status</th><th>Aktuell</th><th>Anzahl ändern</th>' +
+        '<th>Status</th><th>Aktuell</th><th>Anzahl ändern</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>';
   } catch(e) {
     area.innerHTML = '';
@@ -332,6 +374,110 @@ async function removeSlots(subId) {
   } catch(e) {
     showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false);
   }
+}
+
+// ── Bearbeitungszeile auf-/zuklappen ──
+function toggleEdit(subId) {
+  const row = document.getElementById('editrow-' + subId);
+  if (!row) return;
+  row.style.display = (row.style.display === 'none') ? 'table-row' : 'none';
+}
+
+// ── Stammdaten speichern ──
+async function saveCustomer(subId) {
+  clearMsg('listMsg');
+  const body = {
+    company_name: document.getElementById('e-company-' + subId).value.trim(),
+    contact_name: document.getElementById('e-contact-' + subId).value.trim(),
+    contact_phone: document.getElementById('e-phone-' + subId).value.trim(),
+    seller_email: document.getElementById('e-email-' + subId).value.trim(),
+    commission_pct: document.getElementById('e-comm-' + subId).value.trim()
+  };
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers/' + subId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('listMsg', d.error || 'Speichern fehlgeschlagen.', false);
+    } else {
+      showMsg('listMsg', '✅ Stammdaten gespeichert.', true);
+      loadCustomers();
+    }
+  } catch(e) { showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false); }
+}
+
+// ── Passwort-Vorschlag für Bearbeitung ──
+function suggestEditPw(subId) {
+  const chars = 'abcdefghjkmnpqrstuvwxyz';
+  const nums = '23456789';
+  const all = chars + chars.toUpperCase() + nums;
+  let pw = '';
+  for (let i = 0; i < 10; i++) pw += all[Math.floor(Math.random() * all.length)];
+  document.getElementById('e-pw-' + subId).value = pw;
+}
+
+// ── Passwort zurücksetzen ──
+async function resetPw(subId) {
+  clearMsg('listMsg');
+  const pw = document.getElementById('e-pw-' + subId).value.trim();
+  if (!pw || pw.length < 4) {
+    showMsg('listMsg', 'Bitte ein Passwort mit mindestens 4 Zeichen eingeben.', false);
+    return;
+  }
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers/' + subId + '/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('listMsg', d.error || 'Zurücksetzen fehlgeschlagen.', false);
+    } else {
+      showMsg('listMsg', '✅ Neues Passwort gesetzt: ' + pw + '  (bitte dem Kunden mitteilen!)', true);
+    }
+  } catch(e) { showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false); }
+}
+
+// ── Kunde aktivieren/deaktivieren ──
+async function toggleActive(subId, makeActive) {
+  clearMsg('listMsg');
+  const wort = makeActive ? 'aktivieren' : 'deaktivieren';
+  if (!confirm('Kunde wirklich ' + wort + '? Bei Deaktivierung kann er sich nicht mehr einloggen (Daten bleiben erhalten).')) return;
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers/' + subId + '/active', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: makeActive })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('listMsg', d.error || 'Aktion fehlgeschlagen.', false);
+    } else {
+      showMsg('listMsg', '✅ Kunde ' + (makeActive ? 'aktiviert' : 'deaktiviert') + '.', true);
+      loadCustomers();
+    }
+  } catch(e) { showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false); }
+}
+
+// ── Kunde endgültig löschen ──
+async function deleteCustomer(subId, login) {
+  clearMsg('listMsg');
+  if (!confirm('Kunde "' + login + '" ENDGÜLTIG löschen?\n\nLogin, Abo und alle Slots werden entfernt. Das kann nicht rückgängig gemacht werden.')) return;
+  if (!confirm('Wirklich sicher? Letzte Warnung für "' + login + '".')) return;
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers/' + subId, { method: 'DELETE' });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('listMsg', d.error || 'Löschen fehlgeschlagen.', false);
+    } else {
+      showMsg('listMsg', '✅ Kunde "' + login + '" wurde gelöscht.', true);
+      loadCustomers();
+    }
+  } catch(e) { showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false); }
 }
 </script>
 </body>
