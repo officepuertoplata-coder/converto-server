@@ -454,7 +454,7 @@ async function showMarketing(slotId) {
       : 'Fragen zu ' + title + '? Sofort-Antwort per WhatsApp – einfach scannen!';
 
     // Merken für PDF-Erzeugung
-    mktData = { waLink, qrUrl, code, title, cta };
+    mktData = { waLink, qrUrl, code, title, cta, pull: art.pull_text || '' };
 
     // Button-Snippet (einfacher Inline-Link)
     const buttonSnippet = '<a href="' + waLink + '" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:12px 22px;border-radius:28px;font-family:sans-serif;font-weight:700;text-decoration:none;">💬 Jetzt per WhatsApp anfragen</a>';
@@ -544,6 +544,9 @@ async function makeQrPdf(format) {
     const GREEN = [34, 168, 75];
     const DARK  = [22, 43, 38];
     const BRAND = 'Converdino.com';
+    const pull = (mktData.pull && mktData.pull.trim())
+      ? mktData.pull.trim()
+      : 'Jetzt scannen und sofort meldet sich jemand von uns!';
 
     // Zeichnet den QR im grünen Rahmen mit eingebettetem "Converdino.com"-Label.
     // Gibt die Unterkante des Kastens zurück.
@@ -562,7 +565,7 @@ async function makeQrPdf(format) {
       const labelX = boxX + Math.max(6, pad);
       doc.setFillColor(255, 255, 255);
       doc.rect(labelX, topY - (fontSize * 0.22), labelW, fontSize * 0.44, 'F');
-      doc.setTextColor(...DARK);
+      doc.setTextColor(...GREEN);
       doc.text(BRAND, labelX + 3, topY + (fontSize * 0.14));
       return topY + boxH;
     }
@@ -592,12 +595,15 @@ async function makeQrPdf(format) {
       y += cl.length * 12 + 14;
 
       // Handlungsanweisung als Pille darunter
-      const pillW = 168, pillH = 20;
+      const pillW = 180;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      const pullLinesA4 = doc.splitTextToSize(pull, pillW - 16);
+      const pillH = Math.max(20, 10 + pullLinesA4.length * 7);
       doc.setFillColor(37, 211, 102);
       doc.roundedRect(cx - pillW / 2, y, pillW, pillH, 10, 10, 'F');
-      doc.setFontSize(15);
       doc.setTextColor(255, 255, 255);
-      doc.text('Jetzt mit der Handykamera scannen', cx, y + 13, { align: 'center' });
+      doc.text(pullLinesA4, cx, y + (pillH / 2) - (pullLinesA4.length - 1) * 3.3 + 1.5, { align: 'center' });
       y += pillH + 10;
 
       doc.setFont('helvetica', 'normal');
@@ -628,12 +634,13 @@ async function makeQrPdf(format) {
       doc.text(cl, cx, y, { align: 'center' });
       y += cl.length * 6.5 + 7;
 
-      const pillW = 86, pillH = 11;
+      const pillW = 90, pillH = 14;
       doc.setFillColor(37, 211, 102);
-      doc.roundedRect(cx - pillW / 2, y, pillW, pillH, 5.5, 5.5, 'F');
-      doc.setFontSize(8.5);
+      doc.roundedRect(cx - pillW / 2, y, pillW, pillH, 7, 7, 'F');
+      doc.setFontSize(8);
       doc.setTextColor(255, 255, 255);
-      doc.text('Jetzt mit der Handykamera scannen', cx, y + 7.2, { align: 'center' });
+      const pullLinesA6 = doc.splitTextToSize(pull, pillW - 8);
+      doc.text(pullLinesA6, cx, y + (pillH/2) - (pullLinesA6.length-1)*1.6 + 1, { align: 'center' });
 
       doc.save('flyer-A6-' + mktData.code + '.pdf');
 
@@ -747,6 +754,7 @@ function renderSettingsView() {
       ${row('Anzahlung zur Reservierung', (s.deposit_percent != null ? s.deposit_percent : 10) + ' %')}
       ${row('WhatsApp-Starttext', esc(a.wa_starttext || '— (Standard)'))}
       ${row('Call-to-Action', esc(a.cta_text || '— (Standard)'))}
+      ${row('Handlungsaufforderung', esc(a.pull_text || '— (Standard)'))}
       ${row('Verfügbarkeit', availLabel)}
       ${row('Slot-Zustand', pillLabel(s.status))}
     </div>`;
@@ -782,9 +790,18 @@ function renderMarketingEdit() {
       <div class="field-label">Call-to-Action (für QR-Plakat, Flyer, Overlay)</div>
       <input id="m-cta" type="text" maxlength="120"
         value="${esc(a.cta_text || '')}"
-        placeholder="Fragen zu diesem Artikel? Sofort-Antwort per WhatsApp – einfach scannen!">
+        placeholder="Fragen zu diesem Artikel?">
       <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
-        Werbetext neben dem QR-Code. Beeinflusst den Bot nicht — jederzeit gefahrlos änderbar.
+        Der Aufhänger (große grüne Überschrift). Beeinflusst den Bot nicht — jederzeit gefahrlos änderbar.
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Handlungsaufforderung (grüne Schaltfläche darunter)</div>
+      <input id="m-pull" type="text" maxlength="120"
+        value="${esc(a.pull_text || '')}"
+        placeholder="Jetzt scannen und sofort meldet sich jemand von uns!">
+      <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
+        Konkrete Aufforderung, z.B. „Probefahrt buchen", „Sonderpreise sichern". Leer lassen = Standardtext.
       </div>
     </div>
     <div class="err" id="mktErr"></div>`;
@@ -797,6 +814,7 @@ function renderMarketingEdit() {
 async function saveMarketing() {
   const wastart = document.getElementById('m-wastart').value.trim();
   const cta     = document.getElementById('m-cta').value.trim();
+  const pull    = document.getElementById('m-pull').value.trim();
   const err     = document.getElementById('mktErr');
   const btn     = document.getElementById('mktSaveBtn');
 
@@ -806,7 +824,7 @@ async function saveMarketing() {
     const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/quicksettings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wa_starttext: wastart, cta_text: cta })
+      body: JSON.stringify({ wa_starttext: wastart, cta_text: cta, pull_text: pull })
     });
     const d = await r.json();
     if (!d.success) {
@@ -906,9 +924,18 @@ function renderSettingsEdit() {
       <div class="field-label">Call-to-Action (für QR-Plakat, Flyer, Overlay)</div>
       <input id="s-cta" type="text" maxlength="120"
         value="${esc(a.cta_text || '')}"
-        placeholder="Fragen zu diesem Artikel? Sofort-Antwort per WhatsApp – einfach scannen!">
+        placeholder="Fragen zu diesem Artikel?">
       <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
-        Werbetext, der im gedruckten Material neben dem QR-Code erscheint. Leer lassen = Standardtext.
+        Der Aufhänger auf dem Material (große grüne Überschrift). Leer lassen = Standardtext.
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Handlungsaufforderung (grüne Schaltfläche darunter)</div>
+      <input id="s-pull" type="text" maxlength="120"
+        value="${esc(a.pull_text || '')}"
+        placeholder="Jetzt scannen und sofort meldet sich jemand von uns!">
+      <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
+        Die konkrete Aufforderung, z.B. „Probefahrt buchen", „Sonderpreise sichern", „Termin vereinbaren". Leer lassen = Standardtext.
       </div>
     </div>
     <div class="err" id="settingsErr"></div>`;
@@ -934,6 +961,7 @@ async function saveSettings() {
   const deposit  = parseInt(document.getElementById('s-deposit').value) || 10;
   const wastart  = document.getElementById('s-wastart').value.trim();
   const cta      = document.getElementById('s-cta').value.trim();
+  const pull     = document.getElementById('s-pull').value.trim();
   const err      = document.getElementById('settingsErr');
   const btn      = document.getElementById('settingsSaveBtn');
 
@@ -952,7 +980,7 @@ async function saveSettings() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit,
         price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
-        wa_starttext: wastart, cta_text: cta })
+        wa_starttext: wastart, cta_text: cta, pull_text: pull })
     });
     const d = await r.json();
     if (!d.success) {
