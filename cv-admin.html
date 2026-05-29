@@ -64,7 +64,7 @@
   <div class="right">
     <span id="navUser">admin</span>
     <a href="cv-dashboard.html">Mein Dashboard</a>
-    <button onclick="logout()">Ausloggen</button>
+    <button type="button" onclick="logout()">Ausloggen</button>
   </div>
 </div>
 
@@ -113,7 +113,7 @@
         <input id="f-commission" placeholder="z. B. 10" inputmode="decimal">
       </div>
     </div>
-    <button class="btn" id="createBtn" onclick="createCustomer()">Kunde anlegen</button>
+    <button type="button" class="btn" id="createBtn" onclick="createCustomer()">Kunde anlegen</button>
   </div>
 
   <!-- Kundenliste -->
@@ -260,7 +260,7 @@ async function loadCustomers() {
         '<td>' + c.slots_created + ' Slots</td>' +
         '<td><div class="slot-cell">' +
           '<input type="number" min="1" max="100" value="1" id="slotcount-' + c.id + '">' +
-          '<button class="btn btn-g btn-sm" onclick="addSlots(\'' + c.id + '\')">+ Slots</button>' +
+          '<button type="button" class="btn btn-g btn-sm" onclick="addSlots(\'' + c.id + '\')">+ Slots</button>' +
         '</div></td>' +
       '</tr>';
     }
