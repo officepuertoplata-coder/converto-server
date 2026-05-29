@@ -533,16 +533,6 @@ async function fetchQrDataUrl(url) {
 }
 
 // Druckfertiges PDF erzeugen: Format 'a4' | 'a6' | 'sticker'
-// Seitenverhältnis des Logos (Breite/Höhe), aus der Bilddatei: 414x309
-const CV_LOGO_RATIO = 414 / 309;
-
-// Hilfsfunktion: zentriertes Logo zeichnen, gibt die genutzte Höhe zurück
-function pdfDrawLogo(doc, cx, y, logoW) {
-  const logoH = logoW / CV_LOGO_RATIO;
-  try { doc.addImage(CV_LOGO, 'PNG', cx - logoW / 2, y, logoW, logoH); } catch(e) {}
-  return logoH;
-}
-
 async function makeQrPdf(format) {
   if (!mktData) { toast('Keine Daten'); return; }
   if (!window.jspdf || !window.jspdf.jsPDF) { toast('PDF-Bibliothek lädt noch – kurz erneut versuchen'); return; }
@@ -551,68 +541,69 @@ async function makeQrPdf(format) {
     const qrDataUrl = await fetchQrDataUrl(mktData.qrUrl);
     const { jsPDF } = window.jspdf;
 
-    // Converdino-Farben
-    const GREEN = [34, 168, 75];      // kräftiges Grün
-    const DARK  = [22, 43, 38];       // dunkles Tannengrün (Schriftzug)
-    const LIGHT = [240, 253, 244];    // zartes Grün für Flächen
+    const GREEN = [34, 168, 75];
+    const DARK  = [22, 43, 38];
+    const BRAND = 'Converdino.com';
+
+    // Zeichnet den QR im grünen Rahmen mit eingebettetem "Converdino.com"-Label.
+    // Gibt die Unterkante des Kastens zurück.
+    function drawQrBox(doc, cx, topY, qrSize, pad, lineW, fontSize, radius) {
+      const boxX = cx - qrSize / 2 - pad;
+      const boxW = qrSize + pad * 2;
+      const boxH = qrSize + pad * 2;
+      doc.setDrawColor(...GREEN);
+      doc.setLineWidth(lineW);
+      doc.roundedRect(boxX, topY, boxW, boxH, radius, radius, 'S');
+      doc.addImage(qrDataUrl, 'PNG', cx - qrSize / 2, topY + pad, qrSize, qrSize);
+      // Label links oben in die Linie
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(fontSize);
+      const labelW = doc.getTextWidth(BRAND) + 6;
+      const labelX = boxX + Math.max(6, pad);
+      doc.setFillColor(255, 255, 255);
+      doc.rect(labelX, topY - (fontSize * 0.22), labelW, fontSize * 0.44, 'F');
+      doc.setTextColor(...DARK);
+      doc.text(BRAND, labelX + 3, topY + (fontSize * 0.14));
+      return topY + boxH;
+    }
 
     if (format === 'a4') {
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       const W = 210, H = 297, cx = W / 2;
 
-      // Kopf-Farbband
-      doc.setFillColor(...GREEN);
-      doc.rect(0, 0, W, 50, 'F');
-      // Logo auf das Band (heller Hintergrund des Logos passt nicht auf Grün ->
-      // wir setzen einen weißen Rundsockel)
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(cx - 38, 8, 76, 34, 4, 4, 'F');
-      pdfDrawLogo(doc, cx, 11, 56);
-
-      // Artikel-Titel
-      let y = 74;
+      // Artikel-Titel oben
+      let y = 42;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(28);
+      doc.setFontSize(30);
       doc.setTextColor(...DARK);
-      const titleLines = doc.splitTextToSize(mktData.title, W - 30);
-      doc.text(titleLines, cx, y, { align: 'center' });
-      y += titleLines.length * 11 + 6;
+      const tl = doc.splitTextToSize(mktData.title, W - 34);
+      doc.text(tl, cx, y, { align: 'center' });
+      y += tl.length * 12 + 10;
 
-      // QR in gerahmtem Kasten
-      const qrSize = 95;
-      const boxPad = 10;
-      const boxX = cx - qrSize / 2 - boxPad;
-      const boxY = y;
-      doc.setFillColor(...LIGHT);
-      doc.roundedRect(boxX, boxY, qrSize + boxPad * 2, qrSize + boxPad * 2, 6, 6, 'F');
-      doc.setDrawColor(...GREEN);
-      doc.setLineWidth(0.8);
-      doc.roundedRect(boxX, boxY, qrSize + boxPad * 2, qrSize + boxPad * 2, 6, 6, 'S');
-      doc.addImage(qrDataUrl, 'PNG', cx - qrSize / 2, boxY + boxPad, qrSize, qrSize);
-      y = boxY + qrSize + boxPad * 2 + 18;
+      // QR im Rahmen
+      y = drawQrBox(doc, cx, y, 110, 12, 1.4, 12, 7) + 22;
 
-      // Call-to-Action
+      // Call-to-Action stark
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(20);
+      doc.setFontSize(30);
       doc.setTextColor(...GREEN);
-      const ctaLines = doc.splitTextToSize(mktData.cta, W - 34);
-      doc.text(ctaLines, cx, y, { align: 'center' });
-      y += ctaLines.length * 9 + 10;
+      const cl = doc.splitTextToSize(mktData.cta, W - 30);
+      doc.text(cl, cx, y, { align: 'center' });
+      y += cl.length * 12 + 14;
 
-      // WhatsApp-Hinweis-Pille
+      // Handlungsanweisung als Pille darunter
+      const pillW = 168, pillH = 20;
       doc.setFillColor(37, 211, 102);
-      const pillW = 150, pillH = 16;
-      doc.roundedRect(cx - pillW / 2, y, pillW, pillH, 8, 8, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
+      doc.roundedRect(cx - pillW / 2, y, pillW, pillH, 10, 10, 'F');
+      doc.setFontSize(15);
       doc.setTextColor(255, 255, 255);
-      doc.text('Einfach mit der Handykamera scannen', cx, y + 10.5, { align: 'center' });
+      doc.text('Jetzt mit der Handykamera scannen', cx, y + 13, { align: 'center' });
+      y += pillH + 10;
 
-      // Fußzeile
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.setTextColor(150, 150, 150);
-      doc.text('Sofort-Antwort per WhatsApp · powered by Converdino', cx, H - 12, { align: 'center' });
+      doc.setFontSize(13);
+      doc.setTextColor(90, 90, 90);
+      doc.text('Sofort-Antwort per WhatsApp', cx, y + 4, { align: 'center' });
 
       doc.save('plakat-A4-' + mktData.code + '.pdf');
 
@@ -620,40 +611,29 @@ async function makeQrPdf(format) {
       const doc = new jsPDF({ unit: 'mm', format: 'a6' });
       const W = 105, H = 148, cx = W / 2;
 
-      // Kopf-Farbband
-      doc.setFillColor(...GREEN);
-      doc.rect(0, 0, W, 26, 'F');
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(cx - 24, 4, 48, 19, 3, 3, 'F');
-      pdfDrawLogo(doc, cx, 6, 34);
+      let y = 22;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(...DARK);
+      const tl = doc.splitTextToSize(mktData.title, W - 16);
+      doc.text(tl, cx, y, { align: 'center' });
+      y += tl.length * 6.5 + 6;
 
-      let y = 40;
+      y = drawQrBox(doc, cx, y, 56, 7, 0.8, 8, 4) + 11;
+
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(15);
-      doc.setTextColor(...DARK);
-      const titleLines = doc.splitTextToSize(mktData.title, W - 18);
-      doc.text(titleLines, cx, y, { align: 'center' });
-      y += titleLines.length * 6 + 4;
-
-      const qrSize = 52, boxPad = 6;
-      doc.setFillColor(...LIGHT);
-      doc.roundedRect(cx - qrSize / 2 - boxPad, y, qrSize + boxPad * 2, qrSize + boxPad * 2, 4, 4, 'F');
-      doc.setDrawColor(...GREEN);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(cx - qrSize / 2 - boxPad, y, qrSize + boxPad * 2, qrSize + boxPad * 2, 4, 4, 'S');
-      doc.addImage(qrDataUrl, 'PNG', cx - qrSize / 2, y + boxPad, qrSize, qrSize);
-      y += qrSize + boxPad * 2 + 10;
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
       doc.setTextColor(...GREEN);
-      const ctaLines = doc.splitTextToSize(mktData.cta, W - 16);
-      doc.text(ctaLines, cx, y, { align: 'center' });
+      const cl = doc.splitTextToSize(mktData.cta, W - 14);
+      doc.text(cl, cx, y, { align: 'center' });
+      y += cl.length * 6.5 + 7;
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(150, 150, 150);
-      doc.text('Sofort-Antwort per WhatsApp · Converdino', cx, H - 7, { align: 'center' });
+      const pillW = 86, pillH = 11;
+      doc.setFillColor(37, 211, 102);
+      doc.roundedRect(cx - pillW / 2, y, pillW, pillH, 5.5, 5.5, 'F');
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Jetzt mit der Handykamera scannen', cx, y + 7.2, { align: 'center' });
 
       doc.save('flyer-A6-' + mktData.code + '.pdf');
 
@@ -661,23 +641,15 @@ async function makeQrPdf(format) {
       const doc = new jsPDF({ unit: 'mm', format: [70, 70] });
       const W = 70, cx = W / 2;
 
-      // dünnes grünes Band oben mit Logo
-      doc.setFillColor(...GREEN);
-      doc.rect(0, 0, W, 17, 'F');
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(cx - 15, 2, 30, 13, 2, 2, 'F');
-      pdfDrawLogo(doc, cx, 2.6, 16);
-
-      const qrSize = 36;
-      let y = 21;
-      doc.addImage(qrDataUrl, 'PNG', cx - qrSize / 2, y, qrSize, qrSize);
-      y += qrSize + 5;
-
+      let y = 7;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
+      doc.setFontSize(8.5);
       doc.setTextColor(...GREEN);
-      const ctaLines = doc.splitTextToSize(mktData.cta, W - 8);
-      doc.text(ctaLines, cx, y, { align: 'center' });
+      const cl = doc.splitTextToSize(mktData.cta, W - 8);
+      doc.text(cl, cx, y, { align: 'center' });
+      y += cl.length * 4 + 3;
+
+      drawQrBox(doc, cx, y, 40, 5, 0.6, 6.5, 3);
 
       doc.save('aufkleber-' + mktData.code + '.pdf');
     }
