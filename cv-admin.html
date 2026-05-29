@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino — Kundenverwaltung</title>
+<style>
+  :root {
+    --g: #25D366; --g2: #128C7E; --dark: #1a2e24;
+    --bg: #f0f4f2; --card: #fff; --border: #e2e8e4;
+    --text: #1a2e24; --mu: #6b7e74; --red: #dc2626; --amber: #d97706;
+    --r: 14px; --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  .nav { background: var(--dark); color: #fff; padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; }
+  .nav .logo { font-size: 22px; font-weight: 800; }
+  .nav .logo span { color: var(--g); }
+  .nav .right { display: flex; align-items: center; gap: 16px; font-size: 14px; }
+  .nav a, .nav button { color: #fff; background: rgba(255,255,255,.12); border: none; padding: 8px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; text-decoration: none; font-weight: 600; }
+  .nav a:hover, .nav button:hover { background: rgba(255,255,255,.22); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 24px 60px; }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  .sub { color: var(--mu); margin-bottom: 28px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); padding: 24px; margin-bottom: 24px; }
+  .card h2 { font-size: 18px; margin-bottom: 18px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--mu); margin-bottom: 6px; }
+  input { width: 100%; padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; }
+  input:focus { outline: none; border-color: var(--g); }
+  .field { margin-bottom: 16px; }
+  .btn { background: var(--dark); color: #fff; border: none; padding: 13px 26px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .btn:hover { opacity: .92; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-g { background: var(--g); }
+  .btn-sm { padding: 8px 16px; font-size: 14px; }
+  .pwbox { display: flex; gap: 8px; }
+  .pwbox input { font-family: monospace; letter-spacing: .5px; }
+  .pwbox button { white-space: nowrap; background: var(--g2); color: #fff; border: none; border-radius: 10px; padding: 0 16px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  .msg { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; display: none; }
+  .msg.ok { background: #e7f8ee; color: #0f7a3d; display: block; }
+  .msg.err { background: #fdecec; color: var(--red); display: block; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--mu); padding: 10px 12px; border-bottom: 2px solid var(--border); }
+  td { padding: 13px 12px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  .tag-green { background: #e7f8ee; color: #0f7a3d; }
+  .tag-mu { background: #eef2f0; color: var(--mu); }
+  .login-name { font-family: monospace; font-weight: 700; }
+  .slot-cell { display: flex; align-items: center; gap: 8px; }
+  .slot-cell input { width: 64px; padding: 7px 9px; text-align: center; }
+  .empty { text-align: center; color: var(--mu); padding: 40px 0; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 720px) { .grid, .grid-3 { grid-template-columns: 1fr; } .wrap { padding: 20px 14px 50px; } table { font-size: 13px; } }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="logo">Conver<span>dino</span> · Kundenverwaltung</div>
+  <div class="right">
+    <span id="navUser">admin</span>
+    <a href="cv-dashboard.html">Mein Dashboard</a>
+    <button onclick="logout()">Ausloggen</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <h1>Kundenverwaltung</h1>
+  <div class="sub">Neue Converdino-Kunden anlegen und Bot-Slots zuweisen.</div>
+
+  <!-- Neuer Kunde -->
+  <div class="card">
+    <h2>➕ Neuen Kunden anlegen</h2>
+    <div id="createMsg" class="msg"></div>
+    <div class="grid">
+      <div class="field">
+        <label>Login-Name *</label>
+        <input id="f-login" placeholder="z. B. autohaus-mueller" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Passwort *</label>
+        <div class="pwbox">
+          <input id="f-pw" placeholder="Passwort">
+          <button type="button" onclick="suggestPw()">Vorschlag</button>
+        </div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label>Firmenname</label>
+        <input id="f-company" placeholder="z. B. Autohaus Müller GmbH">
+      </div>
+      <div class="field">
+        <label>Ansprechpartner</label>
+        <input id="f-contact" placeholder="z. B. Hans Müller">
+      </div>
+    </div>
+    <div class="grid-3">
+      <div class="field">
+        <label>Telefon</label>
+        <input id="f-phone" placeholder="+43 …">
+      </div>
+      <div class="field">
+        <label>E-Mail (für Benachrichtigungen)</label>
+        <input id="f-email" placeholder="kunde@firma.at">
+      </div>
+      <div class="field">
+        <label>Provision %</label>
+        <input id="f-commission" placeholder="z. B. 10" inputmode="decimal">
+      </div>
+    </div>
+    <button class="btn" id="createBtn" onclick="createCustomer()">Kunde anlegen</button>
+  </div>
+
+  <!-- Kundenliste -->
+  <div class="card">
+    <h2>📋 Kunden</h2>
+    <div id="listMsg" class="msg"></div>
+    <div id="listArea">
+      <div class="empty">Lade Kunden …</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+const AUTH_KEY = 'converto_auth_v2';
+let auth = null;
+
+// ── LOGIN-SCHUTZ (gleiche Logik wie cv-dashboard) ──
+(function init() {
+  try { auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); }
+  catch(e) { auth = null; }
+
+  if (!auth || !auth.role) {
+    window.location.href = 'login.html?redirect=cv-admin.html';
+    return;
+  }
+  if (auth.loggedInAt) {
+    var ageMs = Date.now() - new Date(auth.loggedInAt).getTime();
+    if (ageMs > 12 * 60 * 60 * 1000) {
+      localStorage.removeItem(AUTH_KEY);
+      window.location.href = 'login.html?redirect=cv-admin.html';
+      return;
+    }
+  }
+  document.getElementById('navUser').textContent = auth.username || auth.name || 'admin';
+  suggestPw();
+  loadCustomers();
+})();
+
+function logout() {
+  localStorage.removeItem(AUTH_KEY);
+  window.location.href = 'login.html';
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function showMsg(id, text, ok) {
+  const el = document.getElementById(id);
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+  el.textContent = text;
+}
+function clearMsg(id) {
+  const el = document.getElementById(id);
+  el.className = 'msg';
+  el.textContent = '';
+}
+
+// ── Passwort-Vorschlag ──
+function suggestPw() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz';
+  const nums = '23456789';
+  const all = chars + chars.toUpperCase() + nums;
+  let pw = '';
+  for (let i = 0; i < 10; i++) pw += all[Math.floor(Math.random() * all.length)];
+  document.getElementById('f-pw').value = pw;
+}
+
+// ── Kunde anlegen ──
+async function createCustomer() {
+  clearMsg('createMsg');
+  const body = {
+    user_login: document.getElementById('f-login').value.trim(),
+    password: document.getElementById('f-pw').value.trim(),
+    company_name: document.getElementById('f-company').value.trim(),
+    contact_name: document.getElementById('f-contact').value.trim(),
+    contact_phone: document.getElementById('f-phone').value.trim(),
+    seller_email: document.getElementById('f-email').value.trim(),
+    commission_pct: document.getElementById('f-commission').value.trim()
+  };
+  if (!body.user_login || !body.password) {
+    showMsg('createMsg', 'Login-Name und Passwort sind erforderlich.', false);
+    return;
+  }
+
+  const btn = document.getElementById('createBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Lege an …';
+
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('createMsg', d.error || 'Anlegen fehlgeschlagen.', false);
+    } else {
+      showMsg('createMsg', '✅ Kunde "' + body.user_login + '" angelegt. Login: ' +
+        body.user_login + ' / Passwort: ' + body.password + '  (bitte notieren!)', true);
+      // Formular leeren
+      ['f-login','f-company','f-contact','f-phone','f-email','f-commission']
+        .forEach(id => document.getElementById(id).value = '');
+      suggestPw();
+      loadCustomers();
+    }
+  } catch(e) {
+    showMsg('createMsg', 'Verbindungsfehler: ' + e.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Kunde anlegen';
+  }
+}
+
+// ── Kundenliste laden ──
+async function loadCustomers() {
+  clearMsg('listMsg');
+  const area = document.getElementById('listArea');
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers');
+    const d = await r.json();
+    const list = d.customers || [];
+    if (list.length === 0) {
+      area.innerHTML = '<div class="empty">Noch keine Kunden angelegt.</div>';
+      return;
+    }
+    let rows = '';
+    for (const c of list) {
+      const company = c.company_name || '—';
+      const contact = c.contact_name || '—';
+      const phone = c.contact_phone || '—';
+      const comm = (c.commission_pct != null) ? (c.commission_pct + ' %') : '—';
+      const statusTag = c.status === 'active'
+        ? '<span class="tag tag-green">aktiv</span>'
+        : '<span class="tag tag-mu">' + esc(c.status) + '</span>';
+      rows += '<tr>' +
+        '<td><span class="login-name">' + esc(c.user_login) + '</span></td>' +
+        '<td>' + esc(company) + '<br><span style="color:var(--mu);font-size:13px;">' + esc(contact) + ' · ' + esc(phone) + '</span></td>' +
+        '<td>' + comm + '</td>' +
+        '<td>' + statusTag + '</td>' +
+        '<td>' + c.slots_created + ' Slots</td>' +
+        '<td><div class="slot-cell">' +
+          '<input type="number" min="1" max="100" value="1" id="slotcount-' + c.id + '">' +
+          '<button class="btn btn-g btn-sm" onclick="addSlots(\'' + c.id + '\')">+ Slots</button>' +
+        '</div></td>' +
+      '</tr>';
+    }
+    area.innerHTML =
+      '<table><thead><tr>' +
+        '<th>Login</th><th>Firma / Kontakt</th><th>Provision</th>' +
+        '<th>Status</th><th>Slots</th><th>Slots zuweisen</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  } catch(e) {
+    area.innerHTML = '';
+    showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false);
+  }
+}
+
+// ── Slots zuweisen ──
+async function addSlots(subId) {
+  clearMsg('listMsg');
+  const input = document.getElementById('slotcount-' + subId);
+  const count = parseInt(input.value, 10);
+  if (!count || count < 1) {
+    showMsg('listMsg', 'Bitte eine gültige Anzahl angeben.', false);
+    return;
+  }
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers/' + subId + '/slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('listMsg', d.error || 'Slot-Zuweisung fehlgeschlagen.', false);
+    } else {
+      showMsg('listMsg', '✅ ' + d.added + ' Slot(s) zugewiesen. Gesamt: ' + d.slots_total + '.', true);
+      loadCustomers();
+    }
+  } catch(e) {
+    showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false);
+  }
+}
+</script>
+</body>
+</html>
