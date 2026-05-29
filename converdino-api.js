@@ -73,12 +73,13 @@ module.exports = function(app, supabase, deps) {
   // HELFER: Login-Identifier aus Body/Header lesen
   // ============================================================
   function getUserLogin(req) {
-    return (
+    const raw = (
       req.body?.user_login ||
       req.query?.user_login ||
       req.headers['x-user-login'] ||
       'admin'
     );
+    return String(raw).toLowerCase().trim();
   }
 
 
@@ -88,7 +89,7 @@ module.exports = function(app, supabase, deps) {
   // ============================================================
   app.get('/api/cv/me', async (req, res) => {
     try {
-      const userLogin = req.query.user || 'admin';
+      const userLogin = String(req.query.user || 'admin').toLowerCase().trim();
 
       // Subscription laden
       const { data: sub, error: subErr } = await supabase
