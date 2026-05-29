@@ -58,11 +58,12 @@ const KEY = 'converto_auth_v2';
 
 // Entscheidet das Login-Ziel: explizites redirect > cv-Dashboard (falls Converdino-Kunde) > hub.html
 async function decideDestination(username) {
+  const u = String(username || '').toLowerCase().trim();
   const params = new URLSearchParams(location.search);
   const redirect = params.get('redirect');
   if (redirect) return redirect;
   try {
-    const r = await fetch(API + '/api/cv/me?user=' + encodeURIComponent(username));
+    const r = await fetch(API + '/api/cv/me?user=' + encodeURIComponent(u));
     const d = await r.json();
     // Aktive Converdino-Subscription? -> direkt ins cv-Dashboard
     if (d && d.active === true) {
