@@ -681,6 +681,7 @@ function copyText(text, btn) {
 // ── SLOT-EINSTELLUNGEN ANSEHEN / BEARBEITEN ──────────
 let settingsSlot = null;
 let settingsArticle = null;
+let settingsUploads = [];
 
 async function openSettingsModal(slotId) {
   document.getElementById('settingsBody').innerHTML =
@@ -695,6 +696,7 @@ async function openSettingsModal(slotId) {
     if (!d.slot) { toast('Slot nicht gefunden'); closeSettingsModal(); return; }
     settingsSlot = d.slot;
     settingsArticle = d.article || null;
+    settingsUploads = Array.isArray(d.uploads) ? d.uploads : [];
     renderSettingsView();
   } catch(e) {
     toast('Fehler: ' + e.message);
@@ -757,7 +759,8 @@ function renderSettingsView() {
       ${row('Handlungsaufforderung', esc(a.pull_text || '— (Standard)'))}
       ${row('Verfügbarkeit', availLabel)}
       ${row('Slot-Zustand', pillLabel(s.status))}
-    </div>`;
+    </div>
+    ${renderDocsSection()}`;
 
   let foot = '<button class="btn btn-soft" style="flex:1" onclick="closeSettingsModal()">Schließen</button>';
   if (!isActive && !isBusy && settingsArticle) {
@@ -842,7 +845,50 @@ async function saveMarketing() {
   }
 }
 
-// Verfügbarkeit sofort setzen (über quicksettings-Route, ohne Status-Rückfall)
+// Zeigt die hinterlegten Dokumente eines Slots, gruppiert nach Kategorie
+function renderDocsSection() {
+  const ups = settingsUploads || [];
+  if (ups.length === 0) {
+    return `<div style="margin-top:18px;padding:14px;background:#f8faf9;border:1px solid var(--border);border-radius:10px;font-size:.82rem;color:var(--mu);">
+      📂 Diesem Slot sind noch keine Dokumente hinterlegt.
+    </div>`;
+  }
+
+  const photos   = ups.filter(u => u.kind === 'photo');
+  const dossiers = ups.filter(u => u.kind === 'pdf' && u.purpose === 'dossier');
+  const aiPdfs   = ups.filter(u => u.kind === 'pdf' && u.purpose !== 'dossier');
+  const notes    = ups.filter(u => u.kind === 'note');
+
+  const fileRow = (u, openLink) => {
+    const name = esc(u.file_name || (u.kind === 'note' ? 'Notiz' : 'Datei'));
+    const link = openLink && u.public_url
+      ? `<a href="${esc(u.public_url)}" target="_blank" style="color:var(--g2);text-decoration:none;font-weight:700;font-size:.78rem;">Öffnen ↗</a>`
+      : '';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:.84rem;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
+      ${link}
+    </div>`;
+  };
+
+  const group = (title, icon, items, openLink, hint) => {
+    if (items.length === 0) return '';
+    return `<div style="margin-top:14px;">
+      <div style="font-size:.8rem;font-weight:800;color:#0f172a;margin-bottom:2px;">${icon} ${title} <span style="color:var(--mu);font-weight:600;">(${items.length})</span></div>
+      ${hint ? `<div style="font-size:.7rem;color:var(--mu);margin-bottom:6px;">${hint}</div>` : ''}
+      ${items.map(u => fileRow(u, openLink)).join('')}
+    </div>`;
+  };
+
+  return `<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px;">
+    <div style="font-size:.82rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">📂 Hinterlegte Dokumente</div>
+    ${group('Verkaufsdossier (Bot versendet auf Anfrage)', '📄', dossiers, true, 'Diese PDFs schickt der Bot dem Käufer per E-Mail.')}
+    ${group('Analyse-Dokumente (Bot hat gelernt)', '🧠', aiPdfs, true, 'Aus diesen PDFs hat der Bot Fakten extrahiert.')}
+    ${group('Fotos', '🖼', photos, true, '')}
+    ${group('Notizen', '📝', notes, false, '')}
+  </div>`;
+}
+
+
 async function setAvailability(val) {
   if (!settingsSlot) return;
   try {
@@ -1001,6 +1047,7 @@ function closeSettingsModal() {
   document.getElementById('settingsModal').classList.remove('open');
   settingsSlot = null;
   settingsArticle = null;
+  settingsUploads = [];
 }
 
 // ── HELPERS ─────────────────────────────────────────
