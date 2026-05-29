@@ -140,16 +140,23 @@ async function doLogin() {
       }
     } else if (data.role === 'merchant') {
       const m = data.merchant;
-      authData.merchantId = m.id;
-      authData.merchantName = m.name;
-      authData.slug = m.slug;
-      authData.merchants = [m];
+      if (m) {
+        authData.merchantId = m.id;
+        authData.merchantName = m.name;
+        authData.slug = m.slug;
+        authData.merchants = [m];
+      } else {
+        // Converdino-Kunde ohne altes Geschäft
+        authData.merchants = [];
+      }
     }
 
     localStorage.setItem(KEY, JSON.stringify(authData));
 
-    // Weiterleiten: Converdino-Kunden -> cv-Dashboard, sonst Hub (redirect-Param hat Vorrang)
-    const dest = await decideDestination(username);
+    // Login ist erfolgreich. Ziel bestimmen — Fehler hier dürfen den Login NICHT scheitern lassen.
+    let dest = 'hub.html';
+    try { dest = await decideDestination(username); }
+    catch(e) { dest = 'hub.html'; }
     window.location.href = dest;
 
   } catch(e) {
