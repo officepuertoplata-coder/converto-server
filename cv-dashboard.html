@@ -568,8 +568,74 @@ function renderSettingsView() {
   let foot = '<button class="btn btn-soft" style="flex:1" onclick="closeSettingsModal()">Schließen</button>';
   if (!isActive && !isBusy && settingsArticle) {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderSettingsEdit()">✏️ Bearbeiten</button>';
+  } else if (isActive && settingsArticle) {
+    foot += '<button class="btn btn-success" style="flex:1" onclick="renderMarketingEdit()">📣 Marketing-Texte</button>';
   }
   document.getElementById('settingsFoot').innerHTML = foot;
+}
+
+// Schlanker Editor NUR für Marketing-Texte (auch bei aktivem Bot nutzbar).
+// Nutzt quicksettings -> Bot bleibt aktiv, Link/QR werden bei Bedarf neu gebaut.
+function renderMarketingEdit() {
+  const a = settingsArticle || {};
+  document.getElementById('settingsBody').innerHTML = `
+    <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">📣 Marketing-Texte</div>
+    <div class="field">
+      <div class="field-label">WhatsApp-Starttext</div>
+      <input id="m-wastart" type="text" maxlength="160"
+        value="${esc(a.wa_starttext || '')}"
+        placeholder="Hallo, ich interessiere mich für ${esc(a.title || 'diesen Artikel')}.">
+      <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
+        Steht vorausgefüllt im WhatsApp-Feld. Die Anfrage-Nummer wird automatisch angehängt. Leer = Standardtext.
+      </div>
+      <div style="font-size:.72rem;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:8px;">
+        ⚠️ Hinweis: Bereits gedruckte QR-Codes zeigen weiter den alten Text — sie funktionieren aber problemlos weiter. Für einheitliches Material den QR-Code anschließend neu herunterladen.
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Call-to-Action (für QR-Plakat, Flyer, Overlay)</div>
+      <input id="m-cta" type="text" maxlength="120"
+        value="${esc(a.cta_text || '')}"
+        placeholder="Fragen zu diesem Artikel? Sofort-Antwort per WhatsApp – einfach scannen!">
+      <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
+        Werbetext neben dem QR-Code. Beeinflusst den Bot nicht — jederzeit gefahrlos änderbar.
+      </div>
+    </div>
+    <div class="err" id="mktErr"></div>`;
+
+  document.getElementById('settingsFoot').innerHTML = `
+    <button class="btn btn-soft" style="flex:1" onclick="renderSettingsView()">Zurück</button>
+    <button class="btn btn-success" style="flex:1" id="mktSaveBtn" onclick="saveMarketing()">💾 Speichern</button>`;
+}
+
+async function saveMarketing() {
+  const wastart = document.getElementById('m-wastart').value.trim();
+  const cta     = document.getElementById('m-cta').value.trim();
+  const err     = document.getElementById('mktErr');
+  const btn     = document.getElementById('mktSaveBtn');
+
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/quicksettings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wa_starttext: wastart, cta_text: cta })
+    });
+    const d = await r.json();
+    if (!d.success) {
+      err.textContent = d.error || 'Fehler beim Speichern';
+      btn.disabled = false; btn.textContent = '💾 Speichern';
+      return;
+    }
+    settingsArticle = d.article;
+    toast('✓ Marketing-Texte gespeichert');
+    renderSettingsView();
+    loadDashboard();
+  } catch(e) {
+    err.textContent = e.message;
+    btn.disabled = false; btn.textContent = '💾 Speichern';
+  }
 }
 
 // Verfügbarkeit sofort setzen (über quicksettings-Route, ohne Status-Rückfall)
