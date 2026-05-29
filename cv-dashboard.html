@@ -190,6 +190,22 @@
   </div>
 </div>
 
+<!-- MODAL: Slot-Einstellungen ansehen / bearbeiten -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">⚙️ Slot-Einstellungen</div>
+      <button class="modal-close" onclick="closeSettingsModal()">×</button>
+    </div>
+    <div class="modal-body" id="settingsBody">
+      <!-- gefüllt durch JS -->
+    </div>
+    <div class="modal-foot" id="settingsFoot">
+      <!-- gefüllt durch JS -->
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -304,6 +320,7 @@ function renderSlot(slot) {
         <div class="article-meta">€${fmtPrice(slot.article.sale_price)} · Mindest €${fmtPrice(slot.article.min_price)}</div>
       </div>
       <button class="btn btn-success" onclick="goToUpload('${slot.id}')">📎 Weiter zu Fotos & Dokumente</button>
+      <button class="btn btn-soft" onclick="openSettingsModal('${slot.id}')">⚙️ Einstellungen ansehen / bearbeiten</button>
       <button class="btn btn-danger-soft" onclick="clearSlot('${slot.id}')">🗑 Slot leeren</button>`;
   } else if (slot.status === 'uploading' || slot.status === 'analyzing') {
     body = `
@@ -321,6 +338,7 @@ function renderSlot(slot) {
       </div>
       <div class="bot-info">Code: <span class="bot-code">${esc(slot.bot_code || '—')}</span></div>
       <button class="btn btn-primary" onclick="goToKnowledge('${slot.id}')" style="margin-bottom:8px;">🧠 Was hat der Bot gelernt?</button>
+      <button class="btn btn-soft" onclick="openSettingsModal('${slot.id}')" style="margin-bottom:8px;">⚙️ Einstellungen ansehen</button>
       <div class="btn-row">
         <button class="btn btn-soft" onclick="showAssets('${slot.id}','wa')">💬 WA</button>
         <button class="btn btn-soft" onclick="showAssets('${slot.id}','qr')">📱 QR</button>
@@ -465,6 +483,148 @@ function copyText(text, btn) {
     btn.textContent = '✓ Kopiert!';
     setTimeout(() => { btn.classList.remove('copied'); btn.textContent = orig; }, 1500);
   }).catch(() => toast('Kopieren fehlgeschlagen'));
+}
+
+// ── SLOT-EINSTELLUNGEN ANSEHEN / BEARBEITEN ──────────
+let settingsSlot = null;
+let settingsArticle = null;
+
+async function openSettingsModal(slotId) {
+  document.getElementById('settingsBody').innerHTML =
+    '<div class="spinner"></div><div style="text-align:center;color:var(--mu);">Lade Einstellungen...</div>';
+  document.getElementById('settingsFoot').innerHTML =
+    '<button class="btn btn-soft" style="flex:1" onclick="closeSettingsModal()">Schließen</button>';
+  document.getElementById('settingsModal').classList.add('open');
+
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    if (!d.slot) { toast('Slot nicht gefunden'); closeSettingsModal(); return; }
+    settingsSlot = d.slot;
+    settingsArticle = d.article || null;
+    renderSettingsView();
+  } catch(e) {
+    toast('Fehler: ' + e.message);
+    closeSettingsModal();
+  }
+}
+
+function renderSettingsView() {
+  const s = settingsSlot;
+  const a = settingsArticle || {};
+  const isActive = s.status === 'active';
+  const isBusy = s.status === 'analyzing' || s.status === 'uploading';
+
+  const row = (label, value) => `
+    <div style="display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:.82rem;color:var(--mu);font-weight:700;">${label}</div>
+      <div style="font-size:.9rem;font-weight:800;text-align:right;">${value}</div>
+    </div>`;
+
+  document.getElementById('settingsBody').innerHTML = `
+    <div style="margin-bottom:6px;">
+      ${row('Slot', 'Nr. ' + esc(s.slot_number))}
+      ${row('Artikelbezeichnung', esc(a.title || '—'))}
+      ${row('Verkaufspreis', a.sale_price != null ? '€' + fmtPrice(a.sale_price) : '—')}
+      ${row('Mindestpreis', a.min_price != null ? '€' + fmtPrice(a.min_price) : '—')}
+      ${row('Standort', esc(a.location || '—'))}
+      ${row('Anrede im Bot', a.anrede === 'Du' ? 'Du (locker)' : 'Sie (formell)')}
+      ${row('Anzahlung zur Reservierung', (s.deposit_percent != null ? s.deposit_percent : 10) + ' %')}
+      ${row('Status', pillLabel(s.status))}
+    </div>`;
+
+  let foot = '<button class="btn btn-soft" style="flex:1" onclick="closeSettingsModal()">Schließen</button>';
+  if (!isActive && !isBusy && settingsArticle) {
+    foot += '<button class="btn btn-success" style="flex:1" onclick="renderSettingsEdit()">✏️ Bearbeiten</button>';
+  }
+  document.getElementById('settingsFoot').innerHTML = foot;
+}
+
+function renderSettingsEdit() {
+  const a = settingsArticle || {};
+  const s = settingsSlot;
+
+  document.getElementById('settingsBody').innerHTML = `
+    <div class="field">
+      <div class="field-label">Artikelbezeichnung *</div>
+      <input id="s-title" type="text" value="${esc(a.title || '')}">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <div class="field-label">Verkaufspreis (€) *</div>
+        <input id="s-price" type="number" min="0" step="0.01" value="${a.sale_price != null ? a.sale_price : ''}">
+      </div>
+      <div class="field">
+        <div class="field-label">Mindestpreis (€) *</div>
+        <input id="s-minprice" type="number" min="0" step="0.01" value="${a.min_price != null ? a.min_price : ''}">
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Standort</div>
+      <input id="s-location" type="text" value="${esc(a.location || '')}">
+    </div>
+    <div class="field">
+      <div class="field-label">Anrede im Bot</div>
+      <select id="s-anrede">
+        <option value="Sie" ${a.anrede !== 'Du' ? 'selected' : ''}>Sie (formell)</option>
+        <option value="Du" ${a.anrede === 'Du' ? 'selected' : ''}>Du (locker)</option>
+      </select>
+    </div>
+    <div class="field">
+      <div class="field-label">Anzahlung zur Reservierung (%)</div>
+      <input id="s-deposit" type="number" min="1" max="100" step="1" value="${s.deposit_percent != null ? s.deposit_percent : 10}">
+    </div>
+    <div class="err" id="settingsErr"></div>`;
+
+  document.getElementById('settingsFoot').innerHTML = `
+    <button class="btn btn-soft" style="flex:1" onclick="renderSettingsView()">Zurück</button>
+    <button class="btn btn-success" style="flex:1" id="settingsSaveBtn" onclick="saveSettings()">💾 Speichern</button>`;
+}
+
+async function saveSettings() {
+  const title    = document.getElementById('s-title').value.trim();
+  const price    = parseFloat(document.getElementById('s-price').value);
+  const minprice = parseFloat(document.getElementById('s-minprice').value);
+  const loc      = document.getElementById('s-location').value.trim();
+  const anrede   = document.getElementById('s-anrede').value;
+  const deposit  = parseInt(document.getElementById('s-deposit').value) || 10;
+  const err      = document.getElementById('settingsErr');
+  const btn      = document.getElementById('settingsSaveBtn');
+
+  if (!title)                      { err.textContent = 'Artikelbezeichnung fehlt'; return; }
+  if (!price || price <= 0)        { err.textContent = 'Verkaufspreis erforderlich'; return; }
+  if (!minprice || minprice <= 0)  { err.textContent = 'Mindestpreis erforderlich'; return; }
+  if (minprice > price)            { err.textContent = 'Mindestpreis muss unter Verkaufspreis liegen'; return; }
+  if (deposit < 1 || deposit > 100){ err.textContent = 'Anzahlung muss zwischen 1 und 100% liegen'; return; }
+
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
+
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/article', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit })
+    });
+    const d = await r.json();
+    if (!d.success) {
+      err.textContent = d.error || 'Fehler beim Speichern';
+      btn.disabled = false; btn.textContent = '💾 Speichern';
+      return;
+    }
+    closeSettingsModal();
+    toast('✓ Einstellungen gespeichert');
+    loadDashboard();
+  } catch(e) {
+    err.textContent = e.message;
+    btn.disabled = false; btn.textContent = '💾 Speichern';
+  }
+}
+
+function closeSettingsModal() {
+  document.getElementById('settingsModal').classList.remove('open');
+  settingsSlot = null;
+  settingsArticle = null;
 }
 
 // ── HELPERS ─────────────────────────────────────────
