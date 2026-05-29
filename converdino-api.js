@@ -2350,9 +2350,14 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       if (user && targetEmail) {
         const token = cvMakeToken();
         const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 Stunde gültig
-        await supabase.from('cv_password_resets').insert({
+        const { error: insErr } = await supabase.from('cv_password_resets').insert({
           user_login: user.username, token, expires_at: expires, used: false
         });
+        if (insErr) {
+          console.error('[CV Reset] INSERT-Fehler cv_password_resets:', insErr.message, '| Details:', JSON.stringify(insErr));
+        } else {
+          console.log('[CV Reset] Token gespeichert für', user.username);
+        }
 
         const link = `${CV_BASE_URL}/cv-passwort-neu.html?token=${token}`;
         const subject = 'Converdino — Passwort zurücksetzen';
