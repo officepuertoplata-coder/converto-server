@@ -56,17 +56,31 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 const API = 'https://converto-server-production.up.railway.app';
 const KEY = 'converto_auth_v2';
 
+// Entscheidet das Login-Ziel: explizites redirect > cv-Dashboard (falls Converdino-Kunde) > hub.html
+async function decideDestination(username) {
+  const params = new URLSearchParams(location.search);
+  const redirect = params.get('redirect');
+  if (redirect) return redirect;
+  try {
+    const r = await fetch(API + '/api/cv/me?user=' + encodeURIComponent(username));
+    const d = await r.json();
+    // Aktive Converdino-Subscription? -> direkt ins cv-Dashboard
+    if (d && d.active === true) {
+      return 'cv-dashboard.html';
+    }
+  } catch(e) { /* cv nicht erreichbar -> normaler Hub */ }
+  return 'hub.html';
+}
+
 // Bereits eingeloggt?
-window.onload = function() {
+window.onload = async function() {
   try {
     const auth = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (auth && auth.role && auth.loggedInAt) {
       const age = Date.now() - new Date(auth.loggedInAt).getTime();
       if (age < 12 * 60 * 60 * 1000) {
-        // Redirect-Ziel aus URL holen
-        const params = new URLSearchParams(location.search);
-        const redirect = params.get('redirect');
-        window.location.href = redirect || 'hub.html';
+        const dest = await decideDestination(auth.username || auth.name);
+        window.location.href = dest;
         return;
       }
     }
@@ -134,10 +148,9 @@ async function doLogin() {
 
     localStorage.setItem(KEY, JSON.stringify(authData));
 
-    // Weiterleiten
-    const params = new URLSearchParams(location.search);
-    const redirect = params.get('redirect');
-    window.location.href = redirect || 'hub.html';
+    // Weiterleiten: Converdino-Kunden -> cv-Dashboard, sonst Hub (redirect-Param hat Vorrang)
+    const dest = await decideDestination(username);
+    window.location.href = dest;
 
   } catch(e) {
     err.textContent = 'Verbindungsfehler – Server nicht erreichbar';
