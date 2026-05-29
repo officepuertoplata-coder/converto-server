@@ -118,7 +118,7 @@ module.exports = function(app, supabase, deps) {
       if (slotIds.length > 0) {
         const { data: articles } = await supabase
           .from('cv_articles')
-          .select('id, slot_id, title, status, sale_price, min_price')
+          .select('id, slot_id, title, status, sale_price, min_price, availability, price_visibility')
           .in('slot_id', slotIds);
         for (const a of (articles || [])) articlesBySlot[a.slot_id] = a;
       }
@@ -154,11 +154,17 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/article', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { title, sale_price, min_price, location, anrede, notes, deposit_percent } = req.body;
+      const { title, sale_price, min_price, location, anrede, notes, deposit_percent,
+              price_visibility, price_strict, availability } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
       }
+
+      // Neue Felder normalisieren (mit sicheren Defaults)
+      const priceVis = (price_visibility === 'on_request') ? 'on_request' : 'public';
+      const priceStrict = (price_strict === true || price_strict === 'true');
+      const avail = ['available', 'reserved', 'sold'].includes(availability) ? availability : 'available';
 
       // Slot prüfen
       const { data: slot, error: slotErr } = await supabase
@@ -187,6 +193,9 @@ module.exports = function(app, supabase, deps) {
             location: location || null,
             anrede: anrede || 'Sie',
             notes: notes || null,
+            price_visibility: priceVis,
+            price_strict: priceStrict,
+            availability: avail,
             status: 'draft',
             updated_at: new Date().toISOString()
           })
@@ -206,6 +215,9 @@ module.exports = function(app, supabase, deps) {
             location: location || null,
             anrede: anrede || 'Sie',
             notes: notes || null,
+            price_visibility: priceVis,
+            price_strict: priceStrict,
+            availability: avail,
             status: 'draft'
           })
           .select()
@@ -233,7 +245,52 @@ module.exports = function(app, supabase, deps) {
 
 
   // ============================================================
-  // 3. POST /api/cv/slot/:id/upload
+  // 2c. PATCH /api/cv/slot/:id/quicksettings
+  //     Ändert NUR Verfügbarkeit + Preis-Sichtbarkeit + Strikt-Modus.
+  //     Fasst Artikel-status und Analyse NICHT an -> auch für aktive
+  //     Bots sicher (kein Rückfall in 'draft', keine Neu-Analyse).
+  //     Body: { availability?, price_visibility?, price_strict? }
+  // ============================================================
+  app.patch('/api/cv/slot/:id/quicksettings', async (req, res) => {
+    try {
+      const slotId = req.params.id;
+      const { availability, price_visibility, price_strict } = req.body;
+
+      const { data: article, error: artErr } = await supabase
+        .from('cv_articles')
+        .select('id')
+        .eq('slot_id', slotId)
+        .maybeSingle();
+      if (artErr)   return res.status(500).json({ error: 'Artikel: ' + artErr.message });
+      if (!article) return res.status(404).json({ error: 'Kein Artikel in diesem Slot' });
+
+      const update = { updated_at: new Date().toISOString() };
+      if (availability !== undefined) {
+        if (!['available', 'reserved', 'sold'].includes(availability)) {
+          return res.status(400).json({ error: 'Ungültiger Status' });
+        }
+        update.availability = availability;
+      }
+      if (price_visibility !== undefined) {
+        update.price_visibility = (price_visibility === 'on_request') ? 'on_request' : 'public';
+      }
+      if (price_strict !== undefined) {
+        update.price_strict = (price_strict === true || price_strict === 'true');
+      }
+
+      const { data, error } = await supabase
+        .from('cv_articles')
+        .update(update)
+        .eq('id', article.id)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true, article: data });
+    } catch(e) {
+      console.error('[CV /slot/:id/quicksettings]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
   //    Datei in Slot hochladen (Foto, PDF, Notiz)
   //    Body: { kind: 'photo'|'pdf'|'note', file_name, file_base64, content_type, content }
   // ============================================================
@@ -934,6 +991,54 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const salePrice = Number(article.sale_price) || 0;
     const minPrice  = Number(article.min_price) || 0;
 
+    // Neue Felder (mit sicheren Defaults für Altbestand)
+    const availability    = article.availability || 'available';
+    const priceVisibility = article.price_visibility || 'public';
+    const priceStrict     = article.price_strict === true;
+
+    // ── BLOCK: Verfügbarkeit (nur wenn reserviert/verkauft) ──
+    let availabilityBlock = '';
+    if (availability === 'sold' || availability === 'reserved') {
+      const zustand = availability === 'sold' ? 'bereits VERKAUFT' : 'aktuell RESERVIERT';
+      availabilityBlock = `
+═══════════════════════════════════════════════════════
+WICHTIG — DIESER ARTIKEL IST ${zustand.toUpperCase()}
+═══════════════════════════════════════════════════════
+Dieser Artikel ist ${zustand}. Das ändert dein Verhalten GRUNDLEGEND:
+- Du VERHANDELST NICHT mehr über den Preis und nennst KEINEN Preis.
+- Du machst KEINE Reservierung, KEINEN Zahlungslink (create_payment_link NICHT aufrufen).
+- Begrüße den Interessenten freundlich und sage ehrlich, dass dieser Artikel leider ${zustand === 'bereits VERKAUFT' ? 'schon verkauft' : 'gerade reserviert'} ist.
+- ABER: Lass den Lead nicht einfach gehen! Biete aktiv an:
+  • ihn zu informieren, falls der Artikel doch wieder verfügbar wird (besonders bei "reserviert"), oder
+  • ihm etwas Ähnliches zu zeigen / ihn an den Verkäufer für vergleichbare Angebote weiterzuleiten.
+- Wenn er Interesse zeigt: frage nach dem Namen und nutze flag_hot_lead / request_callback, damit der Verkäufer ihn kontaktieren kann.
+- Bleib herzlich und hilfsbereit — auch ein "leider weg"-Gespräch kann einen wertvollen neuen Kontakt bringen.
+`;
+    }
+
+    // ── BLOCK: Preis auf Anfrage (nur wenn on_request) ──
+    let priceVisibilityBlock = '';
+    if (priceVisibility === 'on_request' && availability === 'available') {
+      priceVisibilityBlock = `
+═══════════════════════════════════════════════════════
+PREIS AUF ANFRAGE — so gehst du mit dem Preis um
+═══════════════════════════════════════════════════════
+Bei diesem Artikel ist der Preis NICHT öffentlich. Der Händler möchte erst ins Gespräch kommen, bevor der Preis genannt wird. Du kennst den echten Preis (€${salePrice}, Minimum €${minPrice}) — aber du nennst ihn nicht sofort.
+
+SO GEHST DU VOR:
+1. ZUERST BEGEISTERN: Stelle den Artikel vor, beantworte Fragen, baue Interesse und Vertrauen auf. Nenne in dieser Phase KEINEN Preis.
+2. BEIM ÜBERGANG ZUM PREIS QUALIFIZIEREN: Wenn der Käufer nach dem Preis fragt oder ernsthaftes Interesse zeigt, frage zuerst natürlich und freundlich:
+   • nach dem Namen ("Mit wem habe ich das Vergnügen?")
+   • ob privat oder gewerblich / für welchen Betrieb
+   Formuliere das als normalen Verkäufer-Smalltalk, nicht als Verhör. Z.B.: "Den genauen Preis stelle ich Ihnen gern zusammen — damit ich Ihnen das passende Angebot mache: Ist das für Ihren Betrieb oder privat? Und mit wem spreche ich?"
+3. DANN PREIS NENNEN & VERHANDELN: Sobald sich die Person zu erkennen gegeben hat, nenne den Preis (€${salePrice}) und verhandle ganz normal nach den Verhandlungs-Regeln.
+${priceStrict
+  ? `4. STRIKT-MODUS (wichtig): Wenn der Käufer den Preis erfahren will, OHNE sich zu erkennen zu geben, bleibe freundlich aber bestimmt bei der Qualifizierung. Gib den Preis NICHT heraus, solange du nicht mindestens den Namen und privat/gewerblich kennst. Sage sinngemäß: "Den Preis bespreche ich gern direkt mit Ihnen — darf ich kurz wissen, für wen das Angebot ist?" Lieber kein Preis als ein Preis an einen anonymen Mitbewerber.`
+  : `4. KULANT-MODUS: Frage nach Name und privat/gewerblich. Wenn der Käufer aber nach ein, zwei Versuchen weiter drängt und den Preis einfach wissen will, nenne ihn trotzdem (€${salePrice}) — ein echter Lead ist wertvoller als ein verlorener Interessent.`}
+`;
+    }
+
+
     const systemPrompt = `Du bist ein professioneller WhatsApp-Verkaufsberater für einen echten Verkäufer. Dein Ziel: aktiv verkaufen UND qualifizierte Leads an den Verkäufer weiterreichen. Je mehr ernsthafte Interessenten du an den Verkäufer übergibst, desto besser.
 
 PRODUKT: ${article.title}
@@ -941,6 +1046,7 @@ VERKAUFSPREIS: €${salePrice}
 MINDESTPREIS: €${minPrice} (NIEMALS ein Angebot darunter machen!)
 STANDORT: ${article.location || 'auf Anfrage'}
 ANREDE: ${anrede} (konsequent verwenden)
+${availabilityBlock}
 
 ═══════════════════════════════════════════════════════
 KÄUFER-KONTAKT — WICHTIG!
@@ -996,6 +1102,7 @@ ANREDE (sehr wichtig — konsistent durchhalten!)
 - ${anrede === 'Du' ? 'Du-Form: "du / dich / dir / dein". KEIN Wechsel zu "Sie/Ihnen/Ihr" — auch nicht in der Begrüßung.' : 'Sie-Form: "Sie / Ihnen / Ihr". KEIN Wechsel zu "du/dich/dir" — auch nicht in der Begrüßung.'}
 - Wenn du selbst auf der Begrüßungsvorlage aus der Wissensbasis basierst und die in der falschen Anrede ist: formuliere sie um in "${anrede}". Die Slot-Anrede gewinnt IMMER.
 
+${priceVisibilityBlock}
 ═══════════════════════════════════════════════════════
 VERHANDLUNGS-REGELN
 ═══════════════════════════════════════════════════════
