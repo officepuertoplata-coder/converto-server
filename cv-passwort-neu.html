@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino — Neues Passwort</title>
+<style>
+  :root { --g:#25D366; --g2:#128C7E; --dark:#1a2e24; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #1f3a2c, #0e1a14); padding: 20px; }
+  .card { background: rgba(20,40,30,.7); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 18px; padding: 38px 32px; width: 100%; max-width: 400px; backdrop-filter: blur(8px); }
+  .logo { text-align: center; font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 6px; }
+  .logo span { color: var(--g); }
+  .sub { text-align: center; color: #9bb3a6; font-size: 13px; margin-bottom: 26px; }
+  label { display: block; color: #cfe9da; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18);
+    background: rgba(255,255,255,.06); color: #fff; font-size: 15px; margin-bottom: 16px; }
+  input:focus { outline: none; border-color: var(--g); }
+  .btn { width: 100%; background: var(--g); color: #fff; border: none; padding: 13px;
+    border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; font-family: inherit; }
+  .btn:hover { opacity: .92; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .msg { font-size: 14px; margin-top: 16px; text-align: center; min-height: 20px; }
+  .links { text-align: center; margin-top: 18px; }
+  .links a { color: var(--g2); font-size: 13px; text-decoration: none; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Conver<span>dino</span></div>
+  <div class="sub">Neues Passwort vergeben</div>
+
+  <div id="formArea">
+    <label>Neues Passwort (mind. 6 Zeichen)</label>
+    <input id="pw1" type="password" placeholder="Neues Passwort">
+    <label>Passwort wiederholen</label>
+    <input id="pw2" type="password" placeholder="Wiederholen">
+    <button class="btn" id="saveBtn" onclick="doReset()">Passwort speichern</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="links"><a href="login.html">Zurück zur Anmeldung</a></div>
+</div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+
+function getToken() {
+  const p = new URLSearchParams(location.search);
+  return p.get('token') || '';
+}
+
+function showMsg(text, ok) {
+  const m = document.getElementById('msg');
+  m.style.color = ok ? '#9fe9bf' : '#ffb4b4';
+  m.textContent = text;
+}
+
+// Beim Laden prüfen, ob überhaupt ein Token da ist
+(function init() {
+  if (!getToken()) {
+    document.getElementById('formArea').innerHTML =
+      '<div style="color:#ffb4b4;text-align:center;font-size:14px;">Dieser Link ist ungültig. Bitte fordere einen neuen an.</div>';
+  }
+})();
+
+async function doReset() {
+  const token = getToken();
+  const pw1 = document.getElementById('pw1').value;
+  const pw2 = document.getElementById('pw2').value;
+  if (!pw1 || !pw2) { showMsg('Bitte beide Felder ausfüllen.', false); return; }
+  if (pw1.length < 6) { showMsg('Mindestens 6 Zeichen.', false); return; }
+  if (pw1 !== pw2) { showMsg('Die Passwörter stimmen nicht überein.', false); return; }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Speichere …';
+  try {
+    const r = await fetch(API + '/api/cv/account/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password: pw1 })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg(d.error || 'Zurücksetzen fehlgeschlagen.', false);
+      btn.disabled = false;
+      btn.innerHTML = 'Passwort speichern';
+    } else {
+      document.getElementById('formArea').innerHTML =
+        '<div style="color:#9fe9bf;text-align:center;font-size:15px;">✅ Passwort gesetzt!<br><br>Du kannst dich jetzt mit dem neuen Passwort anmelden.</div>';
+    }
+  } catch(e) {
+    showMsg('Verbindungsfehler: ' + e.message, false);
+    btn.disabled = false;
+    btn.innerHTML = 'Passwort speichern';
+  }
+}
+</script>
+</body>
+</html>
