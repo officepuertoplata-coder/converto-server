@@ -521,16 +521,46 @@ function renderSettingsView() {
       <div style="font-size:.9rem;font-weight:800;text-align:right;">${value}</div>
     </div>`;
 
+  const avail = a.availability || 'available';
+  const priceVis = a.price_visibility || 'public';
+  const priceStrict = a.price_strict === true;
+
+  const availLabel = { available: '🟢 Verfügbar', reserved: '🟡 Reserviert', sold: '🔴 Verkauft' }[avail] || avail;
+  const visLabel = priceVis === 'on_request' ? 'Auf Anfrage' : 'Öffentlich';
+
+  // Schnell-Status-Schalter (nur wenn ein Artikel existiert)
+  let quickStatus = '';
+  if (settingsArticle) {
+    const btn = (val, label) => `
+      <button class="btn ${avail === val ? 'btn-primary' : 'btn-soft'}" style="font-size:.78rem;padding:9px 6px;"
+        onclick="setAvailability('${val}')">${label}</button>`;
+    quickStatus = `
+      <div style="margin:4px 0 18px;">
+        <div class="field-label">Verfügbarkeit (sofort wirksam)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+          ${btn('available', '🟢 Verfügbar')}
+          ${btn('reserved', '🟡 Reserviert')}
+          ${btn('sold', '🔴 Verkauft')}
+        </div>
+        <div style="font-size:.72rem;color:var(--mu);margin-top:6px;">
+          Bei „Reserviert"/„Verkauft" verhandelt der Bot nicht mehr, bleibt aber höflich aktiv und sammelt weiter Interessenten. Zum kompletten Abschalten den Bot deaktivieren.
+        </div>
+      </div>`;
+  }
+
   document.getElementById('settingsBody').innerHTML = `
+    ${quickStatus}
     <div style="margin-bottom:6px;">
       ${row('Slot', 'Nr. ' + esc(s.slot_number))}
       ${row('Artikelbezeichnung', esc(a.title || '—'))}
       ${row('Verkaufspreis', a.sale_price != null ? '€' + fmtPrice(a.sale_price) : '—')}
       ${row('Mindestpreis', a.min_price != null ? '€' + fmtPrice(a.min_price) : '—')}
+      ${row('Preis-Anzeige', visLabel + (priceVis === 'on_request' ? (priceStrict ? ' (restriktiv)' : ' (kulant)') : ''))}
       ${row('Standort', esc(a.location || '—'))}
       ${row('Anrede im Bot', a.anrede === 'Du' ? 'Du (locker)' : 'Sie (formell)')}
       ${row('Anzahlung zur Reservierung', (s.deposit_percent != null ? s.deposit_percent : 10) + ' %')}
-      ${row('Status', pillLabel(s.status))}
+      ${row('Verfügbarkeit', availLabel)}
+      ${row('Slot-Zustand', pillLabel(s.status))}
     </div>`;
 
   let foot = '<button class="btn btn-soft" style="flex:1" onclick="closeSettingsModal()">Schließen</button>';
@@ -538,6 +568,24 @@ function renderSettingsView() {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderSettingsEdit()">✏️ Bearbeiten</button>';
   }
   document.getElementById('settingsFoot').innerHTML = foot;
+}
+
+// Verfügbarkeit sofort setzen (über quicksettings-Route, ohne Status-Rückfall)
+async function setAvailability(val) {
+  if (!settingsSlot) return;
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/quicksettings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ availability: val })
+    });
+    const d = await r.json();
+    if (!d.success) { toast('Fehler: ' + (d.error || 'unbekannt')); return; }
+    settingsArticle = d.article;
+    toast('✓ Status: ' + ({ available: 'Verfügbar', reserved: 'Reserviert', sold: 'Verkauft' }[val]));
+    renderSettingsView();
+    loadDashboard();
+  } catch(e) { toast('Fehler: ' + e.message); }
 }
 
 function renderSettingsEdit() {
@@ -571,6 +619,20 @@ function renderSettingsEdit() {
       </select>
     </div>
     <div class="field">
+      <div class="field-label">Preis-Anzeige</div>
+      <select id="s-pricevis" onchange="toggleStrictField()">
+        <option value="public" ${(a.price_visibility || 'public') !== 'on_request' ? 'selected' : ''}>Öffentlich – Bot nennt Preis sofort</option>
+        <option value="on_request" ${a.price_visibility === 'on_request' ? 'selected' : ''}>Auf Anfrage – Bot nennt Preis erst im Gespräch</option>
+      </select>
+    </div>
+    <div class="field" id="s-strict-field" style="${a.price_visibility === 'on_request' ? '' : 'display:none;'}">
+      <div class="field-label">Preisnennung bei „Auf Anfrage"</div>
+      <select id="s-strict">
+        <option value="false" ${!a.price_strict ? 'selected' : ''}>Kulant – nennt Preis notfalls auch ohne volle Angaben</option>
+        <option value="true" ${a.price_strict ? 'selected' : ''}>Restriktiv – Preis erst nach Identifikation (schützt vor Konkurrenz)</option>
+      </select>
+    </div>
+    <div class="field">
       <div class="field-label">Anzahlung zur Reservierung (%)</div>
       <input id="s-deposit" type="number" min="1" max="100" step="1" value="${s.deposit_percent != null ? s.deposit_percent : 10}">
     </div>
@@ -581,12 +643,19 @@ function renderSettingsEdit() {
     <button class="btn btn-success" style="flex:1" id="settingsSaveBtn" onclick="saveSettings()">💾 Speichern</button>`;
 }
 
+function toggleStrictField() {
+  const vis = document.getElementById('s-pricevis').value;
+  document.getElementById('s-strict-field').style.display = (vis === 'on_request') ? '' : 'none';
+}
+
 async function saveSettings() {
   const title    = document.getElementById('s-title').value.trim();
   const price    = parseFloat(document.getElementById('s-price').value);
   const minprice = parseFloat(document.getElementById('s-minprice').value);
   const loc      = document.getElementById('s-location').value.trim();
   const anrede   = document.getElementById('s-anrede').value;
+  const pricevis = document.getElementById('s-pricevis').value;
+  const strict   = document.getElementById('s-strict').value === 'true';
   const deposit  = parseInt(document.getElementById('s-deposit').value) || 10;
   const err      = document.getElementById('settingsErr');
   const btn      = document.getElementById('settingsSaveBtn');
@@ -604,7 +673,8 @@ async function saveSettings() {
     const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/article', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit })
+      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit,
+        price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available' })
     });
     const d = await r.json();
     if (!d.success) {
