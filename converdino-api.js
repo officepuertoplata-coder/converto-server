@@ -15,25 +15,6 @@ module.exports = function(app, supabase, deps) {
   };
 
   // ============================================================
-  // HELPER: WhatsApp-Assets (Link, QR, Widget) aus Starttext + Code bauen
-  // ============================================================
-  // startText: der vom Händler gewählte freundliche Text OHNE Code.
-  //            Ist er leer, wird ein sinnvoller Standard aus dem Titel gebaut.
-  // Der Code (Anfrage-XXXX) wird IMMER automatisch angehängt, damit der
-  // Server den Slot erkennt.
-  function cvBuildWaAssets(botCode, articleTitle, startText) {
-    const waNumber = (process.env.WA_BOT_NUMBER || '4367764118066').replace(/[^0-9]/g, '');
-    const cleanStart = (startText && startText.trim())
-      ? startText.trim()
-      : `Hallo, ich interessiere mich für ${articleTitle || 'diesen Artikel'}.`;
-    const fullMsg = `${cleanStart} ${botCode}`;
-    const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(fullMsg)}`;
-    const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
-    const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
-    return { waLink, qrUrl, widgetCode };
-  }
-
-  // ============================================================
   // STRIPE (Treuhand-Anzahlung)
   // Modus über CV_STRIPE_MODE steuerbar: 'test' oder 'live'.
   //   test → STRIPE_SECRET_KEY_TEST + STRIPE_CV_WEBHOOK_SECRET_TEST
@@ -137,7 +118,7 @@ module.exports = function(app, supabase, deps) {
       if (slotIds.length > 0) {
         const { data: articles } = await supabase
           .from('cv_articles')
-          .select('id, slot_id, title, status, sale_price, min_price, availability, price_visibility')
+          .select('id, slot_id, title, status, sale_price, min_price')
           .in('slot_id', slotIds);
         for (const a of (articles || [])) articlesBySlot[a.slot_id] = a;
       }
@@ -173,17 +154,11 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/article', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { title, sale_price, min_price, location, anrede, notes, deposit_percent,
-              price_visibility, price_strict, availability, wa_starttext, cta_text, pull_text } = req.body;
+      const { title, sale_price, min_price, location, anrede, notes, deposit_percent } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
       }
-
-      // Neue Felder normalisieren (mit sicheren Defaults)
-      const priceVis = (price_visibility === 'on_request') ? 'on_request' : 'public';
-      const priceStrict = (price_strict === true || price_strict === 'true');
-      const avail = ['available', 'reserved', 'sold'].includes(availability) ? availability : 'available';
 
       // Slot prüfen
       const { data: slot, error: slotErr } = await supabase
@@ -212,12 +187,6 @@ module.exports = function(app, supabase, deps) {
             location: location || null,
             anrede: anrede || 'Sie',
             notes: notes || null,
-            price_visibility: priceVis,
-            price_strict: priceStrict,
-            availability: avail,
-            wa_starttext: (wa_starttext != null ? String(wa_starttext).trim() : null) || null,
-            cta_text: (cta_text != null ? String(cta_text).trim() : null) || null,
-            pull_text: (pull_text != null ? String(pull_text).trim() : null) || null,
             status: 'draft',
             updated_at: new Date().toISOString()
           })
@@ -237,12 +206,6 @@ module.exports = function(app, supabase, deps) {
             location: location || null,
             anrede: anrede || 'Sie',
             notes: notes || null,
-            price_visibility: priceVis,
-            price_strict: priceStrict,
-            availability: avail,
-            wa_starttext: (wa_starttext != null ? String(wa_starttext).trim() : null) || null,
-            cta_text: (cta_text != null ? String(cta_text).trim() : null) || null,
-            pull_text: (pull_text != null ? String(pull_text).trim() : null) || null,
             status: 'draft'
           })
           .select()
@@ -270,79 +233,7 @@ module.exports = function(app, supabase, deps) {
 
 
   // ============================================================
-  // 2c. PATCH /api/cv/slot/:id/quicksettings
-  //     Ändert NUR Verfügbarkeit + Preis-Sichtbarkeit + Strikt-Modus.
-  //     Fasst Artikel-status und Analyse NICHT an -> auch für aktive
-  //     Bots sicher (kein Rückfall in 'draft', keine Neu-Analyse).
-  //     Body: { availability?, price_visibility?, price_strict? }
-  // ============================================================
-  app.patch('/api/cv/slot/:id/quicksettings', async (req, res) => {
-    try {
-      const slotId = req.params.id;
-      const { availability, price_visibility, price_strict, wa_starttext, cta_text, pull_text } = req.body;
-
-      const { data: article, error: artErr } = await supabase
-        .from('cv_articles')
-        .select('id, title')
-        .eq('slot_id', slotId)
-        .maybeSingle();
-      if (artErr)   return res.status(500).json({ error: 'Artikel: ' + artErr.message });
-      if (!article) return res.status(404).json({ error: 'Kein Artikel in diesem Slot' });
-
-      const update = { updated_at: new Date().toISOString() };
-      if (availability !== undefined) {
-        if (!['available', 'reserved', 'sold'].includes(availability)) {
-          return res.status(400).json({ error: 'Ungültiger Status' });
-        }
-        update.availability = availability;
-      }
-      if (price_visibility !== undefined) {
-        update.price_visibility = (price_visibility === 'on_request') ? 'on_request' : 'public';
-      }
-      if (price_strict !== undefined) {
-        update.price_strict = (price_strict === true || price_strict === 'true');
-      }
-      if (wa_starttext !== undefined) {
-        update.wa_starttext = (wa_starttext != null ? String(wa_starttext).trim() : null) || null;
-      }
-      if (cta_text !== undefined) {
-        update.cta_text = (cta_text != null ? String(cta_text).trim() : null) || null;
-      }
-      if (pull_text !== undefined) {
-        update.pull_text = (pull_text != null ? String(pull_text).trim() : null) || null;
-      }
-
-      const { data, error } = await supabase
-        .from('cv_articles')
-        .update(update)
-        .eq('id', article.id)
-        .select()
-        .single();
-      if (error) return res.status(500).json({ error: error.message });
-
-      // Wenn der Starttext geändert wurde UND der Slot bereits aktiv ist (hat
-      // einen bot_code), den WhatsApp-Link + QR neu bauen, damit der neue Text
-      // drinsteht. Der bot_code selbst bleibt unverändert.
-      if (wa_starttext !== undefined) {
-        const { data: slot } = await supabase
-          .from('cv_slots').select('bot_code, status').eq('id', slotId).maybeSingle();
-        if (slot && slot.bot_code) {
-          const assets = cvBuildWaAssets(slot.bot_code, article.title, update.wa_starttext);
-          await supabase.from('cv_slots').update({
-            wa_deeplink: assets.waLink,
-            qr_code_url: assets.qrUrl,
-            widget_code: assets.widgetCode,
-            updated_at: new Date().toISOString()
-          }).eq('id', slotId);
-        }
-      }
-
-      res.json({ success: true, article: data });
-    } catch(e) {
-      console.error('[CV /slot/:id/quicksettings]', e);
-      res.status(500).json({ error: 'Unerwartet: ' + e.message });
-    }
-  });
+  // 3. POST /api/cv/slot/:id/upload
   //    Datei in Slot hochladen (Foto, PDF, Notiz)
   //    Body: { kind: 'photo'|'pdf'|'note', file_name, file_base64, content_type, content }
   // ============================================================
@@ -850,8 +741,11 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
         }).eq('id', article.id);
 
         // Bot-Assets generieren
-        const botCode = 'Anfrage-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-        const { waLink, qrUrl, widgetCode } = cvBuildWaAssets(botCode, article.title, article.wa_starttext);
+        const botCode = 'BOT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const waNumber = (process.env.WA_BOT_NUMBER || '4367764118066').replace(/[^0-9]/g, '');
+        const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(botCode)}`;
+        const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
+        const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
 
         await supabase.from('cv_slots').update({
           status: 'active',
@@ -863,7 +757,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
           updated_at: new Date().toISOString()
         }).eq('id', slotId);
 
-        console.log(`[CV] Slot ${slotId} aktiv. Anfrage-Code: ${botCode}`);
+        console.log(`[CV] Slot ${slotId} aktiv. BOT-Code: ${botCode}`);
       })().catch(e => console.error('[CV] Hintergrund-Fehler:', e));
     } catch(e) {
       console.error('[CV /activate]', e);
@@ -957,7 +851,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
       .maybeSingle();
 
     if (!slot) {
-      await sendWAMessage(phoneId, phone, '❌ Diese Anfrage-Nummer ist nicht mehr aktiv oder ungültig.');
+      await sendWAMessage(phoneId, phone, '❌ Dieser Bot-Code ist nicht aktiv oder ungültig.');
       return false;
     }
 
@@ -972,19 +866,6 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
       return false;
     }
 
-    // Prüfen ob versendbare Dossier-Unterlagen vorhanden sind
-    let hasDossier = false;
-    try {
-      const { data: docUploads } = await supabase
-        .from('cv_uploads')
-        .select('id')
-        .eq('article_id', article.id)
-        .eq('kind', 'pdf')
-        .eq('purpose', 'dossier')
-        .limit(1);
-      hasDossier = Array.isArray(docUploads) && docUploads.length > 0;
-    } catch(e) { /* im Zweifel: kein Dossier */ }
-
     // DB-Session anlegen (für Logging + Persistenz)
     const { data: dbSession } = await supabase
       .from('cv_bot_sessions')
@@ -996,7 +877,6 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     cvBotSessions.set(phone, {
       dbSessionId: dbSession?.id,
       slot, article,
-      hasDossier,
       history: [],
       phoneId,
       phone,
@@ -1054,75 +934,6 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const salePrice = Number(article.sale_price) || 0;
     const minPrice  = Number(article.min_price) || 0;
 
-    // Neue Felder (mit sicheren Defaults für Altbestand)
-    const availability    = article.availability || 'available';
-    const priceVisibility = article.price_visibility || 'public';
-    const priceStrict     = article.price_strict === true;
-    const hasDossier      = session.hasDossier === true;
-
-    // ── BLOCK: Unterlagen-Versand ──
-    let docsBlock = '';
-    if (availability === 'available') {
-      docsBlock = `
-═══════════════════════════════════════════════════════
-UNTERLAGEN PER E-MAIL SENDEN
-═══════════════════════════════════════════════════════
-Du kannst dem Käufer die Produktunterlagen per E-Mail schicken${hasDossier ? ' (es liegt ein ausführliches Unterlagen-/Dossier-PDF bereit)' : ' (eine übersichtliche Infozusammenfassung)'}.
-- Biete das PROAKTIV an, sobald echtes Interesse da ist: "Soll ich Ihnen die ausführlichen Unterlagen per E-Mail schicken?"
-- Wenn der Käufer zustimmt oder selbst nach Unterlagen/Dossier/Datenblatt/Infos fragt: Frage nach der E-Mail-Adresse ("An welche E-Mail-Adresse darf ich Ihnen die Unterlagen senden?").
-- Sobald du eine gültige E-Mail hast: rufe das Werkzeug send_documents mit dieser E-Mail auf. Bestätige dann freundlich, dass die Unterlagen unterwegs sind.
-- Die E-Mail-Adresse ist wertvoll — so bleibt der Kontakt erhalten. Frag aktiv danach.
-`;
-    }
-
-
-    // ── BLOCK: Verfügbarkeit (nur wenn reserviert/verkauft) ──
-    let availabilityBlock = '';
-    if (availability === 'sold' || availability === 'reserved') {
-      const zustand = availability === 'sold' ? 'bereits VERKAUFT' : 'aktuell RESERVIERT';
-      const zustandKurz = availability === 'sold' ? 'schon verkauft' : 'gerade reserviert';
-      availabilityBlock = `
-═══════════════════════════════════════════════════════
-WICHTIG — DIESER ARTIKEL IST ${zustand} (überschreibt alle anderen Regeln)
-═══════════════════════════════════════════════════════
-Dieser Artikel ist ${zustand}. Du verkaufst ihn NICHT mehr. Verhalte dich wie ein freundlicher Verkäufer, dessen Ware gerade weg ist, der aber gern beim nächsten Mal hilft.
-
-GRUNDREGELN:
-- Du VERHANDELST NICHT und nennst KEINEN Preis. KEINE Reservierung, KEIN Zahlungslink (create_payment_link NICHT aufrufen).
-- Sage die "leider ${zustandKurz}"-Information nur EINMAL — in deiner ERSTEN Nachricht. Danach NIE wiederholen.
-
-GESPRÄCHSFÜHRUNG (sehr wichtig — sonst wirkst du wie eine kaputte Schallplatte):
-- ERSTE Nachricht: Begrüße freundlich, sag ehrlich dass der Artikel ${zustandKurz} ist, und frage EINMAL kurz, ob du bei etwas Ähnlichem helfen darfst / informieren sollst, falls wieder etwas Passendes reinkommt. Halte es knapp.
-- Dann GEH AUF DIE ANTWORT EIN — wiederhole NIEMALS dieselbe Nachricht:
-  • Sagt der Interessent JA / zeigt Interesse an Ähnlichem → frage nach dem Namen, nutze flag_hot_lead bzw. request_callback, damit der Verkäufer ihn kontaktieren kann. Dann freundlich bestätigen und mit confirm_commitment (committed=true) beenden.
-  • Sagt er NEIN / kein Interesse / "nein danke" → AKZEPTIERE das sofort. Frag NICHT nochmal nach. Verabschiede dich kurz, herzlich und mit einer offenen Tür für die Zukunft, sinngemäß: "Alles klar, kein Problem! Falls Sie künftig etwas suchen, sind wir gern für Sie da — melden Sie sich jederzeit. Ich wünsche Ihnen einen schönen Tag!" Danach SOFORT confirm_commitment (committed=false) aufrufen, um das Gespräch sauber zu beenden.
-- Stelle NIE zweimal dieselbe Frage. Wenn der Interessent schon "nein" gesagt hat, ist das endgültig — beenden, nicht nachbohren.
-`;
-    }
-
-    // ── BLOCK: Preis auf Anfrage (nur wenn on_request) ──
-    let priceVisibilityBlock = '';
-    if (priceVisibility === 'on_request' && availability === 'available') {
-      priceVisibilityBlock = `
-═══════════════════════════════════════════════════════
-PREIS AUF ANFRAGE — so gehst du mit dem Preis um
-═══════════════════════════════════════════════════════
-Bei diesem Artikel ist der Preis NICHT öffentlich. Der Händler möchte erst ins Gespräch kommen, bevor der Preis genannt wird. Du kennst den echten Preis (€${salePrice}, Minimum €${minPrice}) — aber du nennst ihn nicht sofort.
-
-SO GEHST DU VOR:
-1. ZUERST BEGEISTERN: Stelle den Artikel vor, beantworte Fragen, baue Interesse und Vertrauen auf. Nenne in dieser Phase KEINEN Preis.
-2. BEIM ÜBERGANG ZUM PREIS QUALIFIZIEREN: Wenn der Käufer nach dem Preis fragt oder ernsthaftes Interesse zeigt, frage zuerst natürlich und freundlich:
-   • nach dem Namen ("Mit wem habe ich das Vergnügen?")
-   • ob privat oder gewerblich / für welchen Betrieb
-   Formuliere das als normalen Verkäufer-Smalltalk, nicht als Verhör. Z.B.: "Den genauen Preis stelle ich Ihnen gern zusammen — damit ich Ihnen das passende Angebot mache: Ist das für Ihren Betrieb oder privat? Und mit wem spreche ich?"
-3. DANN PREIS NENNEN & VERHANDELN: Sobald sich die Person zu erkennen gegeben hat, nenne den Preis (€${salePrice}) und verhandle ganz normal nach den Verhandlungs-Regeln.
-${priceStrict
-  ? `4. STRIKT-MODUS (wichtig): Wenn der Käufer den Preis erfahren will, OHNE sich zu erkennen zu geben, bleibe freundlich aber bestimmt bei der Qualifizierung. Gib den Preis NICHT heraus, solange du nicht mindestens den Namen und privat/gewerblich kennst. Sage sinngemäß: "Den Preis bespreche ich gern direkt mit Ihnen — darf ich kurz wissen, für wen das Angebot ist?" Lieber kein Preis als ein Preis an einen anonymen Mitbewerber.`
-  : `4. KULANT-MODUS: Frage nach Name und privat/gewerblich. Wenn der Käufer aber nach ein, zwei Versuchen weiter drängt und den Preis einfach wissen will, nenne ihn trotzdem (€${salePrice}) — ein echter Lead ist wertvoller als ein verlorener Interessent.`}
-`;
-    }
-
-
     const systemPrompt = `Du bist ein professioneller WhatsApp-Verkaufsberater für einen echten Verkäufer. Dein Ziel: aktiv verkaufen UND qualifizierte Leads an den Verkäufer weiterreichen. Je mehr ernsthafte Interessenten du an den Verkäufer übergibst, desto besser.
 
 PRODUKT: ${article.title}
@@ -1130,7 +941,6 @@ VERKAUFSPREIS: €${salePrice}
 MINDESTPREIS: €${minPrice} (NIEMALS ein Angebot darunter machen!)
 STANDORT: ${article.location || 'auf Anfrage'}
 ANREDE: ${anrede} (konsequent verwenden)
-${availabilityBlock}
 
 ═══════════════════════════════════════════════════════
 KÄUFER-KONTAKT — WICHTIG!
@@ -1186,8 +996,6 @@ ANREDE (sehr wichtig — konsistent durchhalten!)
 - ${anrede === 'Du' ? 'Du-Form: "du / dich / dir / dein". KEIN Wechsel zu "Sie/Ihnen/Ihr" — auch nicht in der Begrüßung.' : 'Sie-Form: "Sie / Ihnen / Ihr". KEIN Wechsel zu "du/dich/dir" — auch nicht in der Begrüßung.'}
 - Wenn du selbst auf der Begrüßungsvorlage aus der Wissensbasis basierst und die in der falschen Anrede ist: formuliere sie um in "${anrede}". Die Slot-Anrede gewinnt IMMER.
 
-${priceVisibilityBlock}
-${docsBlock}
 ═══════════════════════════════════════════════════════
 VERHANDLUNGS-REGELN
 ═══════════════════════════════════════════════════════
@@ -1226,7 +1034,6 @@ DEINE WERKZEUGE — wann du sie einsetzt
 ═══════════════════════════════════════════════════════
 - flag_hot_lead: Sobald der Käufer ernsthaftes Kaufinteresse zeigt (will kaufen, fragt nach Übergabe/Probefahrt/Verfügbarkeit, oder will mit dem Verkäufer sprechen). Reiche den Lead SOFORT weiter — lieber zu früh als zu spät.
 - collect_contact: Wenn konkretes Interesse da ist, frage natürlich nach dem NAMEN und bestätige die WhatsApp-Nummer als Kontakt. Bei Email optional. Erst bei echtem Interesse, nicht am Anfang.
-- send_documents: Wenn der Käufer Unterlagen/Dossier/Infos möchte (oder du es angeboten hast und er zustimmt) — frage nach der E-Mail und rufe dann send_documents mit der E-Mail auf. Sendet die Unterlagen per Mail.
 - agree_deal: Wenn sich Käufer und du auf einen Preis einigen. Vorher Kontaktdaten sichern.
 - create_payment_link: NACH der Einigung UND wenn du Name + Kontaktdaten hast — erstellt den sicheren Anzahlungs-Zahlungslink und schickt ihn dem Käufer. Nutze dies wenn der Käufer bereit ist zu reservieren/zu zahlen.
 - escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee."
@@ -1295,18 +1102,6 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
             preferred_time: { type: 'string', description: 'Vereinbartes Rückruf-Zeitfenster falls genannt' }
           },
           required: ['buyer_name']
-        }
-      },
-      {
-        name: 'send_documents',
-        description: `Sendet dem Käufer die Produktunterlagen per E-Mail (Dossier-PDF und/oder eine Infozusammenfassung). NUR aufrufen wenn du eine gültige E-Mail-Adresse des Käufers hast. Wenn du noch keine E-Mail hast, frage zuerst danach ("An welche E-Mail-Adresse darf ich Ihnen die Unterlagen senden?") und rufe dieses Werkzeug erst auf, sobald der Käufer sie genannt hat.`,
-        input_schema: {
-          type: 'object',
-          properties: {
-            buyer_email: { type: 'string', description: 'Die E-Mail-Adresse des Käufers, an die gesendet wird' },
-            buyer_name: { type: 'string', description: 'Name des Käufers, falls bekannt' }
-          },
-          required: ['buyer_email']
         }
       },
       {
@@ -1617,26 +1412,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           }
           break;
 
-        case 'send_documents': {
-          const email = (input.buyer_email || session.buyerEmail || '').trim();
-          if (input.buyer_email) session.buyerEmail = input.buyer_email;
-          if (input.buyer_name && !session.buyerName) session.buyerName = input.buyer_name;
-          if (!email || !/.+@.+\..+/.test(email)) {
-            console.warn('[CV send_documents] Keine gültige E-Mail vorhanden');
-            break;
-          }
-          const sent = await cvSendDocsToBuyer(session, email);
-          // Verkäufer informieren, dass Unterlagen rausgingen + Lead mit E-Mail sichern
-          await cvLogEvent(session, phone, session.notified ? 'contact_added' : 'hot_lead', {
-            reason: sent ? 'Unterlagen per Mail an Käufer gesendet' : 'Unterlagen-Versand fehlgeschlagen',
-            buyer_name: session.buyerName, buyer_phone: session.buyerPhone,
-            buyer_email: email, preferred_time: session.callbackTime
-          }, session.notified);
-          session.notified = true;
-          break;
-        }
-
-
+        case 'agree_deal':
           session.phase = 'closed';
           updates.phase = 'closed';
           updates.status = 'deal';
@@ -1742,9 +1518,6 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       case 'collect_contact':
         return du ? 'Super! Wie ist dein Name und unter welcher Nummer erreichen wir dich — und wann passt dir ein Rückruf am besten?'
                   : 'Sehr gerne! Wie ist Ihr Name und unter welcher Nummer erreichen wir Sie — und wann passt Ihnen ein Rückruf am besten?';
-      case 'send_documents':
-        return du ? 'Super, die Unterlagen sind unterwegs in dein Postfach! Schau gern auch im Spam-Ordner nach, falls nichts ankommt. Gibt es sonst noch etwas, das ich für dich tun kann?'
-                  : 'Sehr gerne, die Unterlagen sind unterwegs in Ihr Postfach! Schauen Sie bei Bedarf auch im Spam-Ordner nach. Kann ich sonst noch etwas für Sie tun?';
       case 'flag_hot_lead':
         return du ? 'Klingt gut! Wann erreichen wir dich am besten für einen Rückruf — heute noch oder lieber morgen?'
                   : 'Wunderbar! Wann erreichen wir Sie am besten für einen Rückruf — heute noch oder lieber morgen?';
@@ -1902,7 +1675,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     return { subject, html, text };
   }
 
-  async function cvSendEmail(toEmail, subject, html, text, attachments) {
+  async function cvSendEmail(toEmail, subject, html, text) {
     if (!cvResend) {
       console.warn('[CV Mail] Resend nicht initialisiert — Mail nicht gesendet');
       return false;
@@ -1912,18 +1685,14 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       return false;
     }
     try {
-      const payload = {
+      const result = await cvResend.emails.send({
         from: CV_MAIL_FROM,
         to: toEmail,
         replyTo: CV_MAIL_REPLY_TO,
         subject,
         html,
         text
-      };
-      if (Array.isArray(attachments) && attachments.length > 0) {
-        payload.attachments = attachments;
-      }
-      const result = await cvResend.emails.send(payload);
+      });
       if (result?.error) {
         console.error('[CV Mail] Resend-Fehler:', result.error.message || result.error);
         return false;
@@ -1932,96 +1701,6 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       return true;
     } catch(e) {
       console.error('[CV Mail] Exception:', e.message);
-      return false;
-    }
-  }
-
-  // ============================================================
-  // UNTERLAGEN AN KÄUFER SENDEN (Dossier-PDF + Produktinfos)
-  // ============================================================
-  async function cvSendDocsToBuyer(session, toEmail) {
-    try {
-      const article = session.article;
-      const slot = session.slot;
-
-      // Dossier-PDFs dieses Artikels laden
-      const { data: uploads } = await supabase
-        .from('cv_uploads')
-        .select('*')
-        .eq('article_id', article.id);
-
-      const dossiers = (uploads || []).filter(u =>
-        u.kind === 'pdf' && u.purpose === 'dossier' && u.public_url
-      );
-
-      // PDFs herunterladen und als Base64-Anhänge aufbereiten
-      const attachments = [];
-      for (const d of dossiers) {
-        try {
-          const resp = await fetch(d.public_url);
-          if (!resp.ok) continue;
-          const buf = Buffer.from(await resp.arrayBuffer());
-          attachments.push({
-            filename: d.file_name || 'Unterlagen.pdf',
-            content: buf.toString('base64')
-          });
-        } catch(e) {
-          console.warn('[CV Docs] PDF-Download fehlgeschlagen:', d.public_url, e.message);
-        }
-      }
-
-      // Produktinfos aus den verifizierten Fakten zusammenstellen
-      const facts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
-      const factsHtml = facts.length
-        ? '<table style="width:100%;border-collapse:collapse;margin-top:8px;">' +
-          facts.map(f => `<tr>
-            <td style="padding:6px 10px;background:#f8fafc;color:#64748b;font-size:13px;border-bottom:1px solid #e2e8f0;width:40%;">${cvEscapeHtml(f.k)}</td>
-            <td style="padding:6px 10px;color:#0f172a;font-size:14px;border-bottom:1px solid #e2e8f0;">${cvEscapeHtml(f.v)}</td>
-          </tr>`).join('') + '</table>'
-        : '';
-
-      const greeting = session.buyerName ? `Hallo ${cvEscapeHtml(session.buyerName)},` : 'Hallo,';
-      const priceLine = (article.price_visibility !== 'on_request' && article.sale_price)
-        ? `<p style="font-size:15px;color:#0f172a;"><strong>Preis:</strong> €${article.sale_price}</p>` : '';
-      const attachNote = attachments.length
-        ? `<p style="font-size:14px;color:#475569;">Die ausführlichen Unterlagen finden Sie im Anhang dieser E-Mail.</p>`
-        : '';
-
-      const subject = `Ihre Unterlagen zu ${article.title}`;
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
-        <tr><td style="background:#22a84b;padding:22px 28px;color:#fff;font-size:20px;font-weight:700;">${cvEscapeHtml(article.title)}</td></tr>
-        <tr><td style="padding:26px 28px;">
-          <p style="font-size:15px;color:#0f172a;">${greeting}</p>
-          <p style="font-size:15px;color:#475569;line-height:1.5;">vielen Dank für Ihr Interesse! Hier die wichtigsten Informationen auf einen Blick:</p>
-          ${priceLine}
-          ${factsHtml}
-          ${attachNote}
-          <p style="font-size:15px;color:#475569;line-height:1.5;margin-top:20px;">Bei Fragen antworten Sie einfach auf diese E-Mail oder schreiben Sie uns weiter über WhatsApp — wir melden uns umgehend.</p>
-        </td></tr>
-        <tr><td style="padding:16px 28px;background:#f8fafc;color:#94a3b8;font-size:12px;text-align:center;">Diese Unterlagen wurden Ihnen auf Anfrage zugesendet.</td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
-
-      const text = `${session.buyerName ? 'Hallo ' + session.buyerName : 'Hallo'},\n\n` +
-        `vielen Dank für Ihr Interesse an ${article.title}.\n` +
-        (priceLine ? `Preis: €${article.sale_price}\n` : '') +
-        (facts.length ? '\n' + facts.map(f => `${f.k}: ${f.v}`).join('\n') + '\n' : '') +
-        (attachments.length ? '\nDie ausführlichen Unterlagen finden Sie im Anhang.\n' : '') +
-        '\nBei Fragen antworten Sie einfach auf diese E-Mail.\n\n— Converdino';
-
-      const ok = await cvSendEmail(toEmail, subject, html, text, attachments);
-      if (ok) {
-        console.log(`[CV Docs] Unterlagen an Käufer ${toEmail} gesendet (${attachments.length} Anhang/Anhänge)`);
-      }
-      return ok;
-    } catch(e) {
-      console.error('[CV Docs] Fehler:', e.message);
       return false;
     }
   }
@@ -2265,6 +1944,177 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       await cvSendEmail(sub.seller_email, subject, html, text);
     } catch(e) { console.error('[CV notifyPayment]', e.message); }
   }
+
+
+  // ============================================================
+  // BACKOFFICE / ADMIN — Kundenverwaltung (Schritt 1b)
+  // Kunde = users-Login + cv_subscriptions (verknüpft über user_login).
+  // Slots werden in einem getrennten Schritt zugewiesen.
+  // ============================================================
+
+  // bcrypt defensiv laden (Fallback Klartext, falls Paket fehlt)
+  let cvBcrypt = null;
+  try { cvBcrypt = require('bcryptjs'); }
+  catch(e) { console.warn('[CV Admin] bcryptjs nicht verfügbar — Passwörter werden im Klartext gespeichert'); }
+  async function cvHashPassword(plain) {
+    if (cvBcrypt) { try { return await cvBcrypt.hash(plain, 10); } catch(e) {} }
+    return plain;
+  }
+
+  // GET /api/cv/admin/customers — alle Converdino-Kunden auflisten
+  app.get('/api/cv/admin/customers', async (req, res) => {
+    try {
+      const { data: subs, error } = await supabase
+        .from('cv_subscriptions')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Slot-Anzahl pro Subscription ermitteln
+      const subIds = (subs || []).map(s => s.id);
+      let slotCounts = {};
+      if (subIds.length > 0) {
+        const { data: slots } = await supabase
+          .from('cv_slots')
+          .select('id, subscription_id')
+          .in('subscription_id', subIds);
+        for (const s of (slots || [])) {
+          slotCounts[s.subscription_id] = (slotCounts[s.subscription_id] || 0) + 1;
+        }
+      }
+
+      const customers = (subs || []).map(s => ({
+        id: s.id,
+        user_login: s.user_login,
+        company_name: s.company_name || null,
+        contact_name: s.contact_name || null,
+        contact_phone: s.contact_phone || null,
+        seller_email: s.seller_email || null,
+        commission_pct: s.commission_pct != null ? s.commission_pct : null,
+        status: s.status,
+        slots_total: s.slots_total || 0,
+        slots_created: slotCounts[s.id] || 0,
+        created_at: s.created_at
+      }));
+      res.json({ customers });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/cv/admin/customers — neuen Kunden anlegen (Login + Subscription)
+  app.post('/api/cv/admin/customers', async (req, res) => {
+    try {
+      const {
+        user_login, password, company_name, contact_name,
+        contact_phone, seller_email, commission_pct
+      } = req.body;
+
+      if (!user_login || !password) {
+        return res.status(400).json({ error: 'Login-Name und Passwort sind erforderlich' });
+      }
+      const login = String(user_login).toLowerCase().trim();
+
+      // 1) Prüfen, ob Login schon existiert (users ODER cv_subscriptions)
+      const { data: existingUser } = await supabase
+        .from('users').select('id').eq('username', login).maybeSingle();
+      if (existingUser) {
+        return res.status(409).json({ error: 'Login-Name ist bereits vergeben' });
+      }
+      const { data: existingSub } = await supabase
+        .from('cv_subscriptions').select('id').eq('user_login', login).eq('status', 'active').maybeSingle();
+      if (existingSub) {
+        return res.status(409).json({ error: 'Für diesen Login gibt es bereits ein aktives Abo' });
+      }
+
+      // 2) Login-Konto in users anlegen (Rolle 'merchant', gehasht)
+      const hashed = await cvHashPassword(password);
+      const { data: user, error: userErr } = await supabase
+        .from('users')
+        .insert({
+          username: login,
+          password: hashed,
+          role: 'merchant',
+          name: company_name || contact_name || login,
+          email: seller_email || null,
+          active: true
+        })
+        .select().single();
+      if (userErr) return res.status(400).json({ error: 'Login: ' + userErr.message });
+
+      // 3) Converdino-Subscription anlegen (verknüpft über user_login)
+      const { data: sub, error: subErr } = await supabase
+        .from('cv_subscriptions')
+        .insert({
+          user_login: login,
+          status: 'active',
+          slots_total: 0,
+          company_name: company_name || null,
+          contact_name: contact_name || null,
+          contact_phone: contact_phone || null,
+          seller_email: seller_email || null,
+          commission_pct: (commission_pct != null && commission_pct !== '') ? parseFloat(commission_pct) : null,
+          email_notifications_enabled: true
+        })
+        .select().single();
+      if (subErr) {
+        // Rollback des Logins, damit keine Leiche entsteht
+        await supabase.from('users').delete().eq('id', user.id);
+        return res.status(400).json({ error: 'Abo: ' + subErr.message });
+      }
+
+      res.json({
+        success: true,
+        customer: {
+          id: sub.id,
+          user_login: login,
+          company_name: sub.company_name,
+          contact_name: sub.contact_name,
+          contact_phone: sub.contact_phone,
+          seller_email: sub.seller_email,
+          commission_pct: sub.commission_pct,
+          status: sub.status,
+          slots_total: 0,
+          slots_created: 0
+        }
+      });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST /api/cv/admin/customers/:subId/slots — Slots zuweisen/nachlegen
+  app.post('/api/cv/admin/customers/:subId/slots', async (req, res) => {
+    try {
+      const subId = req.params.subId;
+      const count = parseInt(req.body.count, 10);
+      if (!count || count < 1 || count > 100) {
+        return res.status(400).json({ error: 'Bitte eine Anzahl zwischen 1 und 100 angeben' });
+      }
+
+      const { data: sub, error: subErr } = await supabase
+        .from('cv_subscriptions').select('*').eq('id', subId).maybeSingle();
+      if (subErr) return res.status(500).json({ error: subErr.message });
+      if (!sub) return res.status(404).json({ error: 'Kunde nicht gefunden' });
+
+      // Höchste vorhandene Slot-Nummer ermitteln
+      const { data: existing } = await supabase
+        .from('cv_slots').select('slot_number')
+        .eq('subscription_id', subId)
+        .order('slot_number', { ascending: false }).limit(1);
+      const startNum = (existing && existing.length > 0) ? (existing[0].slot_number + 1) : 1;
+
+      // Neue leere Slots anlegen
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        rows.push({ subscription_id: subId, slot_number: startNum + i, status: 'empty' });
+      }
+      const { error: insErr } = await supabase.from('cv_slots').insert(rows);
+      if (insErr) return res.status(400).json({ error: 'Slots: ' + insErr.message });
+
+      // slots_total in der Subscription aktualisieren
+      const newTotal = (sub.slots_total || 0) + count;
+      await supabase.from('cv_subscriptions').update({ slots_total: newTotal }).eq('id', subId);
+
+      res.json({ success: true, added: count, slots_total: newTotal });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
 
 
   console.log(`✅ Converdino API geladen — /api/cv/* aktiv + WhatsApp-Handler + Email (${cvResend ? 'AKTIV' : 'inaktiv'})`);
