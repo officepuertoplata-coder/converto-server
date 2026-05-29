@@ -251,7 +251,7 @@ function logout() {
 
 // ── DASHBOARD LADEN ──────────────────────────────────
 async function loadDashboard() {
-  const userLogin = auth.username || auth.name || 'admin';
+  const userLogin = (auth.username || auth.name || 'admin').toLowerCase().trim();
   try {
     const r = await fetch(API + '/api/cv/me?user=' + encodeURIComponent(userLogin));
     const d = await r.json();
