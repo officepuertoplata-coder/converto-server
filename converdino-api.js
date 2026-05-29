@@ -1000,19 +1000,23 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     let availabilityBlock = '';
     if (availability === 'sold' || availability === 'reserved') {
       const zustand = availability === 'sold' ? 'bereits VERKAUFT' : 'aktuell RESERVIERT';
+      const zustandKurz = availability === 'sold' ? 'schon verkauft' : 'gerade reserviert';
       availabilityBlock = `
 ═══════════════════════════════════════════════════════
-WICHTIG — DIESER ARTIKEL IST ${zustand.toUpperCase()}
+WICHTIG — DIESER ARTIKEL IST ${zustand} (überschreibt alle anderen Regeln)
 ═══════════════════════════════════════════════════════
-Dieser Artikel ist ${zustand}. Das ändert dein Verhalten GRUNDLEGEND:
-- Du VERHANDELST NICHT mehr über den Preis und nennst KEINEN Preis.
-- Du machst KEINE Reservierung, KEINEN Zahlungslink (create_payment_link NICHT aufrufen).
-- Begrüße den Interessenten freundlich und sage ehrlich, dass dieser Artikel leider ${zustand === 'bereits VERKAUFT' ? 'schon verkauft' : 'gerade reserviert'} ist.
-- ABER: Lass den Lead nicht einfach gehen! Biete aktiv an:
-  • ihn zu informieren, falls der Artikel doch wieder verfügbar wird (besonders bei "reserviert"), oder
-  • ihm etwas Ähnliches zu zeigen / ihn an den Verkäufer für vergleichbare Angebote weiterzuleiten.
-- Wenn er Interesse zeigt: frage nach dem Namen und nutze flag_hot_lead / request_callback, damit der Verkäufer ihn kontaktieren kann.
-- Bleib herzlich und hilfsbereit — auch ein "leider weg"-Gespräch kann einen wertvollen neuen Kontakt bringen.
+Dieser Artikel ist ${zustand}. Du verkaufst ihn NICHT mehr. Verhalte dich wie ein freundlicher Verkäufer, dessen Ware gerade weg ist, der aber gern beim nächsten Mal hilft.
+
+GRUNDREGELN:
+- Du VERHANDELST NICHT und nennst KEINEN Preis. KEINE Reservierung, KEIN Zahlungslink (create_payment_link NICHT aufrufen).
+- Sage die "leider ${zustandKurz}"-Information nur EINMAL — in deiner ERSTEN Nachricht. Danach NIE wiederholen.
+
+GESPRÄCHSFÜHRUNG (sehr wichtig — sonst wirkst du wie eine kaputte Schallplatte):
+- ERSTE Nachricht: Begrüße freundlich, sag ehrlich dass der Artikel ${zustandKurz} ist, und frage EINMAL kurz, ob du bei etwas Ähnlichem helfen darfst / informieren sollst, falls wieder etwas Passendes reinkommt. Halte es knapp.
+- Dann GEH AUF DIE ANTWORT EIN — wiederhole NIEMALS dieselbe Nachricht:
+  • Sagt der Interessent JA / zeigt Interesse an Ähnlichem → frage nach dem Namen, nutze flag_hot_lead bzw. request_callback, damit der Verkäufer ihn kontaktieren kann. Dann freundlich bestätigen und mit confirm_commitment (committed=true) beenden.
+  • Sagt er NEIN / kein Interesse / "nein danke" → AKZEPTIERE das sofort. Frag NICHT nochmal nach. Verabschiede dich kurz, herzlich und mit einer offenen Tür für die Zukunft, sinngemäß: "Alles klar, kein Problem! Falls Sie künftig etwas suchen, sind wir gern für Sie da — melden Sie sich jederzeit. Ich wünsche Ihnen einen schönen Tag!" Danach SOFORT confirm_commitment (committed=false) aufrufen, um das Gespräch sauber zu beenden.
+- Stelle NIE zweimal dieselbe Frage. Wenn der Interessent schon "nein" gesagt hat, ist das endgültig — beenden, nicht nachbohren.
 `;
     }
 
