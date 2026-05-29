@@ -107,6 +107,7 @@
   /* COPY ANIM */
   .copied { background: var(--g) !important; color: #fff !important; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -178,7 +179,7 @@
 <div class="modal-overlay" id="assetModal">
   <div class="modal">
     <div class="modal-head">
-      <div class="modal-title">🤖 Dein Bot ist aktiv</div>
+      <div class="modal-title">📣 Marketing-Material</div>
       <button class="modal-close" onclick="closeAssetModal()">×</button>
     </div>
     <div class="modal-body" id="assetBody">
@@ -339,11 +340,7 @@ function renderSlot(slot) {
       <div class="bot-info">Code: <span class="bot-code">${esc(slot.bot_code || '—')}</span></div>
       <button class="btn btn-primary" onclick="goToKnowledge('${slot.id}')" style="margin-bottom:8px;">🧠 Was hat der Bot gelernt?</button>
       <button class="btn btn-soft" onclick="openSettingsModal('${slot.id}')" style="margin-bottom:8px;">⚙️ Einstellungen ansehen</button>
-      <div class="btn-row">
-        <button class="btn btn-soft" onclick="showAssets('${slot.id}','wa')">💬 WA</button>
-        <button class="btn btn-soft" onclick="showAssets('${slot.id}','qr')">📱 QR</button>
-        <button class="btn btn-soft" onclick="showAssets('${slot.id}','widget')">🔌 Widget</button>
-      </div>
+      <button class="btn btn-soft" onclick="showMarketing('${slot.id}')" style="margin-bottom:8px;">📣 Marketing-Material</button>
       <button class="btn btn-danger-soft" onclick="clearSlot('${slot.id}')">🗑 Bot deaktivieren</button>`;
   }
 
@@ -439,41 +436,161 @@ async function clearSlot(slotId) {
 }
 
 // ── BOT ASSETS ANZEIGEN ──────────────────────────────
-async function showAssets(slotId, defaultTab) {
+async function showMarketing(slotId) {
   try {
     const r = await fetch(API + '/api/cv/slot/' + slotId);
     const d = await r.json();
     if (!d.slot) { toast('Slot nicht gefunden'); return; }
 
     const slot = d.slot;
+    const art = d.article || {};
+    const waLink = slot.wa_deeplink || '';
+    const qrUrl = slot.qr_code_url || '';
+    const code = slot.bot_code || '';
+    const title = art.title || 'Artikel';
+    const cta = (art.cta_text && art.cta_text.trim())
+      ? art.cta_text.trim()
+      : 'Fragen zu ' + title + '? Sofort-Antwort per WhatsApp – einfach scannen!';
+
+    // Merken für PDF-Erzeugung
+    mktData = { waLink, qrUrl, code, title, cta };
+
+    // Button-Snippet (einfacher Inline-Link)
+    const buttonSnippet = '<a href="' + waLink + '" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:12px 22px;border-radius:28px;font-family:sans-serif;font-weight:700;text-decoration:none;">💬 Jetzt per WhatsApp anfragen</a>';
+
+    // Overlay STATISCH (fixer Button unten rechts)
+    const overlayStatic = '<!-- Converdino WhatsApp Button (statisch) -->\n<a href="' + waLink + '" target="_blank" style="position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4);">💬 Jetzt anfragen</a>';
+
+    // Overlay SCHWEBEND (erscheint sanft, dezent animiert)
+    const overlayFloat = '<!-- Converdino WhatsApp Widget (schwebend) -->\n' + (slot.widget_code || '');
+
     document.getElementById('assetBody').innerHTML = `
-      <div style="margin-bottom:18px;">
-        <div class="field-label">Bot-Code</div>
-        <div style="font-family:monospace;font-size:1.1rem;font-weight:900;color:var(--g2);background:#f0fdf4;padding:10px 14px;border-radius:8px;">${esc(slot.bot_code || '')}</div>
+      <div style="margin-bottom:16px;">
+        <div class="field-label">Anfrage-Nummer</div>
+        <div style="font-family:monospace;font-size:1.05rem;font-weight:900;color:var(--g2);background:#f0fdf4;padding:9px 14px;border-radius:8px;">${esc(code)}</div>
       </div>
 
-      <div style="margin-bottom:18px;">
-        <div class="field-label">💬 WhatsApp Link</div>
-        <div style="background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:.78rem;word-break:break-all;margin-bottom:6px;">${esc(slot.wa_deeplink || '')}</div>
-        <button class="btn btn-soft" id="copyWa" onclick="copyText('${esc(slot.wa_deeplink || '')}', this)">📋 Link kopieren</button>
+      <div style="margin-bottom:20px;">
+        <div class="field-label">💬 WhatsApp-Link</div>
+        <div style="background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:.76rem;word-break:break-all;margin-bottom:6px;">${esc(waLink)}</div>
+        <button class="btn btn-soft" onclick="copyText('${esc(waLink)}', this)">📋 Link kopieren</button>
       </div>
 
-      <div style="margin-bottom:18px;">
-        <div class="field-label">📱 QR-Code</div>
-        <div style="background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;">
-          <img src="${esc(slot.qr_code_url || '')}" alt="QR" style="max-width:200px;width:100%;">
+      <div style="margin-bottom:20px;">
+        <div class="field-label">📱 QR-Code (druckfertige PDFs mit Ihrem Werbetext)</div>
+        <div style="background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;margin-bottom:8px;">
+          <img src="${esc(qrUrl)}" alt="QR" style="max-width:170px;width:100%;">
         </div>
-        <a href="${esc(slot.qr_code_url || '')}" download="qr-${esc(slot.bot_code || 'bot')}.png" class="btn btn-soft" style="display:block;text-align:center;text-decoration:none;margin-top:6px;">⬇ QR herunterladen</a>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <button class="btn btn-soft" onclick="makeQrPdf('a4')">⬇ A4-Plakat (PDF)</button>
+          <button class="btn btn-soft" onclick="makeQrPdf('a6')">⬇ A6-Flyer (PDF)</button>
+          <button class="btn btn-soft" onclick="makeQrPdf('sticker')">⬇ Aufkleber (PDF)</button>
+          <a href="${esc(qrUrl)}" download="qr-${esc(code)}.png" class="btn btn-soft" style="text-align:center;text-decoration:none;">⬇ QR pur (PNG)</a>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <div class="field-label">🔘 WhatsApp-Button (in Webseite einfügen)</div>
+        <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(buttonSnippet)}</textarea>
+        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Button-Code kopieren</button>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <div class="field-label">📌 Overlay statisch (fester Button unten rechts)</div>
+        <textarea readonly style="width:100%;height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(overlayStatic)}</textarea>
+        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
       </div>
 
       <div>
-        <div class="field-label">🔌 Widget-Code (für Webseite)</div>
-        <textarea readonly style="width:100%;height:90px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.72rem;background:#f8faf9;">${esc(slot.widget_code || '')}</textarea>
-        <button class="btn btn-soft" onclick="copyText(\`${(slot.widget_code || '').replace(/`/g,'\\\`').replace(/\$/g,'\\$')}\`, this)" style="margin-top:6px;">📋 Widget-Code kopieren</button>
+        <div class="field-label">🎈 Overlay schwebend (erscheint automatisch)</div>
+        <textarea readonly style="width:100%;height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(overlayFloat)}</textarea>
+        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
       </div>`;
     document.getElementById('assetModal').classList.add('open');
   } catch(e) { toast('Fehler: ' + e.message); }
 }
+
+// Daten des aktuell angezeigten Marketing-Slots (für PDF-Erzeugung)
+let mktData = null;
+
+// Kopiert den Textarea-Inhalt direkt vor dem Button
+function copyFromPrev(btn) {
+  const ta = btn.previousElementSibling;
+  if (ta && ta.value != null) copyText(ta.value, btn);
+}
+
+// QR-Bild als DataURL laden (umgeht CORS-Probleme beim PDF-Einbetten)
+async function fetchQrDataUrl(url) {
+  const resp = await fetch(url);
+  const blob = await resp.blob();
+  return await new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result);
+    fr.onerror = rej;
+    fr.readAsDataURL(blob);
+  });
+}
+
+// Druckfertiges PDF erzeugen: Format 'a4' | 'a6' | 'sticker'
+async function makeQrPdf(format) {
+  if (!mktData) { toast('Keine Daten'); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { toast('PDF-Bibliothek lädt noch – kurz erneut versuchen'); return; }
+  toast('PDF wird erstellt...');
+  try {
+    const qrDataUrl = await fetchQrDataUrl(mktData.qrUrl);
+    const { jsPDF } = window.jspdf;
+
+    let doc, pageW, pageH, qrSize, ctaSize, titleSize, topY;
+    if (format === 'a4') {
+      doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      pageW = 210; pageH = 297; qrSize = 110; titleSize = 26; ctaSize = 18; topY = 45;
+    } else if (format === 'a6') {
+      doc = new jsPDF({ unit: 'mm', format: 'a6' });
+      pageW = 105; pageH = 148; qrSize = 60; titleSize = 15; ctaSize = 10.5; topY = 22;
+    } else { // sticker: 70x70 mm quadratisch
+      doc = new jsPDF({ unit: 'mm', format: [70, 70] });
+      pageW = 70; pageH = 70; qrSize = 42; titleSize = 0; ctaSize = 7; topY = 6;
+    }
+
+    const cx = pageW / 2;
+
+    // Titel (nicht beim kleinen Sticker)
+    if (titleSize > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(titleSize);
+      doc.setTextColor(20, 20, 20);
+      const titleLines = doc.splitTextToSize(mktData.title, pageW - 24);
+      doc.text(titleLines, cx, topY, { align: 'center' });
+      topY += titleLines.length * (titleSize * 0.42) + (format === 'a4' ? 12 : 7);
+    }
+
+    // QR zentriert
+    doc.addImage(qrDataUrl, 'PNG', cx - qrSize / 2, topY, qrSize, qrSize);
+    let y = topY + qrSize + (format === 'sticker' ? 5 : 14);
+
+    // Call-to-Action
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(ctaSize);
+    doc.setTextColor(37, 211, 102);
+    const ctaLines = doc.splitTextToSize(mktData.cta, pageW - (format === 'sticker' ? 10 : 28));
+    doc.text(ctaLines, cx, y, { align: 'center' });
+    y += ctaLines.length * (ctaSize * 0.45) + (format === 'sticker' ? 3 : 8);
+
+    // Fußzeile (nicht beim Sticker)
+    if (format !== 'sticker') {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(format === 'a4' ? 11 : 8);
+      doc.setTextColor(120, 120, 120);
+      doc.text('Einfach mit der Handykamera scannen', cx, y, { align: 'center' });
+    }
+
+    doc.save('marketing-' + format + '-' + mktData.code + '.pdf');
+    toast('✓ PDF heruntergeladen');
+  } catch(e) {
+    toast('PDF-Fehler: ' + e.message);
+  }
+}
+
 function closeAssetModal() { document.getElementById('assetModal').classList.remove('open'); }
 
 function copyText(text, btn) {
