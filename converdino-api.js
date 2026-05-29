@@ -15,6 +15,25 @@ module.exports = function(app, supabase, deps) {
   };
 
   // ============================================================
+  // HELPER: WhatsApp-Assets (Link, QR, Widget) aus Starttext + Code bauen
+  // ============================================================
+  // startText: der vom Händler gewählte freundliche Text OHNE Code.
+  //            Ist er leer, wird ein sinnvoller Standard aus dem Titel gebaut.
+  // Der Code (Anfrage-XXXX) wird IMMER automatisch angehängt, damit der
+  // Server den Slot erkennt.
+  function cvBuildWaAssets(botCode, articleTitle, startText) {
+    const waNumber = (process.env.WA_BOT_NUMBER || '4367764118066').replace(/[^0-9]/g, '');
+    const cleanStart = (startText && startText.trim())
+      ? startText.trim()
+      : `Hallo, ich interessiere mich für ${articleTitle || 'diesen Artikel'}.`;
+    const fullMsg = `${cleanStart} ${botCode}`;
+    const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(fullMsg)}`;
+    const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
+    const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
+    return { waLink, qrUrl, widgetCode };
+  }
+
+  // ============================================================
   // STRIPE (Treuhand-Anzahlung)
   // Modus über CV_STRIPE_MODE steuerbar: 'test' oder 'live'.
   //   test → STRIPE_SECRET_KEY_TEST + STRIPE_CV_WEBHOOK_SECRET_TEST
@@ -155,7 +174,7 @@ module.exports = function(app, supabase, deps) {
     try {
       const slotId = req.params.id;
       const { title, sale_price, min_price, location, anrede, notes, deposit_percent,
-              price_visibility, price_strict, availability } = req.body;
+              price_visibility, price_strict, availability, wa_starttext, cta_text } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
@@ -196,6 +215,8 @@ module.exports = function(app, supabase, deps) {
             price_visibility: priceVis,
             price_strict: priceStrict,
             availability: avail,
+            wa_starttext: (wa_starttext != null ? String(wa_starttext).trim() : null) || null,
+            cta_text: (cta_text != null ? String(cta_text).trim() : null) || null,
             status: 'draft',
             updated_at: new Date().toISOString()
           })
@@ -218,6 +239,8 @@ module.exports = function(app, supabase, deps) {
             price_visibility: priceVis,
             price_strict: priceStrict,
             availability: avail,
+            wa_starttext: (wa_starttext != null ? String(wa_starttext).trim() : null) || null,
+            cta_text: (cta_text != null ? String(cta_text).trim() : null) || null,
             status: 'draft'
           })
           .select()
@@ -254,11 +277,11 @@ module.exports = function(app, supabase, deps) {
   app.patch('/api/cv/slot/:id/quicksettings', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { availability, price_visibility, price_strict } = req.body;
+      const { availability, price_visibility, price_strict, wa_starttext, cta_text } = req.body;
 
       const { data: article, error: artErr } = await supabase
         .from('cv_articles')
-        .select('id')
+        .select('id, title')
         .eq('slot_id', slotId)
         .maybeSingle();
       if (artErr)   return res.status(500).json({ error: 'Artikel: ' + artErr.message });
@@ -277,6 +300,12 @@ module.exports = function(app, supabase, deps) {
       if (price_strict !== undefined) {
         update.price_strict = (price_strict === true || price_strict === 'true');
       }
+      if (wa_starttext !== undefined) {
+        update.wa_starttext = (wa_starttext != null ? String(wa_starttext).trim() : null) || null;
+      }
+      if (cta_text !== undefined) {
+        update.cta_text = (cta_text != null ? String(cta_text).trim() : null) || null;
+      }
 
       const { data, error } = await supabase
         .from('cv_articles')
@@ -285,6 +314,24 @@ module.exports = function(app, supabase, deps) {
         .select()
         .single();
       if (error) return res.status(500).json({ error: error.message });
+
+      // Wenn der Starttext geändert wurde UND der Slot bereits aktiv ist (hat
+      // einen bot_code), den WhatsApp-Link + QR neu bauen, damit der neue Text
+      // drinsteht. Der bot_code selbst bleibt unverändert.
+      if (wa_starttext !== undefined) {
+        const { data: slot } = await supabase
+          .from('cv_slots').select('bot_code, status').eq('id', slotId).maybeSingle();
+        if (slot && slot.bot_code) {
+          const assets = cvBuildWaAssets(slot.bot_code, article.title, update.wa_starttext);
+          await supabase.from('cv_slots').update({
+            wa_deeplink: assets.waLink,
+            qr_code_url: assets.qrUrl,
+            widget_code: assets.widgetCode,
+            updated_at: new Date().toISOString()
+          }).eq('id', slotId);
+        }
+      }
+
       res.json({ success: true, article: data });
     } catch(e) {
       console.error('[CV /slot/:id/quicksettings]', e);
@@ -799,11 +846,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
 
         // Bot-Assets generieren
         const botCode = 'Anfrage-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-        const waNumber = (process.env.WA_BOT_NUMBER || '4367764118066').replace(/[^0-9]/g, '');
-        const startMsg = `Hallo, ich interessiere mich für ${article.title}. ${botCode}`;
-        const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(startMsg)}`;
-        const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;
-        const widgetCode = `<script>(function(){var b=document.createElement('div');b.style='position:fixed;bottom:24px;right:24px;z-index:9999';b.innerHTML='<a href="${waLink}" target="_blank" style="display:flex;align-items:center;gap:8px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;font-family:sans-serif;font-weight:700;text-decoration:none;box-shadow:0 4px 16px rgba(37,211,102,.4)">💬 Jetzt anfragen</a>';document.body.appendChild(b);})();</script>`;
+        const { waLink, qrUrl, widgetCode } = cvBuildWaAssets(botCode, article.title, article.wa_starttext);
 
         await supabase.from('cv_slots').update({
           status: 'active',
