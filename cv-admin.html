@@ -41,17 +41,26 @@
   .msg { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; display: none; }
   .msg.ok { background: #e7f8ee; color: #0f7a3d; display: block; }
   .msg.err { background: #fdecec; color: var(--red); display: block; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--mu); padding: 10px 12px; border-bottom: 2px solid var(--border); }
-  td { padding: 13px 12px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
+  .kunden-liste { display: flex; flex-direction: column; gap: 16px; }
+  .kunde-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 20px 22px; box-shadow: var(--shadow); }
+  .kc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .kc-company { font-size: 18px; font-weight: 800; color: var(--text); }
+  .kc-login { margin-top: 4px; display: flex; align-items: center; gap: 8px; }
+  .kc-meta { color: var(--mu); font-size: 14px; margin-top: 10px; }
+  .kc-stats { display: flex; gap: 28px; margin: 16px 0; padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .kc-stat { display: flex; flex-direction: column; }
+  .kc-num { font-size: 22px; font-weight: 800; color: var(--g2); line-height: 1.1; }
+  .kc-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--mu); margin-top: 2px; }
+  .kc-slots { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .kc-slots-lbl { font-size: 13px; font-weight: 600; color: var(--mu); }
+  .kc-slots input { width: 90px; padding: 8px 10px; text-align: center; }
   .tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
   .tag-green { background: #e7f8ee; color: #0f7a3d; }
   .tag-mu { background: #eef2f0; color: var(--mu); }
   .login-name { font-family: monospace; font-weight: 700; }
   .btn-red { background: var(--red); }
   .btn-dark { background: var(--dark); }
-  .edit-panel { background: #f7faf8; border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin: 4px 0; }
+  .edit-panel { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
   .edit-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
   .edit-grid label { font-size: 12px; }
   .edit-actions { margin-bottom: 16px; }
@@ -66,7 +75,7 @@
   .empty { text-align: center; color: var(--mu); padding: 40px 0; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @media (max-width: 720px) { .grid, .grid-3 { grid-template-columns: 1fr; } .wrap { padding: 20px 14px 50px; } table { font-size: 13px; } }
+  @media (max-width: 720px) { .grid, .grid-3 { grid-template-columns: 1fr; } .wrap { padding: 20px 14px 50px; } .kc-head { flex-direction: column; } }
 </style>
 </head>
 <body>
@@ -255,33 +264,50 @@ async function loadCustomers() {
       area.innerHTML = '<div class="empty">Noch keine Kunden angelegt.</div>';
       return;
     }
-    let rows = '';
+    let cards = '';
     for (const c of list) {
-      const company = c.company_name || '—';
-      const contact = c.contact_name || '—';
-      const phone = c.contact_phone || '—';
+      const company = c.company_name || c.user_login;
+      const contact = c.contact_name || '';
+      const phone = c.contact_phone || '';
+      const email = c.seller_email || '';
       const comm = (c.commission_pct != null) ? (c.commission_pct + ' %') : '—';
       const isActive = c.status === 'active';
       const statusTag = isActive
         ? '<span class="tag tag-green">aktiv</span>'
         : '<span class="tag tag-mu">' + esc(c.status) + '</span>';
-      rows += '<tr>' +
-        '<td><span class="login-name">' + esc(c.user_login) + '</span></td>' +
-        '<td>' + esc(company) + '<br><span style="color:var(--mu);font-size:13px;">' + esc(contact) + ' · ' + esc(phone) + '</span></td>' +
-        '<td>' + comm + '</td>' +
-        '<td>' + statusTag + '</td>' +
-        '<td><strong>' + c.slots_created + '</strong> Slots</td>' +
-        '<td><div class="slot-cell">' +
+
+      // Kontaktzeile sauber zusammensetzen (nur was da ist)
+      const metaParts = [];
+      if (contact) metaParts.push(esc(contact));
+      if (phone)   metaParts.push(esc(phone));
+      if (email)   metaParts.push(esc(email));
+      const metaLine = metaParts.length ? metaParts.join('&nbsp;·&nbsp;') : '<span style="color:var(--mu)">keine Kontaktdaten</span>';
+
+      cards += '<div class="kunde-card">' +
+        // Kopf
+        '<div class="kc-head">' +
+          '<div>' +
+            '<div class="kc-company">' + esc(company) + '</div>' +
+            '<div class="kc-login"><span class="login-name">' + esc(c.user_login) + '</span> ' + statusTag + '</div>' +
+          '</div>' +
+          '<button type="button" class="btn btn-dark btn-sm" onclick="toggleEdit(\'' + c.id + '\')">Bearbeiten</button>' +
+        '</div>' +
+        // Meta
+        '<div class="kc-meta">' + metaLine + '</div>' +
+        // Kennzahlen
+        '<div class="kc-stats">' +
+          '<div class="kc-stat"><span class="kc-num">' + c.slots_created + '</span><span class="kc-lbl">Slots</span></div>' +
+          '<div class="kc-stat"><span class="kc-num">' + comm + '</span><span class="kc-lbl">Provision</span></div>' +
+        '</div>' +
+        // Slot-Steuerung
+        '<div class="kc-slots">' +
+          '<span class="kc-slots-lbl">Slots ändern:</span>' +
           '<input type="number" min="1" max="100" placeholder="Anzahl" id="slotcount-' + c.id + '">' +
           '<button type="button" class="btn btn-g btn-sm" onclick="addSlots(\'' + c.id + '\')">+ Hinzufügen</button>' +
           '<button type="button" class="btn btn-red btn-sm" onclick="removeSlots(\'' + c.id + '\')">− Entfernen</button>' +
-        '</div></td>' +
-        '<td><button type="button" class="btn btn-dark btn-sm" onclick="toggleEdit(\'' + c.id + '\')">Bearbeiten</button></td>' +
-      '</tr>';
-
-      // Aufklappbare Bearbeitungszeile (zunächst versteckt)
-      rows += '<tr id="editrow-' + c.id + '" class="editrow" style="display:none;"><td colspan="7">' +
-        '<div class="edit-panel">' +
+        '</div>' +
+        // Aufklappbarer Bearbeiten-Bereich
+        '<div id="editrow-' + c.id + '" class="edit-panel" style="display:none;">' +
           '<div class="edit-grid">' +
             '<div><label>Firmenname</label><input id="e-company-' + c.id + '" value="' + esc(c.company_name || '') + '"></div>' +
             '<div><label>Ansprechpartner</label><input id="e-contact-' + c.id + '" value="' + esc(c.contact_name || '') + '"></div>' +
@@ -306,13 +332,9 @@ async function loadCustomers() {
             '<button type="button" class="btn btn-red btn-sm" onclick="deleteCustomer(\'' + c.id + '\',\'' + esc(c.user_login) + '\')">Endgültig löschen</button>' +
           '</div>' +
         '</div>' +
-      '</td></tr>';
+      '</div>';
     }
-    area.innerHTML =
-      '<table><thead><tr>' +
-        '<th>Login</th><th>Firma / Kontakt</th><th>Provision</th>' +
-        '<th>Status</th><th>Aktuell</th><th>Anzahl ändern</th><th></th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table>';
+    area.innerHTML = '<div class="kunden-liste">' + cards + '</div>';
   } catch(e) {
     area.innerHTML = '';
     showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false);
@@ -380,7 +402,7 @@ async function removeSlots(subId) {
 function toggleEdit(subId) {
   const row = document.getElementById('editrow-' + subId);
   if (!row) return;
-  row.style.display = (row.style.display === 'none') ? 'table-row' : 'none';
+  row.style.display = (row.style.display === 'none') ? 'block' : 'none';
 }
 
 // ── Stammdaten speichern ──
