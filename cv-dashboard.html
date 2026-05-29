@@ -216,7 +216,7 @@ let activeSlotId = null;
 
 function logout() {
   localStorage.removeItem(AUTH_KEY);
-  location.href = 'login.html';
+  window.location.href = 'login.html';
 }
 
 // ── DASHBOARD LADEN ──────────────────────────────────
@@ -366,7 +366,7 @@ async function saveArticle() {
   const title    = document.getElementById('f-title').value.trim();
   const price    = parseFloat(document.getElementById('f-price').value);
   const minprice = parseFloat(document.getElementById('f-minprice').value);
-  const location = document.getElementById('f-location').value.trim();
+  const articleLocation = document.getElementById('f-location').value.trim();
   const anrede   = document.getElementById('f-anrede').value;
   const deposit  = parseInt(document.getElementById('f-deposit').value) || 10;
   const err      = document.getElementById('articleErr');
@@ -385,7 +385,7 @@ async function saveArticle() {
     const r = await fetch(API + '/api/cv/slot/' + activeSlotId + '/article', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location, anrede, deposit_percent: deposit })
+      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location: articleLocation, anrede, deposit_percent: deposit })
     });
     const d = await r.json();
     if (!d.success) {
@@ -394,7 +394,7 @@ async function saveArticle() {
       return;
     }
     closeArticleModal();
-    location.href = 'cv-upload.html?slot=' + activeSlotId;
+    window.location.href = 'cv-upload.html?slot=' + activeSlotId;
   } catch(e) {
     err.textContent = e.message;
     btn.disabled = false; btn.textContent = 'Weiter → Fotos & Dokumente';
@@ -402,11 +402,11 @@ async function saveArticle() {
 }
 
 function goToUpload(slotId) {
-  location.href = 'cv-upload.html?slot=' + slotId;
+  window.location.href = 'cv-upload.html?slot=' + slotId;
 }
 
 function goToKnowledge(slotId) {
-  location.href = 'cv-knowledge.html?slot=' + slotId;
+  window.location.href = 'cv-knowledge.html?slot=' + slotId;
 }
 
 // ── SLOT LEEREN ──────────────────────────────────────
