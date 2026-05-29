@@ -972,6 +972,19 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
       return false;
     }
 
+    // Prüfen ob versendbare Dossier-Unterlagen vorhanden sind
+    let hasDossier = false;
+    try {
+      const { data: docUploads } = await supabase
+        .from('cv_uploads')
+        .select('id')
+        .eq('article_id', article.id)
+        .eq('kind', 'pdf')
+        .eq('purpose', 'dossier')
+        .limit(1);
+      hasDossier = Array.isArray(docUploads) && docUploads.length > 0;
+    } catch(e) { /* im Zweifel: kein Dossier */ }
+
     // DB-Session anlegen (für Logging + Persistenz)
     const { data: dbSession } = await supabase
       .from('cv_bot_sessions')
@@ -983,6 +996,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     cvBotSessions.set(phone, {
       dbSessionId: dbSession?.id,
       slot, article,
+      hasDossier,
       history: [],
       phoneId,
       phone,
@@ -1044,6 +1058,23 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const availability    = article.availability || 'available';
     const priceVisibility = article.price_visibility || 'public';
     const priceStrict     = article.price_strict === true;
+    const hasDossier      = session.hasDossier === true;
+
+    // ── BLOCK: Unterlagen-Versand ──
+    let docsBlock = '';
+    if (availability === 'available') {
+      docsBlock = `
+═══════════════════════════════════════════════════════
+UNTERLAGEN PER E-MAIL SENDEN
+═══════════════════════════════════════════════════════
+Du kannst dem Käufer die Produktunterlagen per E-Mail schicken${hasDossier ? ' (es liegt ein ausführliches Unterlagen-/Dossier-PDF bereit)' : ' (eine übersichtliche Infozusammenfassung)'}.
+- Biete das PROAKTIV an, sobald echtes Interesse da ist: "Soll ich Ihnen die ausführlichen Unterlagen per E-Mail schicken?"
+- Wenn der Käufer zustimmt oder selbst nach Unterlagen/Dossier/Datenblatt/Infos fragt: Frage nach der E-Mail-Adresse ("An welche E-Mail-Adresse darf ich Ihnen die Unterlagen senden?").
+- Sobald du eine gültige E-Mail hast: rufe das Werkzeug send_documents mit dieser E-Mail auf. Bestätige dann freundlich, dass die Unterlagen unterwegs sind.
+- Die E-Mail-Adresse ist wertvoll — so bleibt der Kontakt erhalten. Frag aktiv danach.
+`;
+    }
+
 
     // ── BLOCK: Verfügbarkeit (nur wenn reserviert/verkauft) ──
     let availabilityBlock = '';
@@ -1156,6 +1187,7 @@ ANREDE (sehr wichtig — konsistent durchhalten!)
 - Wenn du selbst auf der Begrüßungsvorlage aus der Wissensbasis basierst und die in der falschen Anrede ist: formuliere sie um in "${anrede}". Die Slot-Anrede gewinnt IMMER.
 
 ${priceVisibilityBlock}
+${docsBlock}
 ═══════════════════════════════════════════════════════
 VERHANDLUNGS-REGELN
 ═══════════════════════════════════════════════════════
@@ -1194,6 +1226,7 @@ DEINE WERKZEUGE — wann du sie einsetzt
 ═══════════════════════════════════════════════════════
 - flag_hot_lead: Sobald der Käufer ernsthaftes Kaufinteresse zeigt (will kaufen, fragt nach Übergabe/Probefahrt/Verfügbarkeit, oder will mit dem Verkäufer sprechen). Reiche den Lead SOFORT weiter — lieber zu früh als zu spät.
 - collect_contact: Wenn konkretes Interesse da ist, frage natürlich nach dem NAMEN und bestätige die WhatsApp-Nummer als Kontakt. Bei Email optional. Erst bei echtem Interesse, nicht am Anfang.
+- send_documents: Wenn der Käufer Unterlagen/Dossier/Infos möchte (oder du es angeboten hast und er zustimmt) — frage nach der E-Mail und rufe dann send_documents mit der E-Mail auf. Sendet die Unterlagen per Mail.
 - agree_deal: Wenn sich Käufer und du auf einen Preis einigen. Vorher Kontaktdaten sichern.
 - create_payment_link: NACH der Einigung UND wenn du Name + Kontaktdaten hast — erstellt den sicheren Anzahlungs-Zahlungslink und schickt ihn dem Käufer. Nutze dies wenn der Käufer bereit ist zu reservieren/zu zahlen.
 - escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee."
@@ -1262,6 +1295,18 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
             preferred_time: { type: 'string', description: 'Vereinbartes Rückruf-Zeitfenster falls genannt' }
           },
           required: ['buyer_name']
+        }
+      },
+      {
+        name: 'send_documents',
+        description: `Sendet dem Käufer die Produktunterlagen per E-Mail (Dossier-PDF und/oder eine Infozusammenfassung). NUR aufrufen wenn du eine gültige E-Mail-Adresse des Käufers hast. Wenn du noch keine E-Mail hast, frage zuerst danach ("An welche E-Mail-Adresse darf ich Ihnen die Unterlagen senden?") und rufe dieses Werkzeug erst auf, sobald der Käufer sie genannt hat.`,
+        input_schema: {
+          type: 'object',
+          properties: {
+            buyer_email: { type: 'string', description: 'Die E-Mail-Adresse des Käufers, an die gesendet wird' },
+            buyer_name: { type: 'string', description: 'Name des Käufers, falls bekannt' }
+          },
+          required: ['buyer_email']
         }
       },
       {
@@ -1572,7 +1617,26 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           }
           break;
 
-        case 'agree_deal':
+        case 'send_documents': {
+          const email = (input.buyer_email || session.buyerEmail || '').trim();
+          if (input.buyer_email) session.buyerEmail = input.buyer_email;
+          if (input.buyer_name && !session.buyerName) session.buyerName = input.buyer_name;
+          if (!email || !/.+@.+\..+/.test(email)) {
+            console.warn('[CV send_documents] Keine gültige E-Mail vorhanden');
+            break;
+          }
+          const sent = await cvSendDocsToBuyer(session, email);
+          // Verkäufer informieren, dass Unterlagen rausgingen + Lead mit E-Mail sichern
+          await cvLogEvent(session, phone, session.notified ? 'contact_added' : 'hot_lead', {
+            reason: sent ? 'Unterlagen per Mail an Käufer gesendet' : 'Unterlagen-Versand fehlgeschlagen',
+            buyer_name: session.buyerName, buyer_phone: session.buyerPhone,
+            buyer_email: email, preferred_time: session.callbackTime
+          }, session.notified);
+          session.notified = true;
+          break;
+        }
+
+
           session.phase = 'closed';
           updates.phase = 'closed';
           updates.status = 'deal';
@@ -1678,6 +1742,9 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       case 'collect_contact':
         return du ? 'Super! Wie ist dein Name und unter welcher Nummer erreichen wir dich — und wann passt dir ein Rückruf am besten?'
                   : 'Sehr gerne! Wie ist Ihr Name und unter welcher Nummer erreichen wir Sie — und wann passt Ihnen ein Rückruf am besten?';
+      case 'send_documents':
+        return du ? 'Super, die Unterlagen sind unterwegs in dein Postfach! Schau gern auch im Spam-Ordner nach, falls nichts ankommt. Gibt es sonst noch etwas, das ich für dich tun kann?'
+                  : 'Sehr gerne, die Unterlagen sind unterwegs in Ihr Postfach! Schauen Sie bei Bedarf auch im Spam-Ordner nach. Kann ich sonst noch etwas für Sie tun?';
       case 'flag_hot_lead':
         return du ? 'Klingt gut! Wann erreichen wir dich am besten für einen Rückruf — heute noch oder lieber morgen?'
                   : 'Wunderbar! Wann erreichen wir Sie am besten für einen Rückruf — heute noch oder lieber morgen?';
@@ -1835,7 +1902,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     return { subject, html, text };
   }
 
-  async function cvSendEmail(toEmail, subject, html, text) {
+  async function cvSendEmail(toEmail, subject, html, text, attachments) {
     if (!cvResend) {
       console.warn('[CV Mail] Resend nicht initialisiert — Mail nicht gesendet');
       return false;
@@ -1845,14 +1912,18 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       return false;
     }
     try {
-      const result = await cvResend.emails.send({
+      const payload = {
         from: CV_MAIL_FROM,
         to: toEmail,
         replyTo: CV_MAIL_REPLY_TO,
         subject,
         html,
         text
-      });
+      };
+      if (Array.isArray(attachments) && attachments.length > 0) {
+        payload.attachments = attachments;
+      }
+      const result = await cvResend.emails.send(payload);
       if (result?.error) {
         console.error('[CV Mail] Resend-Fehler:', result.error.message || result.error);
         return false;
@@ -1861,6 +1932,96 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       return true;
     } catch(e) {
       console.error('[CV Mail] Exception:', e.message);
+      return false;
+    }
+  }
+
+  // ============================================================
+  // UNTERLAGEN AN KÄUFER SENDEN (Dossier-PDF + Produktinfos)
+  // ============================================================
+  async function cvSendDocsToBuyer(session, toEmail) {
+    try {
+      const article = session.article;
+      const slot = session.slot;
+
+      // Dossier-PDFs dieses Artikels laden
+      const { data: uploads } = await supabase
+        .from('cv_uploads')
+        .select('*')
+        .eq('article_id', article.id);
+
+      const dossiers = (uploads || []).filter(u =>
+        u.kind === 'pdf' && u.purpose === 'dossier' && u.public_url
+      );
+
+      // PDFs herunterladen und als Base64-Anhänge aufbereiten
+      const attachments = [];
+      for (const d of dossiers) {
+        try {
+          const resp = await fetch(d.public_url);
+          if (!resp.ok) continue;
+          const buf = Buffer.from(await resp.arrayBuffer());
+          attachments.push({
+            filename: d.file_name || 'Unterlagen.pdf',
+            content: buf.toString('base64')
+          });
+        } catch(e) {
+          console.warn('[CV Docs] PDF-Download fehlgeschlagen:', d.public_url, e.message);
+        }
+      }
+
+      // Produktinfos aus den verifizierten Fakten zusammenstellen
+      const facts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
+      const factsHtml = facts.length
+        ? '<table style="width:100%;border-collapse:collapse;margin-top:8px;">' +
+          facts.map(f => `<tr>
+            <td style="padding:6px 10px;background:#f8fafc;color:#64748b;font-size:13px;border-bottom:1px solid #e2e8f0;width:40%;">${cvEscapeHtml(f.k)}</td>
+            <td style="padding:6px 10px;color:#0f172a;font-size:14px;border-bottom:1px solid #e2e8f0;">${cvEscapeHtml(f.v)}</td>
+          </tr>`).join('') + '</table>'
+        : '';
+
+      const greeting = session.buyerName ? `Hallo ${cvEscapeHtml(session.buyerName)},` : 'Hallo,';
+      const priceLine = (article.price_visibility !== 'on_request' && article.sale_price)
+        ? `<p style="font-size:15px;color:#0f172a;"><strong>Preis:</strong> €${article.sale_price}</p>` : '';
+      const attachNote = attachments.length
+        ? `<p style="font-size:14px;color:#475569;">Die ausführlichen Unterlagen finden Sie im Anhang dieser E-Mail.</p>`
+        : '';
+
+      const subject = `Ihre Unterlagen zu ${article.title}`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+        <tr><td style="background:#22a84b;padding:22px 28px;color:#fff;font-size:20px;font-weight:700;">${cvEscapeHtml(article.title)}</td></tr>
+        <tr><td style="padding:26px 28px;">
+          <p style="font-size:15px;color:#0f172a;">${greeting}</p>
+          <p style="font-size:15px;color:#475569;line-height:1.5;">vielen Dank für Ihr Interesse! Hier die wichtigsten Informationen auf einen Blick:</p>
+          ${priceLine}
+          ${factsHtml}
+          ${attachNote}
+          <p style="font-size:15px;color:#475569;line-height:1.5;margin-top:20px;">Bei Fragen antworten Sie einfach auf diese E-Mail oder schreiben Sie uns weiter über WhatsApp — wir melden uns umgehend.</p>
+        </td></tr>
+        <tr><td style="padding:16px 28px;background:#f8fafc;color:#94a3b8;font-size:12px;text-align:center;">Diese Unterlagen wurden Ihnen auf Anfrage zugesendet.</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+      const text = `${session.buyerName ? 'Hallo ' + session.buyerName : 'Hallo'},\n\n` +
+        `vielen Dank für Ihr Interesse an ${article.title}.\n` +
+        (priceLine ? `Preis: €${article.sale_price}\n` : '') +
+        (facts.length ? '\n' + facts.map(f => `${f.k}: ${f.v}`).join('\n') + '\n' : '') +
+        (attachments.length ? '\nDie ausführlichen Unterlagen finden Sie im Anhang.\n' : '') +
+        '\nBei Fragen antworten Sie einfach auf diese E-Mail.\n\n— Converdino';
+
+      const ok = await cvSendEmail(toEmail, subject, html, text, attachments);
+      if (ok) {
+        console.log(`[CV Docs] Unterlagen an Käufer ${toEmail} gesendet (${attachments.length} Anhang/Anhänge)`);
+      }
+      return ok;
+    } catch(e) {
+      console.error('[CV Docs] Fehler:', e.message);
       return false;
     }
   }
