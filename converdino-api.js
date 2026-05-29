@@ -174,7 +174,7 @@ module.exports = function(app, supabase, deps) {
     try {
       const slotId = req.params.id;
       const { title, sale_price, min_price, location, anrede, notes, deposit_percent,
-              price_visibility, price_strict, availability, wa_starttext, cta_text } = req.body;
+              price_visibility, price_strict, availability, wa_starttext, cta_text, pull_text } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
@@ -217,6 +217,7 @@ module.exports = function(app, supabase, deps) {
             availability: avail,
             wa_starttext: (wa_starttext != null ? String(wa_starttext).trim() : null) || null,
             cta_text: (cta_text != null ? String(cta_text).trim() : null) || null,
+            pull_text: (pull_text != null ? String(pull_text).trim() : null) || null,
             status: 'draft',
             updated_at: new Date().toISOString()
           })
@@ -241,6 +242,7 @@ module.exports = function(app, supabase, deps) {
             availability: avail,
             wa_starttext: (wa_starttext != null ? String(wa_starttext).trim() : null) || null,
             cta_text: (cta_text != null ? String(cta_text).trim() : null) || null,
+            pull_text: (pull_text != null ? String(pull_text).trim() : null) || null,
             status: 'draft'
           })
           .select()
@@ -277,7 +279,7 @@ module.exports = function(app, supabase, deps) {
   app.patch('/api/cv/slot/:id/quicksettings', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { availability, price_visibility, price_strict, wa_starttext, cta_text } = req.body;
+      const { availability, price_visibility, price_strict, wa_starttext, cta_text, pull_text } = req.body;
 
       const { data: article, error: artErr } = await supabase
         .from('cv_articles')
@@ -305,6 +307,9 @@ module.exports = function(app, supabase, deps) {
       }
       if (cta_text !== undefined) {
         update.cta_text = (cta_text != null ? String(cta_text).trim() : null) || null;
+      }
+      if (pull_text !== undefined) {
+        update.pull_text = (pull_text != null ? String(pull_text).trim() : null) || null;
       }
 
       const { data, error } = await supabase
