@@ -49,6 +49,27 @@ module.exports = function(app, supabase, deps) {
   const CV_BASE_URL = process.env.CV_BASE_URL || 'https://converdino.com';
 
   // ============================================================
+  // RESEND (E-Mail-Benachrichtigung an Verkäufer)
+  // ============================================================
+  let cvResend = null;
+  try {
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      cvResend = require('resend');
+      // resend package exportiert { Resend }
+      cvResend = new cvResend.Resend(resendKey);
+      console.log('[CV] Resend initialisiert');
+    } else {
+      console.warn('[CV] Kein Resend-API-Key gefunden — Email-Benachrichtigungen deaktiviert');
+    }
+  } catch(e) {
+    console.error('[CV] Resend-Init fehlgeschlagen:', e.message);
+  }
+
+  const CV_MAIL_FROM     = process.env.CV_MAIL_FROM     || 'Converdino <noreply@ynhald.com>';
+  const CV_MAIL_REPLY_TO = process.env.CV_MAIL_REPLY_TO || 'office@ynhald.com';
+
+  // ============================================================
   // HELFER: Login-Identifier aus Body/Header lesen
   // ============================================================
   function getUserLogin(req) {
@@ -1557,54 +1578,170 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
 
   // ── VERKÄUFER BENACHRICHTIGEN ────────────────────────────
   //    Aktuell WA-Fallback. Resend-Email kommt in Schritt D.
+  // ============================================================
+  // EMAIL-TEMPLATES für Verkäufer-Benachrichtigungen
+  // ============================================================
+  const CV_MAIL_STYLES = {
+    hot_lead:      { icon: '🔥', label: 'Heißer Lead',         color: '#dc2626', urgent: true  },
+    contact_added: { icon: '📇', label: 'Kontaktdaten erfasst', color: '#0891b2', urgent: false },
+    agreed:        { icon: '🎉', label: 'Einigung erzielt',     color: '#16a34a', urgent: true  },
+    escalated:     { icon: '⚠️', label: 'Eskalation an dich',   color: '#ea580c', urgent: true  },
+    callback:      { icon: '📞', label: 'Rückruf gewünscht',    color: '#9333ea', urgent: true  },
+    paid:          { icon: '💰', label: 'Zahlung eingegangen',  color: '#16a34a', urgent: true  },
+    payment_link_sent: { icon: '🔗', label: 'Zahlungslink verschickt', color: '#64748b', urgent: false }
+  };
+
+  function cvEscapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+
+  function cvBuildEmail(type, articleTitle, buyerPhone, payload) {
+    const style = CV_MAIL_STYLES[type] || { icon: '📋', label: 'Bot-Update', color: '#64748b', urgent: false };
+    const p = payload || {};
+    const subject = `${style.icon} ${style.label} — ${articleTitle}`;
+
+    // Detail-Zeilen je nach verfügbaren Daten
+    const rows = [];
+    if (p.buyer_name)        rows.push(['Name',                p.buyer_name]);
+    if (buyerPhone)          rows.push(['Käufer-WhatsApp',     '+' + buyerPhone]);
+    if (p.buyer_phone && p.buyer_phone !== buyerPhone) rows.push(['Rückrufnummer', p.buyer_phone]);
+    if (p.buyer_email)       rows.push(['E-Mail',              p.buyer_email]);
+    if (p.agreed_price)      rows.push(['Vereinbarter Preis',  '€' + p.agreed_price]);
+    if (p.buyer_wants_price) rows.push(['Käufer-Wunschpreis',  `€${p.buyer_wants_price} (Mindest: €${p.min_price || '?'})`]);
+    if (p.deposit_amount)    rows.push(['Anzahlung',           '€' + p.deposit_amount]);
+    if (p.paid_amount)       rows.push(['Eingegangener Betrag','€' + p.paid_amount]);
+    if (p.preferred_time)    rows.push(['Wunsch-Zeit',         p.preferred_time]);
+    if (p.reason)            rows.push(['Info',                p.reason]);
+
+    // Hinweistext je nach Event
+    let footer = '';
+    if (type === 'paid') {
+      footer = `<p style="margin:24px 0 0;padding:16px;background:#f0fdf4;border-radius:8px;color:#166534;font-size:14px;line-height:1.5;">
+        <strong>Nächste Schritte:</strong><br>
+        ⏳ 14 Tage Widerrufsfrist abwarten<br>
+        📦 Artikel und Rechnung an den Käufer senden<br>
+        💸 Auszahlung an dich erfolgt manuell nach Ablauf der Frist
+      </p>`;
+    } else if (type === 'escalated' || type === 'callback') {
+      footer = `<p style="margin:24px 0 0;padding:16px;background:#fff7ed;border-radius:8px;color:#9a3412;font-size:14px;line-height:1.5;">
+        <strong>Handlung erforderlich:</strong> Der Bot hat das Gespräch übergeben. Bitte zeitnah persönlich beim Käufer melden.
+      </p>`;
+    } else if (type === 'hot_lead' || type === 'agreed') {
+      footer = `<p style="margin:24px 0 0;padding:16px;background:#eff6ff;border-radius:8px;color:#1e40af;font-size:14px;line-height:1.5;">
+        Der Bot kümmert sich weiter — diese Nachricht ist zur Information.
+      </p>`;
+    }
+
+    const rowsHtml = rows.map(([k, v]) => `
+      <tr>
+        <td style="padding:8px 12px;background:#f8fafc;color:#64748b;font-size:13px;border-bottom:1px solid #e2e8f0;width:35%;">${cvEscapeHtml(k)}</td>
+        <td style="padding:8px 12px;color:#0f172a;font-size:14px;font-weight:500;border-bottom:1px solid #e2e8f0;">${cvEscapeHtml(v)}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+        <tr><td style="background:${style.color};padding:24px 28px;color:#fff;">
+          <div style="font-size:13px;opacity:.85;letter-spacing:.5px;text-transform:uppercase;">Converdino · Bot-Update</div>
+          <div style="font-size:22px;font-weight:700;margin-top:6px;">${style.icon} ${cvEscapeHtml(style.label)}</div>
+        </td></tr>
+        <tr><td style="padding:28px;">
+          <div style="font-size:15px;color:#475569;margin-bottom:4px;">Artikel</div>
+          <div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:20px;">${cvEscapeHtml(articleTitle)}</div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            ${rowsHtml}
+          </table>
+          ${footer}
+        </td></tr>
+        <tr><td style="padding:18px 28px;background:#f8fafc;color:#94a3b8;font-size:12px;text-align:center;">
+          Automatische Benachrichtigung von Converdino · <a href="https://converdino.com" style="color:#94a3b8;">converdino.com</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+    // Plain-Text-Fallback
+    const text = `${style.icon} ${style.label}\n\n` +
+      `Artikel: ${articleTitle}\n` +
+      rows.map(([k, v]) => `${k}: ${v}`).join('\n') +
+      (type === 'paid' ? '\n\nNächste Schritte: 14 Tage Widerrufsfrist abwarten, Artikel + Rechnung senden, Auszahlung folgt manuell.' : '') +
+      '\n\n— Converdino';
+
+    return { subject, html, text };
+  }
+
+  async function cvSendEmail(toEmail, subject, html, text) {
+    if (!cvResend) {
+      console.warn('[CV Mail] Resend nicht initialisiert — Mail nicht gesendet');
+      return false;
+    }
+    if (!toEmail || !/.+@.+\..+/.test(toEmail)) {
+      console.warn('[CV Mail] Ungültige Empfänger-Email:', toEmail);
+      return false;
+    }
+    try {
+      const result = await cvResend.emails.send({
+        from: CV_MAIL_FROM,
+        to: toEmail,
+        replyTo: CV_MAIL_REPLY_TO,
+        subject,
+        html,
+        text
+      });
+      if (result?.error) {
+        console.error('[CV Mail] Resend-Fehler:', result.error.message || result.error);
+        return false;
+      }
+      console.log(`[CV Mail] ✉️  versendet → ${toEmail} (${subject.substring(0, 60)})`);
+      return true;
+    } catch(e) {
+      console.error('[CV Mail] Exception:', e.message);
+      return false;
+    }
+  }
+
+  // ============================================================
+  // VERKÄUFER-BENACHRICHTIGUNG (jetzt per Email statt WhatsApp)
+  // ============================================================
   async function cvNotifySeller(session, buyerPhone, type, payload) {
     try {
-      const { data: sub } = await supabase
-        .from('cv_subscriptions').select('user_login')
-        .eq('id', session.slot.subscription_id).maybeSingle();
-      const sellerLogin = sub?.user_login;
-
-      // Nachricht je nach Event-Typ aufbauen
-      const titles = {
-        hot_lead:     '🔥 Heißer Lead!',
-        contact_added:'📇 Kontaktdaten zum Lead',
-        agreed:       '🎉 Einigung erzielt!',
-        escalated:    '⚠️ Eskalation — Verkaufsleiter gefragt',
-        callback:     '📞 Rückruf gewünscht',
-        lost:         '📋 Gespräch beendet'
-      };
-      const title = titles[type] || '📋 Bot-Update';
-
-      const p = payload || {};
-      const lines = [
-        `*${title}*`,
-        `Artikel: ${session.article.title}`,
-        `Käufer-WhatsApp: +${buyerPhone}`
-      ];
-      if (p.buyer_name)        lines.push(`Name: ${p.buyer_name}`);
-      if (p.buyer_phone)       lines.push(`Rückrufnummer: ${p.buyer_phone}`);
-      if (p.buyer_email)       lines.push(`Email: ${p.buyer_email}`);
-      if (p.agreed_price)      lines.push(`Vereinbarter Preis: €${p.agreed_price}`);
-      if (p.buyer_wants_price) lines.push(`Käufer-Wunschpreis: €${p.buyer_wants_price} (Mindest: €${p.min_price})`);
-      if (p.preferred_time)    lines.push(`Wunsch-Zeit: ${p.preferred_time}`);
-      if (p.reason)            lines.push(`Info: ${p.reason}`);
-
-      const msg = '🤖 *Converdino*\n\n' + lines.join('\n');
-
-      // 'lost' nicht melden (kein Mehrwert), Rest schon
+      // 'lost' wird nicht gemeldet (kein Mehrwert)
       if (type === 'lost') {
-        console.log(`[CV] 'lost' Event nicht an Verkäufer gemeldet (Slot ${session.slot.id})`);
+        console.log(`[CV Notify] 'lost' Event übersprungen (Slot ${session.slot.id})`);
         return;
       }
 
-      if (sellerLogin && /^\+?\d{8,}$/.test(sellerLogin.replace(/[^0-9+]/g, ''))) {
-        const cleanPhone = sellerLogin.replace(/[^0-9]/g, '');
-        await sendWAMessage(session.phoneId, cleanPhone, msg);
-        console.log(`[CV] Verkäufer informiert (${type}) → ${cleanPhone}`);
-      } else {
-        console.log(`[CV] Verkäufer-Benachrichtigung (${type}) — kein gültiger Kontakt (user_login: ${sellerLogin}). Resend folgt in Schritt D.`);
+      // Verkäufer-Email aus der Subscription holen
+      const { data: sub } = await supabase
+        .from('cv_subscriptions')
+        .select('seller_email, email_notifications_enabled, user_login')
+        .eq('id', session.slot.subscription_id).maybeSingle();
+
+      if (!sub) {
+        console.warn(`[CV Notify] Subscription ${session.slot.subscription_id} nicht gefunden`);
+        return;
       }
-    } catch(e) { console.error('[CV notify]', e.message); }
+      if (sub.email_notifications_enabled === false) {
+        console.log(`[CV Notify] Email-Benachrichtigungen deaktiviert für ${sub.user_login}`);
+        return;
+      }
+      if (!sub.seller_email) {
+        console.warn(`[CV Notify] Keine seller_email für ${sub.user_login} hinterlegt — Event ${type} nicht gesendet`);
+        return;
+      }
+
+      const { subject, html, text } = cvBuildEmail(
+        type, session.article.title, buyerPhone, payload
+      );
+      await cvSendEmail(sub.seller_email, subject, html, text);
+    } catch(e) {
+      console.error('[CV notify]', e.message);
+    }
   }
 
 
@@ -1775,35 +1912,41 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     res.json({ received: true });
   });
 
-  // Verkäufer über Zahlungseingang informieren
+  // Verkäufer über Zahlungseingang informieren (per Email)
   async function cvNotifyPayment(slotId, meta, paidAmount) {
     try {
       const { data: slot } = await supabase
         .from('cv_slots').select('subscription_id, bot_code').eq('id', slotId).maybeSingle();
       if (!slot) return;
       const { data: sub } = await supabase
-        .from('cv_subscriptions').select('user_login').eq('id', slot.subscription_id).maybeSingle();
-      const sellerLogin = sub?.user_login;
+        .from('cv_subscriptions')
+        .select('seller_email, email_notifications_enabled, user_login')
+        .eq('id', slot.subscription_id).maybeSingle();
 
-      const msg = `🤖 *Converdino*\n\n🎉 *Zahlung eingegangen!*\n` +
-        `Artikel: ${meta.article || slot.bot_code}\n` +
-        `Anzahlung: €${paidAmount}\n` +
-        (meta.agreed_price ? `Vereinbarter Preis: €${meta.agreed_price}\n` : '') +
-        (meta.buyer_name ? `Käufer: ${meta.buyer_name}\n` : '') +
-        (meta.buyer_phone ? `Käufer-WhatsApp: +${meta.buyer_phone}\n` : '') +
-        `\n⏳ Bitte Widerrufsfrist (14 Tage) beachten. Auszahlung erfolgt danach.`;
-
-      if (sellerLogin && /^\+?\d{8,}$/.test(sellerLogin.replace(/[^0-9+]/g, ''))) {
-        const cleanPhone = sellerLogin.replace(/[^0-9]/g, '');
-        await sendWAMessage(process.env.META_PHONE_NUMBER_ID, cleanPhone, msg);
-      } else {
-        console.log(`[CV Stripe] Verkäufer-Zahlungsinfo — kein gültiger Kontakt. Resend folgt Schritt D.`);
+      if (!sub || sub.email_notifications_enabled === false) {
+        console.log(`[CV Stripe] Email-Benachrichtigung übersprungen (deaktiviert oder Sub fehlt)`);
+        return;
       }
+      if (!sub.seller_email) {
+        console.warn(`[CV Stripe] Keine seller_email für ${sub.user_login} — Zahlung nicht per Mail gemeldet`);
+        return;
+      }
+
+      const articleTitle = meta.article || slot.bot_code || '(Artikel)';
+      const payload = {
+        buyer_name: meta.buyer_name,
+        buyer_phone: meta.buyer_phone,
+        agreed_price: meta.agreed_price,
+        deposit_amount: meta.deposit_amount,
+        paid_amount: paidAmount
+      };
+      const { subject, html, text } = cvBuildEmail('paid', articleTitle, meta.buyer_phone, payload);
+      await cvSendEmail(sub.seller_email, subject, html, text);
     } catch(e) { console.error('[CV notifyPayment]', e.message); }
   }
 
 
-  console.log('✅ Converdino API geladen — /api/cv/* aktiv + WhatsApp-Handler');
+  console.log(`✅ Converdino API geladen — /api/cv/* aktiv + WhatsApp-Handler + Email (${cvResend ? 'AKTIV' : 'inaktiv'})`);
 
   // Rückgabe: Handler für server.js
   return {
