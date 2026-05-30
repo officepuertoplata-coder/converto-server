@@ -169,11 +169,16 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           }
           // ── BOT-SLOT ROUTING ─────────────────────────────────
           const rawText = msg.text?.body || '';
-          const botCodeMatch = rawText.trim().match(/^(BOT-[A-Z0-9]{4,8})$/i);
-          if (botCodeMatch && msgType === 'text') {
+          // Robuste Erkennung: findet aktiven Bot-Code irgendwo im Text
+          // (auch in einem Satz, egal welches Präfix). Prüft gegen echte
+          // aktive Codes → keine Fehlauslösung durch normale Wörter wie "Information".
+          if (msgType === 'text') {
             try {
-              await cvAPI.handleBotStart(from, botCodeMatch[1].toUpperCase(), phoneId);
-              continue;
+              const foundCode = await cvAPI.findBotCodeInText(rawText);
+              if (foundCode) {
+                await cvAPI.handleBotStart(from, foundCode, phoneId);
+                continue;
+              }
             } catch(botErr) { console.error('Bot slot start error:', botErr.message); }
           }
 
@@ -226,18 +231,22 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           if (!merchant) continue;
           try { await supabase.from('comm_messages').insert({ merchant_id: merchant.id, direction: 'inbound', content_type: 'text', original_text: msg.text?.body || '', source: 'whatsapp' }); } catch(e) {}
           const stopWords = ['stop', 'abmelden', 'cancelar'], subWords = ['subscribe', 'anmelden', 'suscribir', 'info', 'notify'], orderWords = ['bestellen', 'order', 'comprar', 'kaufen', 'pedido'];
-          if (stopWords.some(k => text.includes(k))) {
+          // Treffer nur als GANZES Wort werten (nicht als Teilstring), damit z.B.
+          // "Information" in einem normalen Satz nicht fälschlich "info" auslöst.
+          const woerter = text.split(/[^a-zäöüß0-9]+/i).filter(Boolean);
+          const hatWort = (liste) => liste.some(k => woerter.includes(k));
+          if (hatWort(stopWords)) {
             await supabase.from('subscribers').update({ active: false, status: 'inactive', opted_out_at: new Date().toISOString() }).eq('whatsapp', '+' + from).eq('merchant_id', merchant.id);
             await sendWhatsApp(merchant.id, '+' + from, '✅ Du wurdest abgemeldet. Schreibe "INFO" um dich wieder anzumelden.');
           } else if (['ja','yes','si','sí'].includes(text)) {
             let pending = null;
             try { const { data } = await supabase.from('subscribers').select('id').eq('whatsapp', '+' + from).eq('merchant_id', merchant.id).eq('status', 'pending').single(); pending = data; } catch(e) {}
             if (pending) { await supabase.from('subscribers').update({ active: true, status: 'active', opted_in_at: new Date().toISOString(), consent_text: 'Kunde hat JA geantwortet. Zeitstempel: ' + new Date().toISOString() }).eq('id', pending.id); await sendWhatsApp(merchant.id, '+' + from, '✅ Perfekt! Du bist jetzt angemeldet!\n\nSchreibe jederzeit STOP zum Abmelden. 🙏'); }
-          } else if (subWords.some(k => text.includes(k))) {
+          } else if (hatWort(subWords)) {
             const mName = merchant.name || 'uns';
             try { await supabase.from('subscribers').upsert({ whatsapp: '+' + from, merchant_id: merchant.id, source: 'whatsapp_keyword', active: false, status: 'pending' }, { onConflict: 'whatsapp,merchant_id' }); } catch(e) {}
             await sendWhatsApp(merchant.id, '+' + from, '👋 Hallo! Möchtest du das Tagesangebot von ' + mName + ' per WhatsApp erhalten?\n\nAntworte JA zum Bestätigen\nSchreibe STOP zum Ablehnen');
-          } else if (orderWords.some(k => text.includes(k))) {
+          } else if (hatWort(orderWords)) {
             const today = new Date().toISOString().split('T')[0]; let availId = null;
             try { const { data: avail } = await supabase.from('daily_availability').select('id').eq('merchant_id', merchant.id).eq('date', today).eq('published', true).single(); availId = avail?.id || null; } catch(e) {}
             const token = generateToken();
