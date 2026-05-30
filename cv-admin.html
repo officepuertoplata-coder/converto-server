@@ -49,6 +49,7 @@
   .sv-info { flex: 1; }
   .sv-title { font-weight: 600; font-size: 14px; }
   .sv-sub { font-size: 12px; color: var(--mu); }
+  .sv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px 38px; }
   /* Gespräche im Slot-Einblick */
   .slot-conv { margin: 4px 0 10px 38px; }
   .sc-box { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; max-height: 280px; overflow-y: auto; }
@@ -81,6 +82,19 @@
   .cm-row.buyer .cm-bubble { background: #f1f5f3; border: 1px solid var(--border); border-bottom-left-radius: 3px; color: var(--dark); }
   .cm-row.bot .cm-bubble { background: var(--g); color: #fff; border-bottom-right-radius: 3px; }
   .sc-empty { font-size: 13px; color: var(--mu); text-align: center; padding: 10px; }
+  /* Wissen */
+  .kv-block { margin-bottom: 16px; }
+  .kv-label { font-size: 12px; font-weight: 800; color: var(--g2); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 5px; }
+  .kv-val { font-size: 14px; color: var(--text); line-height: 1.5; }
+  .kv-list { margin: 0; padding-left: 18px; }
+  .kv-list li { margin-bottom: 6px; font-size: 14px; line-height: 1.45; }
+  .kv-empty { color: var(--mu); font-size: 14px; }
+  /* Einstellungen */
+  .sett-table { display: flex; flex-direction: column; }
+  .sett-row { display: flex; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .sett-row:last-child { border-bottom: none; }
+  .sett-label { font-size: 13px; color: var(--mu); font-weight: 700; }
+  .sett-val { font-size: 14px; font-weight: 800; text-align: right; word-break: break-word; }
   .kunden-suche { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
   .kunden-suche input { flex: 1; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; }
   .kunden-suche input:focus { outline: none; border-color: var(--g); }
@@ -466,16 +480,20 @@ async function toggleSlotView(subId, userLogin) {
         title = '<span style="color:var(--mu);">Kein Artikel eingerichtet</span>';
         sub = 'Status: ' + esc(statusLabel(s.status));
       }
-      // Gespräche-Knopf nur, wenn ein Artikel/Bot existiert (sonst keine Gespräche)
-      const convBtn = a
-        ? '<button type="button" class="btn btn-dark btn-sm" onclick="toggleSlotConvs(\'' + s.id + '\')">💬 Gespräche</button>'
-        : '';
+      // Bei Artikel/Bot: Wissen, Einstellungen, Gespräche anzeigbar
+      let slotBtns = '';
+      if (a) {
+        slotBtns =
+          '<button type="button" class="btn btn-g btn-sm" onclick="openKnowledgeModal(\'' + s.id + '\')">🧠 Wissen</button>' +
+          '<button type="button" class="btn btn-g btn-sm" onclick="openSettingsModal(\'' + s.id + '\')">⚙️ Einstellungen</button>' +
+          '<button type="button" class="btn btn-g btn-sm" onclick="toggleSlotConvs(\'' + s.id + '\')">💬 Gespräche</button>';
+      }
       html += '<div class="sv-slot">' +
         '<div class="sv-num">' + (s.slot_number || '?') + '</div>' +
         '<div class="sv-info"><div class="sv-title">' + title + '</div>' +
         '<div class="sv-sub">' + sub + '</div></div>' +
-        convBtn +
       '</div>' +
+      (slotBtns ? '<div class="sv-actions">' + slotBtns + '</div>' : '') +
       '<div id="slotconv-' + s.id + '" class="slot-conv" style="display:none;"></div>';
     }
     box.innerHTML = html;
@@ -562,6 +580,77 @@ function openConvModal(slotId, idx) {
 
 function closeConvModal() {
   document.getElementById('convModal').classList.remove('open');
+}
+
+// ── Wissen anzeigen (read-only) ──
+async function openKnowledgeModal(slotId) {
+  document.getElementById('convModalTitle').innerHTML = '🧠 Wissen des Bots';
+  document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Lade …</div>';
+  document.getElementById('convModal').classList.add('open');
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    const a = (d && d.article) || {};
+    const an = a.analysis || {};
+    const strat = an.bot_strategy || {};
+    const esc2 = esc;
+    const list = function(arr, fn) {
+      if (!arr || !arr.length) return '<div class="kv-empty">—</div>';
+      return '<ul class="kv-list">' + arr.map(fn).join('') + '</ul>';
+    };
+    let html = '';
+    html += kvBlock('Artikel', esc2(a.title || '—'));
+    html += kvBlock('Produktbeschreibung', esc2(an.summary || '—'));
+    html += kvBlock('Zustand', esc2(an.condition || '—'));
+    html += kvBlock('Weitere Highlights', list(an.key_facts, function(f){ return '<li>' + esc2(f) + '</li>'; }));
+    html += kvBlock('Verkaufsargumente', list(an.selling_points, function(p){ return '<li>' + esc2(p) + '</li>'; }));
+    html += kvBlock('Hauptargument für den Preis', esc2(strat.value_argument || '—'));
+    html += kvBlock('Umgang mit Einwänden', list(an.likely_objections, function(o){
+      return '<li><b>' + esc2(o.objection || '') + '</b><br>→ ' + esc2(o.response || '') + '</li>';
+    }));
+    html += kvBlock('Verhandlungs-Schritte', list(strat.negotiation_steps, function(s){ return '<li>' + esc2(s) + '</li>'; }));
+    document.getElementById('convModalBody').innerHTML = html || '<div class="sc-empty">Noch kein Wissen vorhanden.</div>';
+  } catch(e) {
+    document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
+  }
+}
+
+// ── Einstellungen anzeigen (read-only) ──
+async function openSettingsModal(slotId) {
+  document.getElementById('convModalTitle').innerHTML = '⚙️ Einstellungen';
+  document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Lade …</div>';
+  document.getElementById('convModal').classList.add('open');
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    const s = (d && d.slot) || {};
+    const a = (d && d.article) || {};
+    const priceVis = a.price_visibility || 'public';
+    const visLabel = priceVis === 'on_request' ? 'Auf Anfrage' : 'Öffentlich';
+    const availLabel = { available: '🟢 Verfügbar', reserved: '🟡 Reserviert', sold: '🔴 Verkauft' }[a.availability || 'available'] || (a.availability || '—');
+    let html = '';
+    html += settRow('Slot', 'Nr. ' + esc(s.slot_number || '?'));
+    html += settRow('Artikelbezeichnung', esc(a.title || '—'));
+    html += settRow('Verkaufspreis', a.sale_price != null ? '€ ' + esc(a.sale_price) : '—');
+    html += settRow('Mindestpreis', a.min_price != null ? '€ ' + esc(a.min_price) : '—');
+    html += settRow('Preis-Anzeige', visLabel);
+    html += settRow('Standort', esc(a.location || '—'));
+    html += settRow('Anrede im Bot', a.anrede === 'Du' ? 'Du (locker)' : 'Sie (formell)');
+    html += settRow('Anzahlung zur Reservierung', (s.deposit_percent != null ? s.deposit_percent : 10) + ' %');
+    html += settRow('WhatsApp-Starttext', esc(a.wa_starttext || '— (Standard)'));
+    html += settRow('Call-to-Action', esc(a.cta_text || '— (Standard)'));
+    html += settRow('Verfügbarkeit', availLabel);
+    document.getElementById('convModalBody').innerHTML = '<div class="sett-table">' + html + '</div>';
+  } catch(e) {
+    document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
+  }
+}
+
+function kvBlock(label, content) {
+  return '<div class="kv-block"><div class="kv-label">' + label + '</div><div class="kv-val">' + content + '</div></div>';
+}
+function settRow(label, value) {
+  return '<div class="sett-row"><div class="sett-label">' + label + '</div><div class="sett-val">' + value + '</div></div>';
 }
 
 // ── Slots zuweisen ──
