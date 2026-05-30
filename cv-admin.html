@@ -281,6 +281,14 @@
         <input id="o-company" placeholder="z. B. Autohaus Müller GmbH">
       </div>
       <div class="field">
+        <label>Anrede</label>
+        <select id="o-salutation" style="padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;width:100%;background:#fff;">
+          <option value="">— keine Angabe —</option>
+          <option value="Herr">Herr</option>
+          <option value="Frau">Frau</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Ansprechpartner</label>
         <input id="o-contact" placeholder="z. B. Hans Müller">
       </div>
@@ -528,6 +536,7 @@ function offerPreview() {
 async function sendOffer() {
   const company = document.getElementById('o-company').value.trim();
   const contact = document.getElementById('o-contact').value.trim();
+  const salutation = document.getElementById('o-salutation').value;
   const email   = document.getElementById('o-email').value.trim();
   const address = document.getElementById('o-address').value.trim();
   const slots   = parseInt(document.getElementById('o-slots').value, 10);
@@ -547,7 +556,7 @@ async function sendOffer() {
   try {
     const r = await fetch(API + '/api/cv/admin/offers', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company_name: company, contact_name: contact, contact_email: email, address: address, slots: slots })
+      body: JSON.stringify({ company_name: company, contact_name: contact, salutation: salutation, contact_email: email, address: address, slots: slots })
     });
     const d = await r.json();
     if (!r.ok) { msgEl.className = 'msg err'; msgEl.textContent = d.error || 'Fehler beim Senden.'; }
@@ -558,6 +567,7 @@ async function sendOffer() {
       if (d.sent) {
         document.getElementById('o-company').value = '';
         document.getElementById('o-contact').value = '';
+        document.getElementById('o-salutation').value = '';
         document.getElementById('o-email').value = '';
         document.getElementById('o-address').value = '';
         document.getElementById('o-slots').value = '';
