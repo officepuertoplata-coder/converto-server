@@ -115,9 +115,32 @@
   <div class="logo">Conver<span>dino</span></div>
   <div class="nav-right">
     <span class="nav-user" id="navUser">admin</span>
+    <button class="nav-logout" onclick="openPwChange()">Passwort</button>
     <button class="nav-logout" onclick="logout()">Ausloggen</button>
   </div>
 </nav>
+
+<!-- Passwort-ändern-Overlay -->
+<div id="pwOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:14px;padding:28px;width:90%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.2);">
+    <h3 style="margin:0 0 4px;font-size:18px;color:#1a2e24;">Passwort ändern</h3>
+    <p style="margin:0 0 18px;color:#6b7e74;font-size:13px;">Gib dein aktuelles und ein neues Passwort ein.</p>
+    <div id="pwChangeMsg" style="display:none;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;"></div>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#6b7e74;margin-bottom:5px;">Aktuelles Passwort</label>
+      <input id="pw-old" type="password" style="width:100%;padding:10px 12px;border:1px solid #e2e8e4;border-radius:9px;font-size:14px;">
+    </div>
+    <div style="margin-bottom:18px;">
+      <label style="display:block;font-size:12px;font-weight:600;color:#6b7e74;margin-bottom:5px;">Neues Passwort (mind. 6 Zeichen)</label>
+      <input id="pw-new" type="password" style="width:100%;padding:10px 12px;border:1px solid #e2e8e4;border-radius:9px;font-size:14px;">
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="submitPwChange()" style="flex:1;background:#25D366;color:#fff;border:none;padding:11px;border-radius:9px;font-weight:700;cursor:pointer;font-family:inherit;">Speichern</button>
+      <button onclick="closePwChange()" style="background:#eef2f0;color:#1a2e24;border:none;padding:11px 18px;border-radius:9px;font-weight:600;cursor:pointer;font-family:inherit;">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
 
 <main>
   <div id="app">
@@ -248,6 +271,47 @@ function logout() {
   localStorage.removeItem(AUTH_KEY);
   window.location.href = 'login.html';
 }
+
+// ── PASSWORT ÄNDERN ─────────────────────────────────
+function openPwChange() {
+  document.getElementById('pw-old').value = '';
+  document.getElementById('pw-new').value = '';
+  const m = document.getElementById('pwChangeMsg');
+  m.style.display = 'none'; m.textContent = '';
+  document.getElementById('pwOverlay').style.display = 'flex';
+}
+function closePwChange() {
+  document.getElementById('pwOverlay').style.display = 'none';
+}
+function pwChangeMsg(text, ok) {
+  const m = document.getElementById('pwChangeMsg');
+  m.style.display = 'block';
+  m.style.background = ok ? '#e7f8ee' : '#fdecec';
+  m.style.color = ok ? '#0f7a3d' : '#dc2626';
+  m.textContent = text;
+}
+async function submitPwChange() {
+  const oldPw = document.getElementById('pw-old').value;
+  const newPw = document.getElementById('pw-new').value;
+  if (!oldPw || !newPw) { pwChangeMsg('Bitte beide Felder ausfüllen.', false); return; }
+  if (newPw.length < 6) { pwChangeMsg('Neues Passwort braucht mindestens 6 Zeichen.', false); return; }
+  const login = (auth.username || auth.name || '').toLowerCase().trim();
+  try {
+    const r = await fetch(API + '/api/cv/account/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_login: login, old_password: oldPw, new_password: newPw })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      pwChangeMsg(d.error || 'Ändern fehlgeschlagen.', false);
+    } else {
+      pwChangeMsg('✅ Passwort geändert.', true);
+      setTimeout(closePwChange, 1200);
+    }
+  } catch(e) { pwChangeMsg('Verbindungsfehler: ' + e.message, false); }
+}
+
 
 // ── DASHBOARD LADEN ──────────────────────────────────
 async function loadDashboard() {
