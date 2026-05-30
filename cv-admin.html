@@ -637,10 +637,17 @@ function renderOffers() {
     return;
   }
 
-  let html = '<table class="tier-table"><tr><th>Nummer</th><th>Firma</th><th>Slots</th><th>Netto/Mon.</th><th>Gültig bis</th><th>Status</th></tr>';
+  let html = '<table class="tier-table"><tr><th>Nummer</th><th>Firma</th><th>Slots</th><th>Netto/Mon.</th><th>Gültig bis</th><th>Status</th><th></th></tr>';
   list.forEach(function(o) {
     const valid = o.valid_until ? new Date(o.valid_until).toLocaleDateString('de-AT', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
-    const statusTxt = o.status === 'versendet' ? '✓ versendet' : 'erstellt';
+    let statusTxt, aktion;
+    if (o.status === 'übernommen') {
+      statusTxt = '★ übernommen';
+      aktion = '<span style="font-size:12px;color:var(--mu);">Kunde angelegt</span>';
+    } else {
+      statusTxt = o.status === 'versendet' ? '✓ versendet' : 'erstellt';
+      aktion = '<button type="button" class="btn btn-sm btn-g" onclick="convertOffer(\'' + o.id + '\', this)">Als Kunde übernehmen</button>';
+    }
     html += '<tr>' +
       '<td><strong>' + (o.offer_number || '') + '</strong></td>' +
       '<td>' + (o.company_name || '') + '</td>' +
@@ -648,10 +655,37 @@ function renderOffers() {
       '<td class="tier-monthly">' + fmtEuro(o.price_net) + '</td>' +
       '<td style="font-size:12px;color:var(--mu);">' + valid + '</td>' +
       '<td style="font-size:12px;font-weight:600;color:var(--mu);">' + statusTxt + '</td>' +
+      '<td>' + aktion + '</td>' +
       '</tr>';
   });
   html += '</table>';
   area.innerHTML = html;
+}
+
+// Angebot als Kunde übernehmen (legt Login+Passwort automatisch an)
+async function convertOffer(offerId, btn) {
+  if (!confirm('Aus diesem Angebot einen Kunden anlegen?\n\nEs werden automatisch Login und Passwort erzeugt. Slots fügst du danach in der Kundenliste hinzu.')) return;
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Lege an …';
+  try {
+    const r = await fetch(API + '/api/cv/admin/offers/' + offerId + '/convert', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      alert('Fehler: ' + (d.error || 'Übernahme fehlgeschlagen.'));
+      btn.disabled = false; btn.textContent = old;
+      return;
+    }
+    // Zugangsdaten anzeigen — zum Weitergeben an den Kunden
+    alert('✓ Kunde angelegt für ' + (d.company_name || '') + '\n\n' +
+          'Login-Name: ' + d.login + '\n' +
+          'Passwort: ' + d.password + '\n\n' +
+          'Bitte notieren und dem Kunden mitteilen.\nSlots jetzt in der Kundenliste hinzufügen.');
+    loadOffers();      // Angebotsliste neu (Status → übernommen)
+    loadCustomers();   // Kundenliste neu (neuer Kunde erscheint)
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+    btn.disabled = false; btn.textContent = old;
+  }
 }
 
 // Karte auf-/zuklappen
