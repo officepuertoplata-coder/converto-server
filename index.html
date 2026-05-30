@@ -48,14 +48,11 @@ nav{
   border-bottom:1px solid var(--line);
 }
 .nav-in{display:flex;align-items:center;justify-content:space-between;height:78px}
-.logo{display:flex;align-items:center;gap:10px;font-family:'Fraunces',serif;font-weight:800;font-size:1.5rem}
-.logo img{height:58px;width:auto;display:block}
-.logo .dino{
-  width:38px;height:38px;border-radius:11px;
-  background:linear-gradient(135deg,var(--green-bright),var(--green-dark));
-  display:flex;align-items:center;justify-content:center;font-size:1.3rem;
-  box-shadow:0 6px 16px -6px rgba(15,107,52,.6);
-}
+.logo{display:flex;align-items:center;gap:2px;font-family:'Fraunces',serif;font-weight:800;font-size:1.7rem;letter-spacing:-.01em}
+.logo .c1{color:var(--green-dark)}
+.logo .c2{color:var(--green-bright)}
+.foot-brand .logo .c1{color:#fff}
+.foot-brand .logo .c2{color:var(--green-bright)}
 .nav-links{display:flex;align-items:center;gap:30px;font-size:.98rem;font-weight:500}
 .nav-links a.muted{color:var(--ink-soft)}
 .nav-links a.muted:hover{color:var(--green-dark)}
@@ -181,8 +178,7 @@ section.block{padding:84px 0}
 footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
 .foot-in{display:flex;flex-wrap:wrap;justify-content:space-between;gap:30px}
 .foot-brand{max-width:300px}
-.foot-brand .logo{color:#fff;margin-bottom:14px}
-.foot-brand .logo img{height:46px;background:#f6f9f5;border-radius:12px;padding:4px 10px}
+.foot-brand .logo{margin-bottom:14px}
 .foot-cols{display:flex;gap:60px;flex-wrap:wrap}
 .foot-col h4{color:#fff;font-family:'Outfit';font-size:.95rem;margin-bottom:12px;font-weight:600}
 .foot-col a{display:block;margin-bottom:8px;color:#9fb6a6}
@@ -209,7 +205,7 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
 <!-- ============ NAV ============ -->
 <nav>
   <div class="wrap nav-in">
-    <a href="#top" class="logo" aria-label="Converdino Startseite"><img src="converdino-logo.png" alt="Converdino"></a>
+    <a href="#top" class="logo" aria-label="Converdino Startseite"><span class="c1">CONVER</span><span class="c2">DINO</span></a>
     <div class="nav-links">
       <a href="#how" class="muted">So funktioniert's</a>
       <a href="#why" class="muted">Vorteile</a>
@@ -358,7 +354,7 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
 <footer>
   <div class="wrap foot-in">
     <div class="foot-brand">
-      <div class="logo"><img src="converdino-logo.png" alt="Converdino"></div>
+      <div class="logo"><span class="c1">CONVER</span><span class="c2">DINO</span></div>
       <p>Der KI-Verkäufer für WhatsApp. Verhandelt rund um die Uhr, hält Ihren Mindestpreis und liefert qualifizierte Leads mit Termin.</p>
     </div>
     <div class="foot-cols">
