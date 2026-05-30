@@ -85,10 +85,11 @@
   .bot-code { font-family: monospace; font-weight: 900; font-size: .85rem; }
 
   /* GESPRÄCHE */
-  .convbox { background: #f7faf8; border: 1px solid #d8e6df; border-radius: 12px; padding: 12px; margin-bottom: 8px; }
-  .conv-item { border-bottom: 1px solid #e2ece7; padding: 10px 0; }
+  .convbox { background: #f7faf8; border: 1px solid #d8e6df; border-radius: 12px; padding: 6px 12px; margin-bottom: 8px; }
+  .conv-item { border-bottom: 1px solid #e2ece7; padding: 10px 4px; cursor: pointer; border-radius: 8px; transition: background .12s; }
   .conv-item:last-child { border-bottom: none; }
-  .conv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; }
+  .conv-item:hover { background: #eef5f1; }
+  .conv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .conv-buyer { font-weight: 800; font-size: .82rem; color: var(--dark); }
   .conv-meta { font-size: .68rem; color: #6b7e74; }
   .conv-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -98,16 +99,17 @@
   .cb-paid { background: var(--g); color: #fff; }
   .cb-lost { background: #fee2e2; color: #991b1b; }
   .cb-mu   { background: #e5eee9; color: #4a5d54; }
-  .conv-msgs { margin-top: 8px; display: none; }
-  .conv-msgs.open { display: block; }
-  .msg-row { margin-bottom: 6px; display: flex; }
+  .conv-open-hint { font-size: .66rem; color: var(--g2); font-weight: 700; white-space: nowrap; }
+  .conv-empty { font-size: .8rem; color: #6b7e74; text-align: center; padding: 10px; }
+  /* Chat-Verlauf im Modal */
+  .chat-thread { display: flex; flex-direction: column; }
+  .msg-row { margin-bottom: 8px; display: flex; }
   .msg-row.buyer { justify-content: flex-start; }
   .msg-row.bot { justify-content: flex-end; }
-  .msg-bubble { max-width: 80%; padding: 7px 11px; border-radius: 12px; font-size: .78rem; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
-  .msg-row.buyer .msg-bubble { background: #fff; border: 1px solid #d8e6df; border-bottom-left-radius: 3px; }
+  .msg-bubble { max-width: 82%; padding: 9px 13px; border-radius: 14px; font-size: .85rem; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+  .msg-row.buyer .msg-bubble { background: #f1f5f3; border: 1px solid #d8e6df; border-bottom-left-radius: 3px; color: #1a2e24; }
   .msg-row.bot .msg-bubble { background: var(--g); color: #fff; border-bottom-right-radius: 3px; }
-  .conv-toggle-hint { font-size: .66rem; color: var(--g2); font-weight: 700; }
-  .conv-empty { font-size: .8rem; color: #6b7e74; text-align: center; padding: 10px; }
+  .chat-result { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
   /* MODAL */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
@@ -253,6 +255,18 @@
       <!-- gefüllt durch JS -->
     </div>
     <div class="modal-foot" id="settingsFoot">
+      <!-- gefüllt durch JS -->
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="convModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="convModalTitle">💬 Gespräch</div>
+      <button class="modal-close" onclick="closeConvModal()">×</button>
+    </div>
+    <div class="modal-body" id="convModalBody">
       <!-- gefüllt durch JS -->
     </div>
   </div>
@@ -541,6 +555,9 @@ function goToKnowledge(slotId) {
 }
 
 // ── GESPRÄCHE ANSEHEN ────────────────────────────────
+// Zwischenspeicher: pro Slot die geladenen Gespräche (für das Modal)
+const convCache = {};
+
 async function toggleConversations(slotId) {
   const box = document.getElementById('convbox-' + slotId);
   if (!box) return;
@@ -556,13 +573,14 @@ async function toggleConversations(slotId) {
     const r = await fetch(API + '/api/cv/slot/' + slotId + '/conversations');
     const d = await r.json();
     const convs = (d && d.conversations) || [];
+    convCache[slotId] = convs;
     if (convs.length === 0) {
       box.innerHTML = '<div class="conv-empty">Noch keine Gespräche geführt.</div>';
       return;
     }
     let html = '';
     convs.forEach(function(c, idx) {
-      html += renderConversation(c, slotId, idx);
+      html += renderConvListItem(c, slotId, idx);
     });
     box.innerHTML = html;
   } catch(e) {
@@ -571,7 +589,6 @@ async function toggleConversations(slotId) {
 }
 
 function convBadges(events) {
-  // Wichtigstes Ergebnis als Badge zeigen
   const has = function(t) { return events.indexOf(t) !== -1; };
   const badges = [];
   if (has('paid')) badges.push('<span class="conv-badge cb-paid">✓ Bezahlt</span>');
@@ -592,29 +609,43 @@ function fmtDate(iso) {
   } catch(e) { return ''; }
 }
 
-function renderConversation(c, slotId, idx) {
-  const msgsId = 'msgs-' + slotId + '-' + idx;
-  let msgsHtml = '';
-  c.messages.forEach(function(m) {
-    msgsHtml += '<div class="msg-row ' + m.role + '"><div class="msg-bubble">' + esc(m.text) + '</div></div>';
-  });
-  if (!msgsHtml) msgsHtml = '<div class="conv-empty">Keine Nachrichten.</div>';
-  return '<div class="conv-item">' +
-    '<div class="conv-head" onclick="toggleConvMsgs(\'' + msgsId + '\')">' +
+// Kompakte Listenzeile (KEIN Verlauf, nur Kopf) — Klick öffnet Modal
+function renderConvListItem(c, slotId, idx) {
+  return '<div class="conv-item" onclick="openConvModal(\'' + slotId + '\',' + idx + ')">' +
+    '<div class="conv-head">' +
       '<div>' +
         '<div class="conv-buyer">📱 ' + esc(c.buyer_phone || 'Unbekannt') + '</div>' +
         '<div class="conv-meta">' + esc(fmtDate(c.last_message_at || c.created_at)) + ' · ' + c.message_count + ' Nachrichten</div>' +
         '<div class="conv-badges">' + convBadges(c.events) + '</div>' +
       '</div>' +
-      '<span class="conv-toggle-hint">öffnen ▾</span>' +
+      '<span class="conv-open-hint">öffnen →</span>' +
     '</div>' +
-    '<div id="' + msgsId + '" class="conv-msgs">' + msgsHtml + '</div>' +
   '</div>';
 }
 
-function toggleConvMsgs(msgsId) {
-  const el = document.getElementById(msgsId);
-  if (el) el.classList.toggle('open');
+// Fenster mit dem vollen Verlauf eines Gesprächs
+function openConvModal(slotId, idx) {
+  const convs = convCache[slotId] || [];
+  const c = convs[idx];
+  if (!c) return;
+  document.getElementById('convModalTitle').innerHTML = '💬 ' + esc(c.buyer_phone || 'Gespräch');
+  let html = '<div class="chat-result">' + convBadges(c.events) +
+    '<span class="conv-meta">' + esc(fmtDate(c.last_message_at || c.created_at)) + '</span></div>';
+  html += '<div class="chat-thread">';
+  if (c.messages.length === 0) {
+    html += '<div class="conv-empty">Keine Nachrichten in diesem Gespräch.</div>';
+  } else {
+    c.messages.forEach(function(m) {
+      html += '<div class="msg-row ' + m.role + '"><div class="msg-bubble">' + esc(m.text) + '</div></div>';
+    });
+  }
+  html += '</div>';
+  document.getElementById('convModalBody').innerHTML = html;
+  document.getElementById('convModal').classList.add('open');
+}
+
+function closeConvModal() {
+  document.getElementById('convModal').classList.remove('open');
 }
 
 // ── SLOT LEEREN ──────────────────────────────────────
