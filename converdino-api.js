@@ -367,6 +367,79 @@ module.exports = function(app, supabase, deps) {
 
 
   // ============================================================
+  // GET /api/cv/slot/:id/conversations
+  //    Alle Bot-Gespräche eines Slots (für die Gesprächsansicht)
+  //    Liefert pro Gespräch: Käufer, Verlauf, Status, Zeit + Events
+  // ============================================================
+  app.get('/api/cv/slot/:id/conversations', async (req, res) => {
+    try {
+      const slotId = req.params.id;
+
+      // Gespräche dieses Slots (neueste zuerst)
+      const { data: sessions, error: sErr } = await supabase
+        .from('cv_bot_sessions')
+        .select('id, buyer_phone, messages, status, phase, created_at, last_message_at')
+        .eq('slot_id', slotId)
+        .order('last_message_at', { ascending: false, nullsFirst: false });
+      if (sErr) return res.status(500).json({ error: 'Sessions: ' + sErr.message });
+
+      // Events dieses Slots (für Ergebnis-Anzeige pro Käufer)
+      const { data: events } = await supabase
+        .from('cv_events')
+        .select('type, buyer_phone, created_at')
+        .eq('slot_id', slotId)
+        .order('created_at', { ascending: true });
+
+      // Events nach Käufer gruppieren
+      const eventsByBuyer = {};
+      for (const ev of (events || [])) {
+        const key = ev.buyer_phone || '';
+        if (!eventsByBuyer[key]) eventsByBuyer[key] = [];
+        eventsByBuyer[key].push(ev.type);
+      }
+
+      // Nachrichten normalisieren (content kann String oder Array sein)
+      const normContent = function(c) {
+        if (typeof c === 'string') return c;
+        if (Array.isArray(c)) {
+          return c.map(function(part) {
+            if (typeof part === 'string') return part;
+            if (part && typeof part.text === 'string') return part.text;
+            return '';
+          }).join(' ').trim();
+        }
+        return '';
+      };
+
+      const conversations = (sessions || []).map(function(s) {
+        const msgs = Array.isArray(s.messages) ? s.messages : [];
+        const cleanMsgs = msgs
+          .map(function(m) {
+            return { role: m.role === 'user' ? 'buyer' : 'bot', text: normContent(m.content) };
+          })
+          .filter(function(m) { return m.text && m.text.length > 0; });
+        return {
+          id: s.id,
+          buyer_phone: s.buyer_phone,
+          status: s.status,
+          phase: s.phase,
+          created_at: s.created_at,
+          last_message_at: s.last_message_at,
+          message_count: cleanMsgs.length,
+          messages: cleanMsgs,
+          events: eventsByBuyer[s.buyer_phone] || []
+        };
+      });
+
+      res.json({ conversations });
+    } catch(e) {
+      console.error('[CV /slot/:id/conversations]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+
+  // ============================================================
   // 5. DELETE /api/cv/upload/:id
   //    Einzelnes Upload (Foto/PDF/Notiz) löschen
   // ============================================================
