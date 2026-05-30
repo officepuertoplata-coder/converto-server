@@ -59,6 +59,8 @@
   .funnel-num.funnel-deal { color: var(--g2); }
   .funnel-lbl { font-size: 10px; font-weight: 700; color: var(--mu); text-transform: uppercase; letter-spacing: .03em; margin-top: 3px; }
   .funnel-arrow { color: #b8cabf; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+  .fairuse { font-size: 12px; color: var(--mu); margin: 0 0 12px 38px; padding: 6px 10px; background: #f3f7f5; border-radius: 8px; }
+  .fairuse.over { color: #fff; background: var(--red); font-weight: 700; }
   /* Preisstaffeln */
   .tier-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
   .tier-table th { text-align: left; font-size: 12px; color: var(--mu); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 8px 10px; border-bottom: 2px solid var(--border); }
@@ -73,6 +75,8 @@
   .gw-netto { font-size: 22px; font-weight: 900; color: var(--g2); margin-top: 4px; }
   .gw-unit { font-size: 13px; font-weight: 600; color: var(--mu); }
   .gw-brutto { font-size: 13px; font-weight: 600; color: var(--mu); margin-top: 2px; }
+  .gw-fairuse { font-size: 13px; color: var(--g2); font-weight: 700; margin-top: 10px; padding-top: 10px; border-top: 1px solid #c8e6d5; }
+  .gw-fairuse.over { color: var(--red); }
   .tier-add { background: #f7faf8; border: 1px dashed var(--border); border-radius: 10px; padding: 14px; }
   .tier-add-title { font-size: 13px; font-weight: 800; color: var(--dark); margin-bottom: 10px; }
   .tier-add-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -298,6 +302,8 @@ let auth = null;
 
 // ── Mehrwertsteuer (B2B: Netto führend, zzgl. USt) ──
 const UST_SATZ = 20; // Prozent — bei Bedarf zentral hier ändern
+// ── Fair-Use: enthaltene Gespräche pro Slot und Monat ──
+const FAIRUSE_LIMIT = 100; // darüber: rot markiert → manueller Aufschlag
 function fmtEuro(n) {
   return '€ ' + Number(n || 0).toLocaleString('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -639,6 +645,15 @@ function filterKunden() {
 }
 
 // ── Slot-Einblick: Slots eines Kunden anzeigen (read-only) ──
+function renderFairUse(stats) {
+  const monat = (stats && stats.monat) || 0;
+  const ueber = monat > FAIRUSE_LIMIT;
+  const cls = ueber ? 'fairuse over' : 'fairuse';
+  let txt = '<b>' + monat + '</b> / ' + FAIRUSE_LIMIT + ' Gespräche diesen Monat';
+  if (ueber) txt += ' ⚠️ Limit überschritten — Aufschlag prüfen';
+  return '<div class="' + cls + '">📊 ' + txt + '</div>';
+}
+
 function renderFunnel(stats) {
   const s = stats || { gespraeche: 0, leads: 0, abschluesse: 0 };
   return '<div class="funnel">' +
@@ -706,19 +721,23 @@ async function toggleSlotView(subId, userLogin) {
         '<div class="sv-sub">' + sub + '</div></div>' +
       '</div>' +
       (a ? renderFunnel(s.stats) : '') +
+      (a ? renderFairUse(s.stats) : '') +
       (slotBtns ? '<div class="sv-actions">' + slotBtns + '</div>' : '') +
       '<div id="slotconv-' + s.id + '" class="slot-conv" style="display:none;"></div>';
     }
     box.innerHTML = html;
     // Gesamtwert asynchron laden (progressiver Preis für Anzahl Slots)
-    ladeGesamtwert(subId, slots.length);
+    // Gesamtwert + Fair-Use-Summe asynchron laden
+    let monatSumme = 0;
+    for (const s of slots) { monatSumme += (s.stats && s.stats.monat) || 0; }
+    ladeGesamtwert(subId, slots.length, monatSumme);
   } catch(e) {
     box.innerHTML = '<div style="color:var(--red);font-size:14px;">Fehler beim Laden: ' + esc(e.message) + '</div>';
   }
 }
 
 // Gültigen Gesamtwert (progressiv, netto + brutto) für einen Kunden anzeigen
-async function ladeGesamtwert(subId, anzahlSlots) {
+async function ladeGesamtwert(subId, anzahlSlots, monatSumme) {
   const el = document.getElementById('gesamtwert-' + subId);
   if (!el) return;
   if (!anzahlSlots || anzahlSlots < 1) { el.textContent = ''; return; }
@@ -726,9 +745,16 @@ async function ladeGesamtwert(subId, anzahlSlots) {
     const r = await fetch(API + '/api/cv/admin/price-calc?slots=' + anzahlSlots);
     const d = await r.json();
     if (!r.ok) { el.textContent = ''; return; }
+    // Fair-Use gesamt: Limit = Slots × FAIRUSE_LIMIT
+    const verbraucht = monatSumme || 0;
+    const limit = anzahlSlots * FAIRUSE_LIMIT;
+    const ueber = verbraucht > limit;
+    let fairuseHtml = '<div class="gw-fairuse' + (ueber ? ' over' : '') + '">📊 Gespräche diesen Monat: <b>' + verbraucht + '</b> / ' + limit +
+      (ueber ? ' ⚠️ Gesamt-Limit überschritten — Aufschlag prüfen' : '') + '</div>';
     el.innerHTML = '<div class="gw-label">Derzeit gültiger Gesamtwert (' + anzahlSlots + ' Slots)</div>' +
       '<div class="gw-netto">' + fmtEuro(d.total) + ' <span class="gw-unit">netto / Monat</span></div>' +
-      '<div class="gw-brutto">zzgl. ' + UST_SATZ + '% USt = ' + fmtEuro(brutto(d.total)) + ' brutto / Monat</div>';
+      '<div class="gw-brutto">zzgl. ' + UST_SATZ + '% USt = ' + fmtEuro(brutto(d.total)) + ' brutto / Monat</div>' +
+      fairuseHtml;
   } catch(e) { el.textContent = ''; }
 }
 const scCache = {};
