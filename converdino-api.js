@@ -2434,6 +2434,12 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     </div>
   </div>
 
+  <!-- Was ist ein Slot -->
+  <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
+    <div style="font-size:16px;font-weight:800;color:#0d1b12;margin-bottom:6px">Was ein Slot bedeutet</div>
+    <p style="font-size:14px;line-height:1.6;color:#33473b;margin:0">Ein Slot ist Ihr laufender Verkaufsplatz — <strong>nicht auf ein einzelnes Produkt begrenzt</strong>. Sie bewerben darin ein Produkt oder Objekt; sobald es verkauft ist, stellen Sie sofort das nächste ein. So nutzen Sie denselben Slot über das Jahr für beliebig viele Artikel nacheinander. Jeder Slot wird monatlich gebucht.</p>
+  </div>
+
   <!-- Preis -->
   <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
     <div style="font-size:16px;font-weight:800;color:#0d1b12;margin-bottom:12px">Ihr Angebot</div>
@@ -2455,7 +2461,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         <td style="padding:10px 0;text-align:right;font-weight:800;font-size:16px;color:#0f6b34">${cvFmtEuro(p.gross)}</td>
       </tr>
     </table>
-    <p style="font-size:12px;color:#33473b;line-height:1.5;margin:12px 0 4px">Alle Preise zzgl. gesetzlicher Umsatzsteuer. Monatlich wiederkehrend, jederzeit kündbar.</p>
+    <p style="font-size:12px;color:#33473b;line-height:1.5;margin:12px 0 4px">Alle Preise zzgl. gesetzlicher Umsatzsteuer. Zahlung monatlich im Voraus per wiederkehrender, automatisierter Abbuchung. Monatlich kündbar.</p>
     ${validStr ? `<p style="font-size:12px;color:#33473b;margin:0">Dieses Angebot ist gültig bis <strong>${validStr}</strong>.</p>` : ''}
   </div>
 
@@ -2492,13 +2498,16 @@ ${vorteileText}
 
 Im Paket pro Slot enthalten: Automatischer Wissensaufbau aus Ihren Produktunterlagen, WhatsApp-Verkaufslink, QR-Code, einbettbares Web-Widget, aktive Verhandlungslogik, sichere Zahlungsabwicklung über Stripe.
 
+WAS EIN SLOT BEDEUTET
+Ein Slot ist Ihr laufender Verkaufsplatz — nicht auf ein einzelnes Produkt begrenzt. Sobald ein Produkt verkauft ist, stellen Sie sofort das nächste ein. So nutzen Sie denselben Slot für beliebig viele Artikel nacheinander. Jeder Slot wird monatlich gebucht.
+
 IHR ANGEBOT
 Converdino — digitaler Verkaufsberater: ${o.slots} ${o.slots === 1 ? 'Slot' : 'Slots'}
 Monatspreis (netto): ${cvFmtEuro(p.net)}
 zzgl. ${p.vatRate}% USt: ${cvFmtEuro(p.vat)}
 Monatspreis brutto: ${cvFmtEuro(p.gross)}
 
-Alle Preise zzgl. gesetzlicher Umsatzsteuer. Monatlich wiederkehrend, jederzeit kündbar.
+Alle Preise zzgl. gesetzlicher Umsatzsteuer. Zahlung monatlich im Voraus per wiederkehrender, automatisierter Abbuchung. Monatlich kündbar.
 ${validStr ? `Gültig bis: ${validStr}` : ''}
 
 ÜBERZEUGEN SIE SICH SELBST
