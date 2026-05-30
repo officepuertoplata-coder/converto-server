@@ -47,9 +47,9 @@ nav{
   backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line);
 }
-.nav-in{display:flex;align-items:center;justify-content:space-between;height:70px}
+.nav-in{display:flex;align-items:center;justify-content:space-between;height:78px}
 .logo{display:flex;align-items:center;gap:10px;font-family:'Fraunces',serif;font-weight:800;font-size:1.5rem}
-.logo img{height:52px;width:auto;display:block}
+.logo img{height:58px;width:auto;display:block}
 .logo .dino{
   width:38px;height:38px;border-radius:11px;
   background:linear-gradient(135deg,var(--green-bright),var(--green-dark));
@@ -103,6 +103,13 @@ nav{
 .strip-in{display:flex;flex-wrap:wrap;gap:14px 40px;justify-content:center;align-items:center;font-size:.96rem;font-weight:400}
 .strip-in b{color:#fff;font-weight:600}
 .strip .sep{opacity:.3}
+
+/* ---------- TOP CTA BANNER ---------- */
+.topcta{background:var(--white);border-bottom:1px solid var(--line)}
+.topcta-in{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 0;flex-wrap:wrap}
+.topcta-text{display:flex;flex-direction:column;gap:2px}
+.topcta-text strong{font-family:'Fraunces',serif;font-size:1.25rem;color:var(--ink)}
+.topcta-text span{color:var(--ink-soft);font-size:.98rem;font-weight:300}
 
 /* ---------- SECTION SHELL ---------- */
 section.block{padding:84px 0}
@@ -217,24 +224,35 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
 <!-- ============ HERO ============ -->
 <header class="hero" id="top">
   <div class="wrap hero-in">
-    <span class="eyebrow reveal d1"><span class="dot"></span> Der erste WhatsApp-Verkäufer, der wirklich verhandelt</span>
-    <h1 class="reveal d2">Ein Verkäufer, der <span class="hl">nie schläft</span> — für rund 2 € am Tag.</h1>
-    <p class="lead reveal d3">Converdino ist ein KI-Verkaufsbot für WhatsApp. Er stellt Ihr Produkt vor, beantwortet Fragen, <strong>verhandelt aktiv den Preis</strong> innerhalb Ihrer Vorgaben und übergibt Ihnen qualifizierte Käufer mit Rückruf-Termin. Rund um die Uhr. Ohne Einrichtung. Ohne zusätzliches Personal.</p>
+    <span class="eyebrow reveal d1"><span class="dot"></span> Ihr digitaler Verkaufsberater — rund um die Uhr im Einsatz</span>
+    <h1 class="reveal d2">Sobald ein Interessent ein Objekt entdeckt, ist <span class="hl">sofort ein Berater da</span>.</h1>
+    <p class="lead reveal d3">Ihre Verkäufer sind beschäftigt — Converdino nicht. Der KI-Verkaufsberater begrüßt jeden Interessenten in Sekunden über WhatsApp, informiert fachkundig, <strong>verhandelt aktiv den Preis</strong> innerhalb Ihrer Vorgaben und <strong>alarmiert sofort den zuständigen Verkäufer</strong>. So reagiert Ihr Unternehmen sofort — überall dort, wo ein Kunde auf ein Objekt trifft.</p>
     <div class="hero-cta reveal d4">
-      <a href="#beratung" class="btn btn-primary">Kostenlose Beratung vereinbaren →</a>
+      <a href="https://cal.com/alexander-zajic/digitaler-verkaufsberater-24-7" target="_blank" rel="noopener" class="btn btn-primary">📅 Kostenlose Beratung vereinbaren →</a>
       <a href="#how" class="btn btn-ghost">So funktioniert es</a>
     </div>
-    <div class="hero-note reveal d5">✓ Keine Installation &nbsp;·&nbsp; ✓ Kein gebundener Mitarbeiter &nbsp;·&nbsp; ✓ Monatlich kündbar</div>
+    <div class="hero-note reveal d5">✓ Keine Mitarbeiterbindung &nbsp;·&nbsp; ✓ Keine Installation &nbsp;·&nbsp; ✓ Ab der ersten Minute profitabel</div>
   </div>
 </header>
 
 <!-- ============ TRUST STRIP ============ -->
 <div class="strip">
   <div class="wrap strip-in">
-    <span>🕐 <b>24/7</b> verfügbar</span><span class="sep">|</span>
-    <span>💬 Antwortet in <b>Sekunden</b></span><span class="sep">|</span>
-    <span>🤝 Hält Ihren <b>Mindestpreis</b></span><span class="sep">|</span>
-    <span>📲 Per <b>QR-Code</b> direkt am Produkt</span>
+    <span>🕐 <b>24/7</b> im Einsatz</span><span class="sep">|</span>
+    <span>⚡ Verkäufer <b>sofort informiert</b></span><span class="sep">|</span>
+    <span>👥 <b>Keine</b> Mitarbeiterbindung</span><span class="sep">|</span>
+    <span>📈 Ab der <b>1. Minute</b> profitabel</span>
+  </div>
+</div>
+
+<!-- ============ TOP CTA BANNER ============ -->
+<div class="topcta">
+  <div class="wrap topcta-in">
+    <div class="topcta-text">
+      <strong>Sehen Sie Ihren Verkaufsberater live in Aktion.</strong>
+      <span>Kostenlose Online-Beratung, 20 Minuten, unverbindlich.</span>
+    </div>
+    <a href="https://cal.com/alexander-zajic/digitaler-verkaufsberater-24-7" target="_blank" rel="noopener" class="btn btn-primary">📅 Beratungstermin vereinbaren →</a>
   </div>
 </div>
 
@@ -242,13 +260,13 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
 <section class="block" id="how">
   <div class="wrap">
     <div class="kicker">In vier Schritten startklar</div>
-    <h2>Sie laden Ihr Produkt hoch — den Rest macht der Bot.</h2>
+    <h2>Sie laden Ihr Objekt hoch — den Rest macht der Berater.</h2>
     <p class="sub">Kein technisches Wissen nötig. Vom Upload bis zum aktiven Verkäufer vergehen Minuten.</p>
     <div class="steps">
       <div class="step"><div class="num">1</div><h3>Produkt hochladen</h3><p>Fotos, Datenblätter, PDFs. Dazu Verkaufspreis und Mindestpreis. Fertig.</p></div>
       <div class="step"><div class="num">2</div><h3>KI lernt</h3><p>Die KI baut aus Ihren Unterlagen eine Verkaufs-Wissensdatenbank und eine Verhandlungsstrategie.</p></div>
       <div class="step"><div class="num">3</div><h3>QR & Link erhalten</h3><p>Sie bekommen QR-Code, WhatsApp-Link und Webseiten-Button — für Schaufenster, Inserat oder Produkt.</p></div>
-      <div class="step"><div class="num">4</div><h3>Bot verkauft</h3><p>Interessenten scannen, der Bot verhandelt und übergibt Ihnen den qualifizierten Lead mit Termin.</p></div>
+      <div class="step"><div class="num">4</div><h3>Verkäufer wird alarmiert</h3><p>Der Berater verhandelt, qualifiziert den Käufer und meldet den heißen Kontakt sofort an den zuständigen Verkäufer.</p></div>
     </div>
   </div>
 </section>
@@ -258,14 +276,14 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
   <div class="wrap">
     <div class="kicker">Warum Converdino</div>
     <h2>Jeder verlorene Interessent ist verlorener Umsatz.</h2>
-    <p class="sub">Sonntagabend, kein Verkäufer da — ohne Bot ist diese Anfrage weg. Mit Converdino wird sie zum Termin.</p>
+    <p class="sub">Ihre Verkäufer können nicht überall gleichzeitig sein. Converdino schon — und gibt jeden heißen Kontakt sofort an den richtigen Mann weiter.</p>
     <div class="vals">
-      <div class="val"><span class="ic">💸</span><h3>Amortisiert sich sofort</h3><p>Ein einziger geretteter Verkauf eines 24.000-€-Fahrzeugs entspricht dem rund 400-fachen der Monatsgebühr.</p></div>
-      <div class="val"><span class="ic">🧠</span><h3>Verhandelt wie ein Profi</h3><p>Der Bot gibt kleiner werdende Zugeständnisse, nutzt Argumente aus Ihren Unterlagen — und geht nie unter Ihren Mindestpreis.</p></div>
-      <div class="val"><span class="ic">⚡</span><h3>Antwortet sofort</h3><p>Während die Konkurrenz noch tippt, hat Ihr Bot den Interessenten schon begrüßt und qualifiziert.</p></div>
-      <div class="val"><span class="ic">📍</span><h3>Wirkt in der echten Welt</h3><p>QR-Code aufs Auto, ins Schaufenster, auf den Flyer. Der Einstieg ist überall, wo Ihr Produkt steht.</p></div>
+      <div class="val"><span class="ic">⚡</span><h3>Ihr Verkäufer reagiert sofort</h3><p>Sobald ein Interessent ein Objekt entdeckt, übernimmt der Berater — und alarmiert in Echtzeit den zuständigen Verkäufer. Kein Kontakt geht mehr verloren.</p></div>
+      <div class="val"><span class="ic">📈</span><h3>Ab der ersten Minute profitabel</h3><p>Ein einziger geretteter Verkauf eines 24.000-€-Objekts entspricht dem rund 400-fachen der Monatsgebühr. Der erste Abschluss hat sich schon gerechnet.</p></div>
+      <div class="val"><span class="ic">👥</span><h3>Keine Mitarbeiterbindung</h3><p>Kein Personal, das den Berater bedienen muss, keine zusätzliche Schicht. Ihr Team verkauft — der Berater fängt jede Anfrage ab.</p></div>
+      <div class="val"><span class="ic">🧠</span><h3>Verhandelt wie ein Profi</h3><p>Der Berater gibt kleiner werdende Zugeständnisse, nutzt Argumente aus Ihren Unterlagen — und geht nie unter Ihren Mindestpreis.</p></div>
+      <div class="val"><span class="ic">📍</span><h3>Überall, wo Ihr Objekt steht</h3><p>QR-Code aufs Fahrzeug, an die Maschine, ins Schaufenster, ins Inserat. Wo immer ein Kunde auf ein Objekt trifft, ist der Berater erreichbar.</p></div>
       <div class="val"><span class="ic">🛡️</span><h3>Sichere Abwicklung</h3><p>Reservierungs-Anzahlung läuft treuhänderisch über die Plattform — ein starkes Vertrauensargument bei hochpreisigen Gütern.</p></div>
-      <div class="val"><span class="ic">🔧</span><h3>Null Aufwand für Sie</h3><p>Kein Einbau, keine Wartung, kein zusätzlicher Mitarbeiter. Sie laden hoch, der Bot arbeitet.</p></div>
     </div>
   </div>
 </section>
@@ -274,12 +292,12 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
 <section class="block diff">
   <div class="wrap">
     <div class="kicker">Was uns einzigartig macht</div>
-    <h2>Andere Bots beantworten Fragen. Converdino verkauft.</h2>
+    <h2>Andere Bots beantworten Fragen. Converdino verkauft und meldet.</h2>
     <p class="sub">Drei Dinge, die kein anderer Anbieter gleichzeitig kann:</p>
     <div class="diff-grid">
       <div class="diff-card"><span class="tag">Verhandlung</span><h3>Er verhandelt wirklich</h3><p>Die meisten WhatsApp-Bots geben nur Auskunft oder verteilen Rabattcodes. Converdino führt ein echtes Verkaufsgespräch mit Preisspanne und Mindestpreis.</p></div>
-      <div class="diff-card"><span class="tag">Physische Welt</span><h3>Direkt am Produkt</h3><p>Online-Shop-Tools enden an der Webseite. Converdino startet dort, wo Ihr Produkt steht — per QR am Fahrzeug, an der Maschine, im Schaufenster.</p></div>
-      <div class="diff-card"><span class="tag">Null Aufwand</span><h3>Sofort amortisiert</h3><p>Kein Setup-Projekt, kein gebundener Mitarbeiter. Ein menschlicher Verkäufer kostet 3.000–4.000 € im Monat. Converdino ab 59,90 €.</p></div>
+      <div class="diff-card"><span class="tag">Sofort-Reaktion</span><h3>Ihr Verkäufer ist im Bilde</h3><p>Während andere Tools Anfragen sammeln, alarmiert Converdino in Echtzeit den zuständigen Verkäufer — Ihr Unternehmen reagiert sofort, nicht erst am nächsten Werktag.</p></div>
+      <div class="diff-card"><span class="tag">Profitabel ab Minute 1</span><h3>Kein Personal, kein Setup</h3><p>Keine Mitarbeiterbindung, kein Einrichtungsprojekt. Ein menschlicher Verkäufer kostet 3.000–4.000 € im Monat. Converdino ab 59,90 €.</p></div>
     </div>
   </div>
 </section>
@@ -307,8 +325,8 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
   <div class="wrap">
     <div class="consult">
       <div class="consult-in">
-        <h2>In 20 Minuten sehen Sie, wie Ihr Bot verkauft.</h2>
-        <p>Vereinbaren Sie eine kostenlose Online-Beratung per Videokonferenz. Wir richten gemeinsam einen ersten Bot ein und Sie sehen live, wie er verhandelt — unverbindlich.</p>
+        <h2>Vereinbaren Sie jetzt Ihre kostenlose Beratung.</h2>
+        <p>20 Minuten per Videokonferenz: Wir richten gemeinsam Ihren ersten Verkaufsberater ein und Sie sehen live, wie er informiert, verhandelt und Ihren Verkäufer alarmiert — unverbindlich.</p>
         <div class="cta-row">
           <!-- Buchung via cal.com — erzeugt automatisch den Videokonferenz-Link -->
           <a href="https://cal.com/alexander-zajic/digitaler-verkaufsberater-24-7" target="_blank" rel="noopener" class="btn btn-primary" id="bookBtn">📅 Termin auswählen</a>
@@ -328,7 +346,7 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
     <h2>Gut zu wissen</h2>
     <div style="margin-top:36px">
       <div class="faq-item"><div class="faq-q">Brauche ich technisches Wissen oder eine Installation? <span class="pm">+</span></div><div class="faq-a"><div>Nein. Sie laden Fotos und Unterlagen hoch und geben Ihre Preise ein — den Rest übernimmt die KI. Es gibt nichts zu installieren und keinen Mitarbeiter, der den Bot bedienen muss.</div></div></div>
-      <div class="faq-item"><div class="faq-q">Geht der Bot unter meinen Mindestpreis? <span class="pm">+</span></div><div class="faq-a"><div>Niemals. Sie legen Verkaufs- und Mindestpreis fest. Der Bot verhandelt nur innerhalb dieser Spanne, gibt höchstens zwei bis drei kleiner werdende Zugeständnisse und hält die Untergrenze konsequent.</div></div></div>
+      <div class="faq-item"><div class="faq-q">Geht der Berater unter meinen Mindestpreis? <span class="pm">+</span></div><div class="faq-a"><div>Niemals. Sie legen Verkaufs- und Mindestpreis fest. Der Berater verhandelt nur innerhalb dieser Spanne, gibt höchstens zwei bis drei kleiner werdende Zugeständnisse und hält die Untergrenze konsequent.</div></div></div>
       <div class="faq-item"><div class="faq-q">Für welche Branchen eignet sich Converdino? <span class="pm">+</span></div><div class="faq-a"><div>Besonders für hochpreisige Güter: Fahrzeuge, Maschinen, Premium-Artikel. Überall dort, wo ein einziger zusätzlicher Verkauf die Monatsgebühr um ein Vielfaches übersteigt.</div></div></div>
       <div class="faq-item"><div class="faq-q">Wie kommt der Käufer zum Bot? <span class="pm">+</span></div><div class="faq-a"><div>Über drei Wege, alle automatisch erzeugt: einen QR-Code (für Produkt, Schaufenster, Flyer), einen WhatsApp-Button für Ihre Webseite und ein einbettbares Widget. Alle führen zum selben Bot.</div></div></div>
       <div class="faq-item"><div class="faq-q">Was kostet es und wie lange bin ich gebunden? <span class="pm">+</span></div><div class="faq-a"><div>Ab 59,90 € pro Bot und Monat, mit Mengenrabatt nach unten. Das Abo ist monatlich und jederzeit kündbar.</div></div></div>
