@@ -36,6 +36,7 @@
   .btn:disabled { opacity: .5; cursor: not-allowed; }
   .btn-g { background: var(--g); }
   .btn-sm { padding: 8px 16px; font-size: 14px; }
+  .btn-grey { background: #e2e8e4; color: #6b7e74; }
   .pwbox { display: flex; gap: 8px; }
   .pwbox input { font-family: monospace; letter-spacing: .5px; }
   .pwbox button { white-space: nowrap; background: var(--g2); color: #fff; border: none; border-radius: 10px; padding: 0 16px; font-weight: 600; cursor: pointer; font-size: 14px; }
@@ -317,7 +318,15 @@
     <button type="button" class="btn" id="offerSendBtn" onclick="sendOffer()" style="margin-top:14px;">Angebot per E-Mail senden</button>
 
     <div style="margin-top:22px;">
-      <div class="tier-add-title">Zuletzt erstellte Angebote</div>
+      <div class="tier-add-title">Angebote</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button type="button" class="btn btn-sm" id="offerTabActive" onclick="switchOfferTab('active')">Aktive Angebote</button>
+        <button type="button" class="btn btn-sm btn-grey" id="offerTabArchive" onclick="switchOfferTab('archive')">Archiv</button>
+      </div>
+      <div class="kunden-suche">
+        <input type="text" id="offerSuche" placeholder="🔍 Angebot suchen (Firma, Nummer, E-Mail) …" oninput="renderOffers()">
+        <span id="offerSucheCount" class="suche-count"></span>
+      </div>
       <div id="offerListArea"><div class="empty">Lade Angebote …</div></div>
     </div>
     </div>
@@ -580,30 +589,69 @@ async function sendOffer() {
   btn.textContent = oldTxt;
 }
 
+// ── Angebotsliste mit Aktiv/Archiv + Suche ──
+let offerCache = [];          // alle Angebote (mit archived-Flag)
+let offerTab = 'active';      // 'active' | 'archive'
+
 async function loadOffers() {
   const area = document.getElementById('offerListArea');
   try {
     const r = await fetch(API + '/api/cv/admin/offers');
     const d = await r.json();
     if (!r.ok) { area.innerHTML = '<div class="empty">' + (d.error || 'Fehler beim Laden') + '</div>'; return; }
-    const offers = d.offers || [];
-    if (offers.length === 0) { area.innerHTML = '<div class="empty">Noch keine Angebote erstellt.</div>'; return; }
-    let html = '<table class="tier-table"><tr><th>Nummer</th><th>Firma</th><th>Slots</th><th>Netto/Mon.</th><th>Status</th><th>Datum</th></tr>';
-    offers.forEach(function(o) {
-      const dt = o.created_at ? new Date(o.created_at).toLocaleDateString('de-AT', {day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-      const statusTxt = o.status === 'versendet' ? '✓ versendet' : 'erstellt';
-      html += '<tr>' +
-        '<td><strong>' + (o.offer_number || '') + '</strong></td>' +
-        '<td>' + (o.company_name || '') + '</td>' +
-        '<td>' + (o.slots || '') + '</td>' +
-        '<td class="tier-monthly">' + fmtEuro(o.price_net) + '</td>' +
-        '<td style="font-size:12px;font-weight:600;color:var(--mu);">' + statusTxt + '</td>' +
-        '<td style="font-size:12px;color:var(--mu);">' + dt + '</td>' +
-        '</tr>';
-    });
-    html += '</table>';
-    area.innerHTML = html;
+    offerCache = d.offers || [];
+    renderOffers();
   } catch(e) { area.innerHTML = '<div class="empty">Fehler: ' + e.message + '</div>'; }
+}
+
+function switchOfferTab(tab) {
+  offerTab = tab;
+  document.getElementById('offerTabActive').className  = 'btn btn-sm' + (tab === 'active'  ? '' : ' btn-grey');
+  document.getElementById('offerTabArchive').className = 'btn btn-sm' + (tab === 'archive' ? '' : ' btn-grey');
+  renderOffers();
+}
+
+function renderOffers() {
+  const area = document.getElementById('offerListArea');
+  const countEl = document.getElementById('offerSucheCount');
+  const q = (document.getElementById('offerSuche').value || '').toLowerCase().trim();
+
+  // nach Tab filtern
+  let list = offerCache.filter(function(o) {
+    return offerTab === 'archive' ? o.archived : !o.archived;
+  });
+  // nach Suche filtern
+  if (q) {
+    list = list.filter(function(o) {
+      return (o.offer_number || '').toLowerCase().includes(q) ||
+             (o.company_name || '').toLowerCase().includes(q) ||
+             (o.contact_email || '').toLowerCase().includes(q);
+    });
+  }
+
+  if (countEl) countEl.textContent = list.length + (list.length === 1 ? ' Angebot' : ' Angebote');
+
+  if (list.length === 0) {
+    const leer = offerTab === 'archive' ? 'Keine archivierten Angebote.' : 'Keine aktiven Angebote.';
+    area.innerHTML = '<div class="empty">' + (q ? 'Keine Treffer.' : leer) + '</div>';
+    return;
+  }
+
+  let html = '<table class="tier-table"><tr><th>Nummer</th><th>Firma</th><th>Slots</th><th>Netto/Mon.</th><th>Gültig bis</th><th>Status</th></tr>';
+  list.forEach(function(o) {
+    const valid = o.valid_until ? new Date(o.valid_until).toLocaleDateString('de-AT', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+    const statusTxt = o.status === 'versendet' ? '✓ versendet' : 'erstellt';
+    html += '<tr>' +
+      '<td><strong>' + (o.offer_number || '') + '</strong></td>' +
+      '<td>' + (o.company_name || '') + '</td>' +
+      '<td>' + (o.slots || '') + '</td>' +
+      '<td class="tier-monthly">' + fmtEuro(o.price_net) + '</td>' +
+      '<td style="font-size:12px;color:var(--mu);">' + valid + '</td>' +
+      '<td style="font-size:12px;font-weight:600;color:var(--mu);">' + statusTxt + '</td>' +
+      '</tr>';
+  });
+  html += '</table>';
+  area.innerHTML = html;
 }
 
 // Karte auf-/zuklappen
