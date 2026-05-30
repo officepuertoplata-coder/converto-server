@@ -2380,6 +2380,15 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       : '';
     const dateStr = new Date(o.created_at || Date.now()).toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
 
+    // Anrede aus Geschlecht (salutation) + Name bilden
+    const sal  = (o.salutation || '').toLowerCase();
+    const name = (o.contact_name || '').trim();
+    let anrede;
+    if (sal === 'herr' && name)      anrede = 'Sehr geehrter Herr ' + name;
+    else if (sal === 'frau' && name) anrede = 'Sehr geehrte Frau ' + name;
+    else if (name)                   anrede = 'Sehr geehrte/r ' + name;
+    else                             anrede = 'Sehr geehrte Damen und Herren';
+
     // Teststellungs-Mailto (vorausgefüllt) — encodeURIComponent für Betreff/Body
     const testSubject = encodeURIComponent('Teststellung Converdino — ' + (o.company_name || ''));
     const testBody = encodeURIComponent(
@@ -2419,7 +2428,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       <div><strong>Angebot ${o.offer_number}</strong></div>
       <div>Datum: ${dateStr}</div>
     </div>
-    <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Sehr geehrte/r ${o.contact_name || 'Damen und Herren'},</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 14px">${anrede},</p>
     <p style="font-size:15px;line-height:1.6;margin:0 0 6px">jeder Interessent, der sich heute nicht sofort gut betreut fühlt, ist morgen beim Mitbewerber. Converdino sorgt dafür, dass <strong>${o.company_name}</strong> keinen einzigen Kontakt mehr verliert — mit einem digitalen Verkaufsberater, der rund um die Uhr für Sie arbeitet.</p>
   </div>
 
@@ -2469,7 +2478,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   <div style="background:#eef9f1;border:1px solid #d3ebda;border-radius:12px;padding:24px;margin-bottom:16px;text-align:center">
     <div style="font-size:17px;font-weight:800;color:#0f6b34;margin-bottom:6px">Überzeugen Sie sich selbst</div>
     <p style="font-size:13px;color:#33473b;line-height:1.5;margin:0 0 18px">Lernen Sie Converdino in einem kurzen Video­gespräch kennen — oder fordern Sie eine unverbindliche Teststellung an.</p>
-    <a href="${CV_OFFER_CAL_URL}" style="display:inline-block;background:#25d366;color:#0d1b12;font-weight:800;font-size:15px;text-decoration:none;padding:13px 28px;border-radius:9px;margin:4px 6px">📅 Videokonferenz buchen</a>
+    <a href="${CV_OFFER_CAL_URL}" style="display:inline-block;background:#fff;color:#0f6b34;border:2px solid #1faa52;font-weight:800;font-size:15px;text-decoration:none;padding:11px 26px;border-radius:9px;margin:4px 6px">📅 Videokonferenz buchen</a>
     <a href="${testMailto}" style="display:inline-block;background:#fff;color:#0f6b34;border:2px solid #1faa52;font-weight:800;font-size:15px;text-decoration:none;padding:11px 26px;border-radius:9px;margin:4px 6px">🧪 Teststellung anfordern</a>
   </div>
 
@@ -2489,7 +2498,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     const text =
 `Angebot ${o.offer_number} — Datum: ${dateStr}
 
-Sehr geehrte/r ${o.contact_name || 'Damen und Herren'},
+${anrede},
 
 jeder Interessent, der sich heute nicht sofort gut betreut fühlt, ist morgen beim Mitbewerber. Converdino sorgt dafür, dass ${o.company_name} keinen einzigen Kontakt mehr verliert — mit einem digitalen Verkaufsberater, der rund um die Uhr arbeitet.
 
@@ -2543,7 +2552,7 @@ Ihr Converdino-Team`;
   // POST /api/cv/admin/offers — Angebot erzeugen, speichern, per Mail senden
   app.post('/api/cv/admin/offers', async (req, res) => {
     try {
-      const { company_name, address, contact_name, contact_email } = req.body;
+      const { company_name, address, contact_name, contact_email, salutation } = req.body;
       const slots = parseInt(req.body.slots, 10);
       if (!company_name || !contact_email) return res.status(400).json({ error: 'Firma und E-Mail sind Pflicht.' });
       if (!slots || slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
@@ -2586,8 +2595,8 @@ Ihr Converdino-Team`;
         return res.status(500).json({ error: 'Speichern fehlgeschlagen: ' + insErr.message });
       }
 
-      // Mail bauen + senden
-      const { html, text } = cvBuildOfferEmail(saved, p);
+      // Mail bauen + senden (salutation nur für die Anrede, nicht in DB nötig)
+      const { html, text } = cvBuildOfferEmail({ ...saved, salutation }, p);
       const subject = `Ihr Converdino-Angebot ${offerNumber} für ${company_name}`;
       const sent = await cvSendOfferEmail(contact_email, subject, html, text);
 
