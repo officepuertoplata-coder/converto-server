@@ -124,9 +124,59 @@ module.exports = function(app, supabase, deps) {
         for (const a of (articles || [])) articlesBySlot[a.slot_id] = a;
       }
 
+      // ── Erfolgs-Trichter pro Slot (Gespräche → Leads → Abschlüsse) ──
+      // Daten kommen aus cv_bot_sessions (Gespräche) + cv_events (Stufen).
+      let statsBySlot = {};
+      if (slotIds.length > 0) {
+        // Gespräche zählen (jede Session = ein Gespräch)
+        const { data: sess } = await supabase
+          .from('cv_bot_sessions')
+          .select('slot_id, buyer_phone')
+          .in('slot_id', slotIds);
+        // Events laden
+        const { data: evs } = await supabase
+          .from('cv_events')
+          .select('slot_id, buyer_phone, type')
+          .in('slot_id', slotIds);
+
+        // Pro Slot + Käufer die höchste erreichte Stufe bestimmen
+        // Stufe: 0 = nur Gespräch, 1 = Lead, 2 = Abschluss
+        const stufeProKäufer = {}; // key: slotId|phone → stufe
+        const gespraecheProSlot = {}; // slotId → Set(phone)
+        for (const s of (sess || [])) {
+          const slot = s.slot_id;
+          if (!gespraecheProSlot[slot]) gespraecheProSlot[slot] = new Set();
+          gespraecheProSlot[slot].add(s.buyer_phone || '?');
+        }
+        const setStufe = function(slot, phone, stufe) {
+          const k = slot + '|' + (phone || '?');
+          if (stufeProKäufer[k] === undefined || stufe > stufeProKäufer[k]) stufeProKäufer[k] = stufe;
+        };
+        for (const ev of (evs || [])) {
+          const t = ev.type;
+          if (t === 'paid' || t === 'deal' || t === 'agreed') setStufe(ev.slot_id, ev.buyer_phone, 2);
+          else if (t === 'hot_lead' || t === 'contact_added') setStufe(ev.slot_id, ev.buyer_phone, 1);
+        }
+        // Initialisieren
+        for (const id of slotIds) statsBySlot[id] = { gespraeche: 0, leads: 0, abschluesse: 0 };
+        // Gespräche zählen
+        for (const id of slotIds) {
+          statsBySlot[id].gespraeche = gespraecheProSlot[id] ? gespraecheProSlot[id].size : 0;
+        }
+        // Leads (Stufe ≥ 1) und Abschlüsse (Stufe = 2) kumulativ zählen
+        for (const k in stufeProKäufer) {
+          const slot = k.split('|')[0];
+          if (!statsBySlot[slot]) continue;
+          const stufe = stufeProKäufer[k];
+          if (stufe >= 1) statsBySlot[slot].leads++;
+          if (stufe >= 2) statsBySlot[slot].abschluesse++;
+        }
+      }
+
       const enrichedSlots = (slots || []).map(s => ({
         ...s,
-        article: articlesBySlot[s.id] || null
+        article: articlesBySlot[s.id] || null,
+        stats: statsBySlot[s.id] || { gespraeche: 0, leads: 0, abschluesse: 0 }
       }));
 
       res.json({
