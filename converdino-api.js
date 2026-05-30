@@ -128,10 +128,10 @@ module.exports = function(app, supabase, deps) {
       // Daten kommen aus cv_bot_sessions (Gespräche) + cv_events (Stufen).
       let statsBySlot = {};
       if (slotIds.length > 0) {
-        // Gespräche zählen (jede Session = ein Gespräch)
+        // Gespräche zählen (jede Session = ein Gespräch), mit Datum für Monatszählung
         const { data: sess } = await supabase
           .from('cv_bot_sessions')
-          .select('slot_id, buyer_phone')
+          .select('slot_id, buyer_phone, created_at, last_message_at')
           .in('slot_id', slotIds);
         // Events laden
         const { data: evs } = await supabase
@@ -139,14 +139,24 @@ module.exports = function(app, supabase, deps) {
           .select('slot_id, buyer_phone, type')
           .in('slot_id', slotIds);
 
+        // Monatsbeginn (für "Gespräche diesen Monat")
+        const jetzt = new Date();
+        const monatsStart = new Date(jetzt.getFullYear(), jetzt.getMonth(), 1).getTime();
+
         // Pro Slot + Käufer die höchste erreichte Stufe bestimmen
         // Stufe: 0 = nur Gespräch, 1 = Lead, 2 = Abschluss
         const stufeProKäufer = {}; // key: slotId|phone → stufe
-        const gespraecheProSlot = {}; // slotId → Set(phone)
+        const gespraecheProSlot = {}; // slotId → Set(phone)  — eindeutige Käufer gesamt
+        const monatProSlot = {};      // slotId → Anzahl Gespräche (Sessions) diesen Monat
         for (const s of (sess || [])) {
           const slot = s.slot_id;
           if (!gespraecheProSlot[slot]) gespraecheProSlot[slot] = new Set();
           gespraecheProSlot[slot].add(s.buyer_phone || '?');
+          // Monatszählung: jede Session dieses Monats zählt einzeln.
+          // Datum: created_at, ersatzweise last_message_at (falls created_at fehlt).
+          const dateStr = s.created_at || s.last_message_at;
+          const ts = dateStr ? new Date(dateStr).getTime() : 0;
+          if (ts >= monatsStart) monatProSlot[slot] = (monatProSlot[slot] || 0) + 1;
         }
         const setStufe = function(slot, phone, stufe) {
           const k = slot + '|' + (phone || '?');
@@ -158,10 +168,11 @@ module.exports = function(app, supabase, deps) {
           else if (t === 'hot_lead' || t === 'contact_added') setStufe(ev.slot_id, ev.buyer_phone, 1);
         }
         // Initialisieren
-        for (const id of slotIds) statsBySlot[id] = { gespraeche: 0, leads: 0, abschluesse: 0 };
-        // Gespräche zählen
+        for (const id of slotIds) statsBySlot[id] = { gespraeche: 0, leads: 0, abschluesse: 0, monat: 0 };
+        // Gespräche (eindeutige Käufer gesamt) + Monatszählung
         for (const id of slotIds) {
           statsBySlot[id].gespraeche = gespraecheProSlot[id] ? gespraecheProSlot[id].size : 0;
+          statsBySlot[id].monat = monatProSlot[id] || 0;
         }
         // Leads (Stufe ≥ 1) und Abschlüsse (Stufe = 2) kumulativ zählen
         for (const k in stufeProKäufer) {
@@ -176,7 +187,7 @@ module.exports = function(app, supabase, deps) {
       const enrichedSlots = (slots || []).map(s => ({
         ...s,
         article: articlesBySlot[s.id] || null,
-        stats: statsBySlot[s.id] || { gespraeche: 0, leads: 0, abschluesse: 0 }
+        stats: statsBySlot[s.id] || { gespraeche: 0, leads: 0, abschluesse: 0, monat: 0 }
       }));
 
       res.json({
@@ -993,7 +1004,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     // DB-Session anlegen (für Logging + Persistenz)
     const { data: dbSession } = await supabase
       .from('cv_bot_sessions')
-      .insert({ slot_id: slot.id, buyer_phone: phone, messages: [], status: 'active' })
+      .insert({ slot_id: slot.id, buyer_phone: phone, messages: [], status: 'active', created_at: new Date().toISOString() })
       .select()
       .single();
 
