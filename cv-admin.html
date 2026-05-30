@@ -269,6 +269,52 @@
     </div>
   </div>
 
+  <!-- Angebot erstellen -->
+  <div class="card">
+    <h2 class="card-toggle collapsed" onclick="toggleCard(this)">📄 Angebot erstellen <span class="card-arrow">▾</span></h2>
+    <div class="card-body collapsed">
+    <div class="sub" style="margin-bottom:14px;">Angebot für einen Interessenten erstellen und per E-Mail senden. Preis = Monatspreis (progressiv), zzgl. gesetzlicher USt. Anbieter: Platin-Sport Marketing &amp; Event GmbH.</div>
+    <div id="offerMsg" class="msg"></div>
+    <div class="grid">
+      <div class="field">
+        <label>Firmenname *</label>
+        <input id="o-company" placeholder="z. B. Autohaus Müller GmbH">
+      </div>
+      <div class="field">
+        <label>Ansprechpartner</label>
+        <input id="o-contact" placeholder="z. B. Hans Müller">
+      </div>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label>E-Mail (Empfänger) *</label>
+        <input id="o-email" placeholder="kunde@firma.at">
+      </div>
+      <div class="field">
+        <label>Anzahl Slots *</label>
+        <input type="number" id="o-slots" placeholder="z. B. 10" min="1" oninput="offerPreview()">
+      </div>
+    </div>
+    <div class="field">
+      <label>Adresse (optional)</label>
+      <input id="o-address" placeholder="Straße, PLZ Ort">
+    </div>
+
+    <div class="tier-calc" style="margin-top:14px;">
+      <div class="tier-add-title">Vorschau (Monatspreis)</div>
+      <div id="offerResult" class="tier-calc-result">— <span style="font-size:13px;font-weight:600;">Slot-Anzahl eingeben</span></div>
+      <div id="offerDetail" class="tier-calc-detail"></div>
+    </div>
+
+    <button type="button" class="btn" id="offerSendBtn" onclick="sendOffer()" style="margin-top:14px;">Angebot per E-Mail senden</button>
+
+    <div style="margin-top:22px;">
+      <div class="tier-add-title">Zuletzt erstellte Angebote</div>
+      <div id="offerListArea"><div class="empty">Lade Angebote …</div></div>
+    </div>
+    </div>
+  </div>
+
   <!-- Kundenliste -->
   <div class="card">
     <h2 class="card-toggle" onclick="toggleCard(this)">📋 Kunden <span class="card-arrow">▾</span></h2>
@@ -336,6 +382,7 @@ function preisMitUst(netto) {
   suggestPw();
   loadCustomers();
   loadTiers();
+  loadOffers();
 })();
 
 // ── Preisstaffeln ──
@@ -440,6 +487,113 @@ function calcPrice() {
       detEl.textContent = teile.join('  +  ') + '  (netto)';
     } catch(e) { resEl.textContent = '—'; detEl.textContent = 'Fehler: ' + e.message; }
   }, 300);
+}
+
+// ── Angebots-Generator ──
+let offerPreviewTimer = null;
+let offerLastPreview = null; // letzte gültige Vorschau (für Sende-Check)
+
+function offerPreview() {
+  clearTimeout(offerPreviewTimer);
+  const slots = parseInt(document.getElementById('o-slots').value, 10);
+  const resEl = document.getElementById('offerResult');
+  const detEl = document.getElementById('offerDetail');
+  offerLastPreview = null;
+  if (!slots || slots < 1) {
+    resEl.innerHTML = '— <span style="font-size:13px;font-weight:600;">Slot-Anzahl eingeben</span>';
+    detEl.textContent = '';
+    return;
+  }
+  offerPreviewTimer = setTimeout(async function() {
+    try {
+      const r = await fetch(API + '/api/cv/admin/offers/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slots: slots })
+      });
+      const d = await r.json();
+      if (!r.ok) { resEl.textContent = '—'; detEl.textContent = d.error || ''; return; }
+      offerLastPreview = d;
+      resEl.innerHTML = fmtEuro(d.net) + ' <span style="font-size:13px;font-weight:600;">netto / Monat</span>' +
+        '<div class="calc-brutto">zzgl. ' + d.vatRate + '% USt = ' + fmtEuro(d.gross) + ' brutto / Monat</div>';
+      const gruppen = {};
+      (d.detail || []).forEach(function(x) { gruppen[x.preis] = (gruppen[x.preis] || 0) + 1; });
+      const teile = Object.keys(gruppen).sort((a,b)=>b-a).map(function(preis) {
+        return gruppen[preis] + '× ' + fmtEuro(preis);
+      });
+      detEl.textContent = teile.join('  +  ') + '  (netto)';
+    } catch(e) { resEl.textContent = '—'; detEl.textContent = 'Fehler: ' + e.message; }
+  }, 300);
+}
+
+async function sendOffer() {
+  const company = document.getElementById('o-company').value.trim();
+  const contact = document.getElementById('o-contact').value.trim();
+  const email   = document.getElementById('o-email').value.trim();
+  const address = document.getElementById('o-address').value.trim();
+  const slots   = parseInt(document.getElementById('o-slots').value, 10);
+  const msgEl   = document.getElementById('offerMsg');
+  const btn     = document.getElementById('offerSendBtn');
+
+  msgEl.className = 'msg';
+  if (!company) { msgEl.className = 'msg err'; msgEl.textContent = 'Firmenname fehlt.'; return; }
+  if (!email || !/.+@.+\..+/.test(email)) { msgEl.className = 'msg err'; msgEl.textContent = 'Gültige E-Mail fehlt.'; return; }
+  if (!slots || slots < 1) { msgEl.className = 'msg err'; msgEl.textContent = 'Slot-Anzahl fehlt.'; return; }
+
+  if (!confirm('Angebot an ' + email + ' senden?')) return;
+
+  btn.disabled = true;
+  const oldTxt = btn.textContent;
+  btn.textContent = 'Sende …';
+  try {
+    const r = await fetch(API + '/api/cv/admin/offers', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_name: company, contact_name: contact, contact_email: email, address: address, slots: slots })
+    });
+    const d = await r.json();
+    if (!r.ok) { msgEl.className = 'msg err'; msgEl.textContent = d.error || 'Fehler beim Senden.'; }
+    else {
+      msgEl.className = d.sent ? 'msg ok' : 'msg err';
+      msgEl.textContent = (d.sent ? '✓ Angebot ' + d.offer_number + ' versendet an ' + email : '⚠ Angebot ' + d.offer_number + ' erstellt, aber Mailversand fehlgeschlagen') +
+        ' · ' + fmtEuro(d.net) + ' netto / Monat';
+      if (d.sent) {
+        document.getElementById('o-company').value = '';
+        document.getElementById('o-contact').value = '';
+        document.getElementById('o-email').value = '';
+        document.getElementById('o-address').value = '';
+        document.getElementById('o-slots').value = '';
+        offerPreview();
+      }
+      loadOffers();
+    }
+  } catch(e) { msgEl.className = 'msg err'; msgEl.textContent = 'Fehler: ' + e.message; }
+  btn.disabled = false;
+  btn.textContent = oldTxt;
+}
+
+async function loadOffers() {
+  const area = document.getElementById('offerListArea');
+  try {
+    const r = await fetch(API + '/api/cv/admin/offers');
+    const d = await r.json();
+    if (!r.ok) { area.innerHTML = '<div class="empty">' + (d.error || 'Fehler beim Laden') + '</div>'; return; }
+    const offers = d.offers || [];
+    if (offers.length === 0) { area.innerHTML = '<div class="empty">Noch keine Angebote erstellt.</div>'; return; }
+    let html = '<table class="tier-table"><tr><th>Nummer</th><th>Firma</th><th>Slots</th><th>Netto/Mon.</th><th>Status</th><th>Datum</th></tr>';
+    offers.forEach(function(o) {
+      const dt = o.created_at ? new Date(o.created_at).toLocaleDateString('de-AT', {day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+      const statusTxt = o.status === 'versendet' ? '✓ versendet' : 'erstellt';
+      html += '<tr>' +
+        '<td><strong>' + (o.offer_number || '') + '</strong></td>' +
+        '<td>' + (o.company_name || '') + '</td>' +
+        '<td>' + (o.slots || '') + '</td>' +
+        '<td class="tier-monthly">' + fmtEuro(o.price_net) + '</td>' +
+        '<td style="font-size:12px;font-weight:600;color:var(--mu);">' + statusTxt + '</td>' +
+        '<td style="font-size:12px;color:var(--mu);">' + dt + '</td>' +
+        '</tr>';
+    });
+    html += '</table>';
+    area.innerHTML = html;
+  } catch(e) { area.innerHTML = '<div class="empty">Fehler: ' + e.message + '</div>'; }
 }
 
 // Karte auf-/zuklappen
