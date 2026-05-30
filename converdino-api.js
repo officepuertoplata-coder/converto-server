@@ -2366,6 +2366,7 @@ Du chattest mit einem ANONYMEN Webseiten-Besucher. Du hast KEINE Telefonnummer u
 - Berate und verhandle zunächst ganz normal.
 - Sobald ernsthaftes Kaufinteresse besteht (Preis-Einigung in Sicht, konkrete Kaufabsicht, oder der Besucher möchte einen Rückruf/ein Angebot), bitte den Besucher freundlich, seine Kontaktdaten über das Formular zu hinterlassen, damit sich der zuständige Verkäufer persönlich meldet.
 - Formuliere etwa so: "Damit sich unser Verkäufer direkt bei Ihnen meldet, hinterlassen Sie bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. mit "du" wenn Anrede=Du)
+- WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (in doppelten eckigen Klammern). Der Besucher sieht ihn nicht — er löst nur das Formular aus. Setze ihn NUR, wenn wirklich Kontaktdaten gesammelt werden sollen, und höchstens einmal pro Gespräch.
 - Erfinde NIEMALS Kontaktdaten und tu nicht so, als hättest du welche.
 
 ═══════════════════════════════════════════════════════
@@ -2440,16 +2441,23 @@ REGELN:
     if (!response || !response.ok) {
       console.error('[CV Web] Call fehlgeschlagen:', lastErr);
       const du = (article.anrede || 'Sie') === 'Du';
-      return du
+      return { reply: du
         ? 'Sorry, da war kurz eine technische Störung. Stell deine Frage gern nochmal.'
-        : 'Entschuldigen Sie, da war kurz eine technische Störung. Stellen Sie Ihre Frage gern nochmal.';
+        : 'Entschuldigen Sie, da war kurz eine technische Störung. Stellen Sie Ihre Frage gern nochmal.', showContactForm: false };
     }
 
     const data = await response.json();
     const blocks = data.content || [];
     let reply = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
     if (!reply) reply = 'Einen Moment bitte.';
-    return reply;
+
+    // Kontaktformular-Marker erkennen und aus dem sichtbaren Text entfernen
+    let showContactForm = false;
+    if (reply.indexOf('[[KONTAKT]]') !== -1) {
+      showContactForm = true;
+      reply = reply.replace(/\[\[KONTAKT\]\]/g, '').trim();
+    }
+    return { reply, showContactForm };
   }
 
   // Hilfsfunktion: Slot + Artikel über Bot-Code laden (für Web)
@@ -2473,7 +2481,8 @@ REGELN:
       if (loaded.error) return res.status(404).json({ error: loaded.error });
 
       const token = 'web_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-      const reply = await cvRunWebTurn(loaded.slot, loaded.article, [], null);
+      const turn = await cvRunWebTurn(loaded.slot, loaded.article, [], null);
+      const reply = turn.reply;
       const history = [{ role: 'assistant', content: reply }];
 
       const { error: insErr } = await supabase.from('cv_web_sessions').insert({
@@ -2483,7 +2492,7 @@ REGELN:
       });
       if (insErr) console.error('[CV Web start] INSERT-Fehler:', insErr.message);
 
-      res.json({ session_token: token, reply, product: loaded.article.title });
+      res.json({ session_token: token, reply, product: loaded.article.title, show_contact_form: turn.showContactForm });
     } catch(e) {
       console.error('[CV Web start]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
@@ -2510,16 +2519,84 @@ REGELN:
       const history = Array.isArray(sess.messages) ? sess.messages.slice() : [];
       history.push({ role: 'user', content: msg });
 
-      const reply = await cvRunWebTurn(slot, article, history, msg);
-      history.push({ role: 'assistant', content: reply });
+      const turn = await cvRunWebTurn(slot, article, history, msg);
+      history.push({ role: 'assistant', content: turn.reply });
 
       await supabase.from('cv_web_sessions')
         .update({ messages: history, last_message_at: new Date().toISOString() })
         .eq('session_token', token);
 
-      res.json({ reply });
+      res.json({ reply: turn.reply, show_contact_form: turn.showContactForm });
     } catch(e) {
       console.error('[CV Web message]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // POST /api/cv/web/lead — Kontaktdaten aus dem Web-Formular sichern + Verkäufer alarmieren
+  // Body: { session_token, name, email, phone }
+  app.post('/api/cv/web/lead', async (req, res) => {
+    try {
+      const token = (req.body.session_token || '').trim();
+      const name  = (req.body.name  || '').trim();
+      const email = (req.body.email || '').trim();
+      const phone = (req.body.phone || '').trim();
+      if (!token) return res.status(400).json({ error: 'session_token fehlt.' });
+      if (!name)  return res.status(400).json({ error: 'Name fehlt.' });
+      if (!email && !phone) return res.status(400).json({ error: 'Bitte E-Mail oder Telefon angeben.' });
+
+      // Session + Slot + Artikel laden
+      const { data: sess } = await supabase
+        .from('cv_web_sessions').select('*').eq('session_token', token).maybeSingle();
+      if (!sess) return res.status(404).json({ error: 'Session nicht gefunden.' });
+
+      const { data: slot }    = await supabase.from('cv_slots').select('*').eq('id', sess.slot_id).maybeSingle();
+      const { data: article } = await supabase.from('cv_articles').select('title').eq('slot_id', sess.slot_id).maybeSingle();
+      const productTitle = article?.title || 'Artikel';
+
+      // Lead in Session speichern
+      const { error: updErr } = await supabase.from('cv_web_sessions')
+        .update({ lead_name: name, lead_email: email || null, lead_phone: phone || null, lead_captured: true })
+        .eq('session_token', token);
+      if (updErr) console.error('[CV Web lead] UPDATE-Fehler:', updErr.message);
+
+      // Verkäufer-Adresse über Subscription ermitteln
+      let sellerEmail = null, notifyOn = true;
+      if (slot?.subscription_id) {
+        const { data: sub } = await supabase
+          .from('cv_subscriptions').select('seller_email, email_notifications_enabled')
+          .eq('id', slot.subscription_id).maybeSingle();
+        sellerEmail = sub?.seller_email || null;
+        notifyOn = sub?.email_notifications_enabled !== false;
+      }
+
+      // Verkäufer per Mail alarmieren (eigene, schlanke Lead-Mail)
+      let mailed = false;
+      if (sellerEmail && notifyOn) {
+        const subject = `🌐 Neue Web-Anfrage — ${productTitle}`;
+        const html = `<!DOCTYPE html><html lang="de"><body style="margin:0;background:#f6f9f5;font-family:Arial,Helvetica,sans-serif;color:#0d1b12">
+<div style="max-width:560px;margin:0 auto;padding:24px">
+  <div style="font-size:22px;font-weight:800;margin-bottom:4px"><span style="color:#0f6b34">CONVER</span><span style="color:#25d366">DINO</span></div>
+  <div style="font-size:13px;color:#33473b;margin-bottom:20px">Neuer Lead über den Web-Chat</div>
+  <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:22px">
+    <p style="font-size:14px;margin:0 0 14px">Ein Interessent hat über den Web-Chat auf Ihrer Seite zu <strong>${productTitle}</strong> Kontaktdaten hinterlassen:</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+      <tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">Name</td><td style="padding:8px 0;text-align:right;font-weight:600">${name}</td></tr>
+      ${email ? `<tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">E-Mail</td><td style="padding:8px 0;text-align:right;font-weight:600">${email}</td></tr>` : ''}
+      ${phone ? `<tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">Telefon</td><td style="padding:8px 0;text-align:right;font-weight:600">${phone}</td></tr>` : ''}
+    </table>
+    <p style="font-size:13px;color:#33473b;line-height:1.6;margin:16px 0 0">Bitte zeitnah persönlich melden — der Interessent erwartet Ihren Kontakt.</p>
+  </div>
+</div></body></html>`;
+        const text = `Neuer Web-Lead — ${productTitle}\n\nName: ${name}\n${email ? 'E-Mail: ' + email + '\n' : ''}${phone ? 'Telefon: ' + phone + '\n' : ''}\nBitte zeitnah persönlich melden.`;
+        mailed = await cvSendEmail(sellerEmail, subject, html, text);
+      } else {
+        console.warn('[CV Web lead] Keine seller_email/Benachrichtigung — Lead gespeichert, aber nicht gemailt.');
+      }
+
+      res.json({ success: true, mailed });
+    } catch(e) {
+      console.error('[CV Web lead]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
     }
   });
