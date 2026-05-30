@@ -974,6 +974,37 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
   const cvBotSessions = new Map();
   const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 Stunden
 
+  // ── BOT-CODE IN TEXT FINDEN (robust) ─────────────────────
+  // Findet einen aktiven bot_code irgendwo im Text — egal ob die Nachricht
+  // nur aus dem Code besteht oder ob er in einem Satz steht, und egal welches
+  // Präfix der Code hat (BOT-…, Anfrage-…, …). Prüft gegen die echten,
+  // aktiven Codes in der Datenbank → keine Fehlauslösung durch normale Wörter.
+  async function cvFindBotCodeInText(rawText) {
+    try {
+      const text = (rawText || '').trim();
+      if (!text) return null;
+      // 1) Kandidaten aus dem Text ziehen: Wörter mit Bindestrich + Ziffern/Buchstaben,
+      //    z.B. "BOT-A3F7", "Anfrage-45SW". Satzzeichen am Rand entfernen.
+      const kandidaten = (text.match(/[A-Za-zÄÖÜäöü]+-[A-Za-z0-9]{3,10}/g) || [])
+        .map(s => s.replace(/[.,!?;:]+$/, ''));
+      if (kandidaten.length === 0) return null;
+      // 2) Gegen aktive Slots prüfen (case-insensitive)
+      const { data: slots } = await supabase
+        .from('cv_slots')
+        .select('bot_code')
+        .eq('status', 'active')
+        .not('bot_code', 'is', null);
+      const aktive = (slots || []).map(s => (s.bot_code || '').toLowerCase());
+      for (const k of kandidaten) {
+        if (aktive.indexOf(k.toLowerCase()) !== -1) return k; // exakter Treffer
+      }
+      return null;
+    } catch(e) {
+      console.error('[CV findBotCode]', e.message);
+      return null;
+    }
+  }
+
   // ── BOT-KONVERSATION STARTEN ─────────────────────────────
   async function cvHandleBotStart(phone, botCode, phoneId) {
     console.log(`[CV Bot] Start: phone=${phone}, code=${botCode}`);
@@ -981,7 +1012,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const { data: slot } = await supabase
       .from('cv_slots')
       .select('*')
-      .eq('bot_code', botCode)
+      .ilike('bot_code', botCode)
       .eq('status', 'active')
       .maybeSingle();
 
@@ -2731,6 +2762,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   return {
     handleBotStart: cvHandleBotStart,
     getActiveBotSession: cvGetActiveBotSession,
-    handleBotReply: cvHandleBotReply
+    handleBotReply: cvHandleBotReply,
+    findBotCodeInText: cvFindBotCodeInText
   };
 };
