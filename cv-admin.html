@@ -41,6 +41,18 @@
   .msg { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; display: none; }
   .msg.ok { background: #e7f8ee; color: #0f7a3d; display: block; }
   .msg.err { background: #fdecec; color: var(--red); display: block; }
+  .kc-head-btns { display: flex; gap: 8px; flex-shrink: 0; }
+  .slot-view { margin: 14px 0; padding: 14px; background: #f7faf8; border: 1px solid var(--border); border-radius: 12px; }
+  .sv-slot { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .sv-slot:last-child { border-bottom: none; }
+  .sv-num { width: 26px; height: 26px; border-radius: 50%; background: var(--dark); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .sv-info { flex: 1; }
+  .sv-title { font-weight: 600; font-size: 14px; }
+  .sv-sub { font-size: 12px; color: var(--mu); }
+  .kunden-suche { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .kunden-suche input { flex: 1; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; }
+  .kunden-suche input:focus { outline: none; border-color: var(--g); }
+  .suche-count { font-size: 13px; color: var(--mu); white-space: nowrap; }
   .kunden-liste { display: flex; flex-direction: column; gap: 16px; }
   .kunde-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 20px 22px; box-shadow: var(--shadow); }
   .kc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -140,6 +152,10 @@
   <!-- Kundenliste -->
   <div class="card">
     <h2>📋 Kunden</h2>
+    <div class="kunden-suche">
+      <input type="text" id="kundenSuche" placeholder="🔍 Kunde suchen (Login, Firma, Ansprechpartner) …" oninput="filterKunden()">
+      <span id="sucheCount" class="suche-count"></span>
+    </div>
     <div id="listMsg" class="msg"></div>
     <div id="listArea">
       <div class="empty">Lade Kunden …</div>
@@ -283,17 +299,25 @@ async function loadCustomers() {
       if (email)   metaParts.push(esc(email));
       const metaLine = metaParts.length ? metaParts.join('&nbsp;·&nbsp;') : '<span style="color:var(--mu)">keine Kontaktdaten</span>';
 
-      cards += '<div class="kunde-card">' +
+      // Durchsuchbarer Text (klein geschrieben) für die Suchleiste
+      const sucheText = (c.user_login + ' ' + (c.company_name || '') + ' ' + (c.contact_name || '') + ' ' + (c.contact_phone || '') + ' ' + (c.seller_email || '')).toLowerCase();
+
+      cards += '<div class="kunde-card" data-suche="' + esc(sucheText) + '">' +
         // Kopf
         '<div class="kc-head">' +
           '<div>' +
             '<div class="kc-company">' + esc(company) + '</div>' +
             '<div class="kc-login"><span class="login-name">' + esc(c.user_login) + '</span> ' + statusTag + '</div>' +
           '</div>' +
-          '<button type="button" class="btn btn-dark btn-sm" onclick="toggleEdit(\'' + c.id + '\')">Bearbeiten</button>' +
+          '<div class="kc-head-btns">' +
+            '<button type="button" class="btn btn-g btn-sm" onclick="toggleSlotView(\'' + c.id + '\',\'' + esc(c.user_login) + '\')">Slots ansehen</button>' +
+            '<button type="button" class="btn btn-dark btn-sm" onclick="toggleEdit(\'' + c.id + '\')">Bearbeiten</button>' +
+          '</div>' +
         '</div>' +
         // Meta
         '<div class="kc-meta">' + metaLine + '</div>' +
+        // Slot-Einblick (aufklappbar, read-only)
+        '<div id="slotview-' + c.id + '" class="slot-view" style="display:none;"></div>' +
         // Kennzahlen
         '<div class="kc-stats">' +
           '<div class="kc-stat"><span class="kc-num">' + c.slots_created + '</span><span class="kc-lbl">Slots</span></div>' +
@@ -335,9 +359,80 @@ async function loadCustomers() {
       '</div>';
     }
     area.innerHTML = '<div class="kunden-liste">' + cards + '</div>';
+    filterKunden(); // falls schon ein Suchbegriff aktiv ist
   } catch(e) {
     area.innerHTML = '';
     showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false);
+  }
+}
+
+// ── Kunden filtern (Suchleiste) ──
+function filterKunden() {
+  const feld = document.getElementById('kundenSuche');
+  const begriff = (feld ? feld.value : '').toLowerCase().trim();
+  const karten = document.querySelectorAll('.kunde-card');
+  let sichtbar = 0;
+  karten.forEach(function(k) {
+    const text = k.getAttribute('data-suche') || '';
+    const treffer = (begriff === '' || text.indexOf(begriff) !== -1);
+    k.style.display = treffer ? '' : 'none';
+    if (treffer) sichtbar++;
+  });
+  const count = document.getElementById('sucheCount');
+  if (count) {
+    if (begriff === '') count.textContent = karten.length + ' Kunden';
+    else count.textContent = sichtbar + ' von ' + karten.length;
+  }
+}
+
+// ── Slot-Einblick: Slots eines Kunden anzeigen (read-only) ──
+async function toggleSlotView(subId, userLogin) {
+  const box = document.getElementById('slotview-' + subId);
+  if (!box) return;
+  // Zuklappen, wenn schon offen
+  if (box.style.display !== 'none' && box.innerHTML.trim() !== '') {
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="color:var(--mu);font-size:14px;">Lade Slots …</div>';
+  try {
+    const r = await fetch(API + '/api/cv/me?user=' + encodeURIComponent(userLogin));
+    const d = await r.json();
+    const slots = (d && d.slots) || [];
+    if (slots.length === 0) {
+      box.innerHTML = '<div style="color:var(--mu);font-size:14px;">Dieser Kunde hat noch keine Slots.</div>';
+      return;
+    }
+    const statusLabel = function(st) {
+      if (st === 'empty') return 'leer';
+      if (st === 'active') return 'Bot aktiv';
+      if (st === 'analyzing') return 'wird analysiert';
+      if (st === 'analyzed') return 'analysiert';
+      if (st === 'draft' || st === 'configured') return 'in Einrichtung';
+      return st;
+    };
+    let html = '';
+    for (const s of slots) {
+      const a = s.article;
+      let title, sub;
+      if (a) {
+        title = esc(a.title || 'Artikel');
+        const preis = (a.sale_price != null) ? (a.sale_price + ' €') : '—';
+        sub = 'Status: ' + esc(statusLabel(s.status)) + ' · Preis: ' + preis;
+      } else {
+        title = '<span style="color:var(--mu);">Kein Artikel eingerichtet</span>';
+        sub = 'Status: ' + esc(statusLabel(s.status));
+      }
+      html += '<div class="sv-slot">' +
+        '<div class="sv-num">' + (s.slot_number || '?') + '</div>' +
+        '<div class="sv-info"><div class="sv-title">' + title + '</div>' +
+        '<div class="sv-sub">' + sub + '</div></div>' +
+      '</div>';
+    }
+    box.innerHTML = html;
+  } catch(e) {
+    box.innerHTML = '<div style="color:var(--red);font-size:14px;">Fehler beim Laden: ' + esc(e.message) + '</div>';
   }
 }
 
