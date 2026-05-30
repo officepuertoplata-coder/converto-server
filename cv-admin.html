@@ -65,6 +65,14 @@
   .tier-table td { padding: 10px; border-bottom: 1px solid var(--border); font-size: 14px; }
   .tier-table input { width: 90px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; font-size: 14px; font-family: inherit; }
   .tier-monthly { font-weight: 800; color: var(--g2); }
+  .ust-sub { font-size: 11px; font-weight: 600; color: var(--mu); margin-top: 2px; }
+  .ust-hint { font-size: 12px; font-weight: 600; color: var(--mu); }
+  .calc-brutto { font-size: 13px; font-weight: 600; color: var(--mu); margin-top: 4px; }
+  .gesamtwert { background: #eef7f1; border: 1px solid #c8e6d5; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+  .gw-label { font-size: 12px; font-weight: 700; color: var(--mu); text-transform: uppercase; letter-spacing: .03em; }
+  .gw-netto { font-size: 22px; font-weight: 900; color: var(--g2); margin-top: 4px; }
+  .gw-unit { font-size: 13px; font-weight: 600; color: var(--mu); }
+  .gw-brutto { font-size: 13px; font-weight: 600; color: var(--mu); margin-top: 2px; }
   .tier-add { background: #f7faf8; border: 1px dashed var(--border); border-radius: 10px; padding: 14px; }
   .tier-add-title { font-size: 13px; font-weight: 800; color: var(--dark); margin-bottom: 10px; }
   .tier-add-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -288,6 +296,19 @@ const API = 'https://converto-server-production.up.railway.app';
 const AUTH_KEY = 'converto_auth_v2';
 let auth = null;
 
+// ── Mehrwertsteuer (B2B: Netto führend, zzgl. USt) ──
+const UST_SATZ = 20; // Prozent — bei Bedarf zentral hier ändern
+function fmtEuro(n) {
+  return '€ ' + Number(n || 0).toLocaleString('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function brutto(netto) {
+  return Math.round(Number(netto || 0) * (1 + UST_SATZ / 100) * 100) / 100;
+}
+// Netto-Preis + USt-Hinweis als HTML (klein) zurückgeben
+function preisMitUst(netto) {
+  return fmtEuro(netto) + ' <span class="ust-hint">netto · zzgl. ' + UST_SATZ + '% USt = ' + fmtEuro(brutto(netto)) + ' brutto</span>';
+}
+
 // ── LOGIN-SCHUTZ (gleiche Logik wie cv-dashboard) ──
 (function init() {
   try { auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); }
@@ -323,14 +344,14 @@ async function loadTiers() {
       return;
     }
     let html = '<table class="tier-table"><thead><tr>' +
-      '<th>Bots</th><th>€ / Bot</th><th>Rabatt %</th><th>Monatspreis</th><th></th>' +
+      '<th>Bots</th><th>€ / Bot</th><th>Rabatt %</th><th>Monatspreis (netto)</th><th></th>' +
       '</tr></thead><tbody>';
     for (const t of tiers) {
       html += '<tr data-id="' + t.id + '">' +
         '<td><input type="number" value="' + t.bots + '" min="1" onchange="updateTier(\'' + t.id + '\')" id="tb-' + t.id + '"></td>' +
         '<td><input type="number" step="0.01" value="' + t.price_per_bot + '" min="0" onchange="updateTier(\'' + t.id + '\')" id="tp-' + t.id + '"></td>' +
         '<td><input type="number" value="' + (t.discount_pct || 0) + '" min="0" max="100" onchange="updateTier(\'' + t.id + '\')" id="td-' + t.id + '"></td>' +
-        '<td class="tier-monthly" id="tm-' + t.id + '">€ ' + Number(t.monthly_total).toLocaleString('de-AT', {minimumFractionDigits:2}) + '</td>' +
+        '<td class="tier-monthly" id="tm-' + t.id + '">' + fmtEuro(t.monthly_total) + '<div class="ust-sub">+ USt = ' + fmtEuro(brutto(t.monthly_total)) + '</div></td>' +
         '<td><button type="button" class="btn btn-red btn-sm" onclick="deleteTier(\'' + t.id + '\')">Löschen</button></td>' +
       '</tr>';
     }
@@ -375,7 +396,7 @@ async function updateTier(id) {
     if (!r.ok || !d.success) { showMsg('tierMsg', d.error || 'Ändern fehlgeschlagen.', false); return; }
     // Monatspreis live aktualisieren
     const mEl = document.getElementById('tm-' + id);
-    if (mEl && d.tier) mEl.textContent = '€ ' + Number(d.tier.monthly_total).toLocaleString('de-AT', {minimumFractionDigits:2});
+    if (mEl && d.tier) mEl.innerHTML = fmtEuro(d.tier.monthly_total) + '<div class="ust-sub">+ USt = ' + fmtEuro(brutto(d.tier.monthly_total)) + '</div>';
   } catch(e) { showMsg('tierMsg', 'Verbindungsfehler: ' + e.message, false); }
 }
 
@@ -402,14 +423,15 @@ function calcPrice() {
       const r = await fetch(API + '/api/cv/admin/price-calc?slots=' + slots);
       const d = await r.json();
       if (!r.ok) { resEl.textContent = '—'; detEl.textContent = d.error || ''; return; }
-      resEl.textContent = '€ ' + Number(d.total).toLocaleString('de-AT', {minimumFractionDigits:2}) + ' / Monat';
-      // Detail: Slots nach Preis gruppieren
+      resEl.innerHTML = fmtEuro(d.total) + ' <span style="font-size:13px;font-weight:600;">netto / Monat</span>' +
+        '<div class="calc-brutto">zzgl. ' + UST_SATZ + '% USt = ' + fmtEuro(brutto(d.total)) + ' brutto / Monat</div>';
+      // Detail: Slots nach Preis gruppieren (netto)
       const gruppen = {};
       (d.detail || []).forEach(function(x) { gruppen[x.preis] = (gruppen[x.preis] || 0) + 1; });
       const teile = Object.keys(gruppen).sort((a,b)=>b-a).map(function(preis) {
-        return gruppen[preis] + '× € ' + Number(preis).toLocaleString('de-AT', {minimumFractionDigits:2});
+        return gruppen[preis] + '× ' + fmtEuro(preis);
       });
-      detEl.textContent = teile.join('  +  ');
+      detEl.textContent = teile.join('  +  ') + '  (netto)';
     } catch(e) { resEl.textContent = '—'; detEl.textContent = 'Fehler: ' + e.message; }
   }, 300);
 }
@@ -657,6 +679,8 @@ async function toggleSlotView(subId, userLogin) {
     let html = '<div class="sv-edit-bar">' +
       '<a class="btn btn-dark btn-sm" href="cv-dashboard.html?kunde=' + encodeURIComponent(userLogin) + '">✏️ In Kundenansicht öffnen & bearbeiten</a>' +
       '</div>';
+    // Aktueller Gesamtwert (progressiv) für die Anzahl gebuchter Slots
+    html += '<div id="gesamtwert-' + subId + '" class="gesamtwert">Berechne Gesamtwert …</div>';
     for (const s of slots) {
       const a = s.article;
       let title, sub;
@@ -686,12 +710,27 @@ async function toggleSlotView(subId, userLogin) {
       '<div id="slotconv-' + s.id + '" class="slot-conv" style="display:none;"></div>';
     }
     box.innerHTML = html;
+    // Gesamtwert asynchron laden (progressiver Preis für Anzahl Slots)
+    ladeGesamtwert(subId, slots.length);
   } catch(e) {
     box.innerHTML = '<div style="color:var(--red);font-size:14px;">Fehler beim Laden: ' + esc(e.message) + '</div>';
   }
 }
 
-// ── Gespräche eines Slots (admin) ──
+// Gültigen Gesamtwert (progressiv, netto + brutto) für einen Kunden anzeigen
+async function ladeGesamtwert(subId, anzahlSlots) {
+  const el = document.getElementById('gesamtwert-' + subId);
+  if (!el) return;
+  if (!anzahlSlots || anzahlSlots < 1) { el.textContent = ''; return; }
+  try {
+    const r = await fetch(API + '/api/cv/admin/price-calc?slots=' + anzahlSlots);
+    const d = await r.json();
+    if (!r.ok) { el.textContent = ''; return; }
+    el.innerHTML = '<div class="gw-label">Derzeit gültiger Gesamtwert (' + anzahlSlots + ' Slots)</div>' +
+      '<div class="gw-netto">' + fmtEuro(d.total) + ' <span class="gw-unit">netto / Monat</span></div>' +
+      '<div class="gw-brutto">zzgl. ' + UST_SATZ + '% USt = ' + fmtEuro(brutto(d.total)) + ' brutto / Monat</div>';
+  } catch(e) { el.textContent = ''; }
+}
 const scCache = {};
 
 async function toggleSlotConvs(slotId) {
