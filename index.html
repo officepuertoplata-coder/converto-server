@@ -47,12 +47,12 @@ nav{
   backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line);
 }
-.nav-in{display:flex;align-items:center;gap:48px;height:86px}
+.nav-in{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px 0}
 .nav-right{display:flex;align-items:center;gap:16px}
 .btn-login{background:var(--green-dark);border:2px solid transparent;color:#fff;padding:11px 28px;font-weight:700;font-size:1.02rem}
 .btn-login:hover{background:#0c5829;transform:translateY(-2px)}
 .btn-nav{padding:11px 28px;font-weight:700;font-size:1.02rem;border:2px solid transparent}
-.logo{display:flex;align-items:center;gap:0;font-family:'Fraunces',serif;font-weight:800;font-size:2.6rem;letter-spacing:-.035em;text-transform:uppercase}
+.logo{display:flex;align-items:center;gap:0;font-family:'Fraunces',serif;font-weight:800;font-size:3rem;letter-spacing:-.035em;text-transform:uppercase}
 .logo .c1{color:var(--green-dark)}
 .logo .c2{color:var(--green-bright)}
 .foot-brand .logo .c1{color:#fff}
@@ -88,7 +88,7 @@ nav{
   color:var(--green-dark);margin-bottom:26px;box-shadow:0 4px 14px -8px rgba(0,0,0,.15);
 }
 .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--green-bright);box-shadow:0 0 0 4px rgba(37,211,102,.22)}
-.hero h1{font-size:clamp(2.6rem,6vw,4.4rem);margin-bottom:22px}
+.hero h1{font-size:clamp(2.4rem,5.4vw,4.4rem);margin-bottom:22px;overflow-wrap:break-word;hyphens:auto}
 .hero h1 .hl{color:var(--green-dark);position:relative}
 .hero p.lead{font-size:clamp(1.1rem,2.3vw,1.4rem);color:var(--ink-soft);max-width:640px;margin-bottom:36px;font-weight:300}
 .hero-cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
