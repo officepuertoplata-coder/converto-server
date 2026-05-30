@@ -2646,6 +2646,91 @@ Ihr Converdino-Team`;
     }
   });
 
+  // POST /api/cv/admin/offers/:id/convert — Angebot als Kunde übernehmen
+  // Legt automatisch Login + Passwort an (users + cv_subscriptions, ohne Slots),
+  // markiert das Angebot als "übernommen" und gibt die Zugangsdaten zurück.
+  app.post('/api/cv/admin/offers/:id/convert', async (req, res) => {
+    try {
+      // 1) Angebot laden
+      const { data: offer, error: offErr } = await supabase
+        .from('cv_offers').select('*').eq('id', req.params.id).maybeSingle();
+      if (offErr) return res.status(500).json({ error: 'Angebot laden: ' + offErr.message });
+      if (!offer) return res.status(404).json({ error: 'Angebot nicht gefunden.' });
+      if (offer.status === 'übernommen') {
+        return res.status(409).json({ error: 'Dieses Angebot wurde bereits als Kunde übernommen.' });
+      }
+
+      // 2) Login-Namen aus Firmenname erzeugen (Slug), bei Kollision mit Zähler
+      function slugify(s) {
+        return String(s || 'kunde').toLowerCase()
+          .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss')
+          .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0, 40) || 'kunde';
+      }
+      let baseLogin = slugify(offer.company_name);
+      let login = baseLogin;
+      for (let i = 2; i <= 50; i++) {
+        const { data: u } = await supabase.from('users').select('id').eq('username', login).maybeSingle();
+        const { data: s } = await supabase.from('cv_subscriptions').select('id').eq('user_login', login).maybeSingle();
+        if (!u && !s) break;
+        login = baseLogin + '-' + i;
+      }
+
+      // 3) Lesbares Passwort generieren
+      function genPassword() {
+        const w = ['Sonne','Berg','Fluss','Stern','Wald','Meer','Wind','Licht','Stein','Blume'];
+        const word = w[Math.floor(Math.random()*w.length)];
+        const num = Math.floor(1000 + Math.random()*9000);
+        const sym = '!#$%'[Math.floor(Math.random()*4)];
+        return word + num + sym;
+      }
+      const plainPw = genPassword();
+      const hashed = await cvHashPassword(plainPw);
+
+      // 4) Login-Konto anlegen
+      const { data: user, error: userErr } = await supabase
+        .from('users')
+        .insert({
+          username: login, password: hashed, role: 'merchant',
+          name: offer.company_name || offer.contact_name || login,
+          email: offer.contact_email || null, active: true
+        })
+        .select().single();
+      if (userErr) return res.status(400).json({ error: 'Login anlegen: ' + userErr.message });
+
+      // 5) Subscription anlegen (ohne Slots — slots_total 0)
+      const { data: sub, error: subErr } = await supabase
+        .from('cv_subscriptions')
+        .insert({
+          user_login: login, status: 'active', slots_total: 0,
+          company_name: offer.company_name || null,
+          contact_name: offer.contact_name || null,
+          seller_email: offer.contact_email || null,
+          email_notifications_enabled: true
+        })
+        .select().single();
+      if (subErr) {
+        await supabase.from('users').delete().eq('id', user.id); // Rollback
+        return res.status(400).json({ error: 'Abo anlegen: ' + subErr.message });
+      }
+
+      // 6) Angebot als übernommen markieren
+      await supabase.from('cv_offers')
+        .update({ status: 'übernommen' }).eq('id', offer.id);
+
+      res.json({
+        success: true,
+        login: login,
+        password: plainPw,
+        company_name: offer.company_name,
+        sub_id: sub.id,
+        message: 'Kunde angelegt. Slots können jetzt in der Kundenliste hinzugefügt werden.'
+      });
+    } catch(e) {
+      console.error('[CV offers convert]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
   // GET /api/cv/admin/customers — alle Converdino-Kunden auflisten
   app.get('/api/cv/admin/customers', async (req, res) => {
     try {
