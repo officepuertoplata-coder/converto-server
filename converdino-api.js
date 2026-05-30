@@ -2621,13 +2621,25 @@ Ihr Converdino-Team`;
   });
 
   // GET /api/cv/admin/offers — erstellte Angebote auflisten (Nachverfolgung)
+  // Jedes Angebot bekommt ein berechnetes Flag "archived":
+  // archiviert = Gültigkeit (valid_until) liegt mehr als 7 Tage in der Vergangenheit.
   app.get('/api/cv/admin/offers', async (req, res) => {
     try {
       const { data, error } = await supabase
         .from('cv_offers').select('*')
-        .order('created_at', { ascending: false }).limit(100);
+        .order('created_at', { ascending: false }).limit(500);
       if (error) return res.status(500).json({ error: error.message });
-      res.json({ offers: data || [] });
+      const now = Date.now();
+      const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 Tage nach Ablauf
+      const offers = (data || []).map(function(o) {
+        let archived = false;
+        if (o.valid_until) {
+          const validEnd = new Date(o.valid_until).getTime();
+          if (!isNaN(validEnd) && (now - validEnd) > ARCHIVE_AFTER_MS) archived = true;
+        }
+        return { ...o, archived };
+      });
+      res.json({ offers });
     } catch(e) {
       console.error('[CV offers GET]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
