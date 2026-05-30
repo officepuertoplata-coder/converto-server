@@ -2339,6 +2339,8 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   const CV_OFFER_VAT      = 20;   // USt-Satz in % (Standard, nur informativ — "zzgl. gesetzlicher USt")
   const CV_OFFER_VALID_DAYS = 14; // Gültigkeit in Tagen
   const CV_OFFER_FROM     = process.env.CV_OFFER_FROM || 'Converdino <office@ynhald.com>';
+  const CV_OFFER_CAL_URL  = process.env.CV_OFFER_CAL_URL || 'https://cal.com/alexander-zajic/digitaler-verkaufsberater-24-7';
+  const CV_OFFER_TEST_TO  = process.env.CV_OFFER_TEST_TO || 'office@ynhald.com';
 
   // Hilfsfunktion: aktuelle Preisstufen laden + progressiv rechnen
   async function cvOfferBerechne(slots) {
@@ -2378,24 +2380,64 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       : '';
     const dateStr = new Date(o.created_at || Date.now()).toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
 
+    // Teststellungs-Mailto (vorausgefüllt) — encodeURIComponent für Betreff/Body
+    const testSubject = encodeURIComponent('Teststellung Converdino — ' + (o.company_name || ''));
+    const testBody = encodeURIComponent(
+      'Guten Tag,\n\nwir möchten Converdino unverbindlich testen.\n\n' +
+      'Firma: ' + (o.company_name || '') + '\n' +
+      'Ansprechpartner: ' + (o.contact_name || '') + '\n' +
+      'Angebot: ' + (o.offer_number || '') + '\n\n' +
+      'Bitte kontaktieren Sie uns zur Einrichtung der Teststellung.\n\nMit freundlichen Grüßen');
+    const testMailto = 'mailto:' + CV_OFFER_TEST_TO + '?subject=' + testSubject + '&body=' + testBody;
+
+    // Die 5 stärksten Vorteile
+    const vorteile = [
+      ['Sofort erreichbar, rund um die Uhr', 'Jeder Interessent bekommt in Sekunden eine Antwort über WhatsApp — auch abends, am Wochenende und an Feiertagen.'],
+      ['Verhandelt aktiv wie ein Profi', 'Informiert, geht auf Einwände ein und verhandelt den Preis innerhalb Ihrer Vorgaben — bis zur Einigung oder zum Rückruf-Termin.'],
+      ['Alarmiert sofort Ihren Verkäufer', 'Bei echtem Kaufinteresse wird der zuständige Verkäufer umgehend informiert und übernimmt den heißen Lead.'],
+      ['Ab der ersten Minute profitabel', 'Ein einziger zusätzlich gewonnener Abschluss übersteigt die Monatsgebühr in der Regel um ein Vielfaches.'],
+      ['Kein Personal, keine Installation', 'Sie laden nur Ihre Produktinfos hoch — den Rest übernehmen wir. Keine Software, kein Wartungsaufwand auf Ihrer Seite.']
+    ];
+    const vorteileHtml = vorteile.map(function(v){
+      return '<tr><td style="padding:7px 0;vertical-align:top;width:26px;color:#1faa52;font-weight:800">✓</td>' +
+        '<td style="padding:7px 0;font-size:14px;line-height:1.5"><strong style="color:#0d1b12">'+v[0]+'</strong><br>' +
+        '<span style="color:#33473b">'+v[1]+'</span></td></tr>';
+    }).join('');
+    const vorteileText = vorteile.map(function(v){ return '• '+v[0]+'\n  '+v[1]; }).join('\n');
+
     const html = `<!DOCTYPE html><html lang="de"><body style="margin:0;background:#f6f9f5;font-family:Arial,Helvetica,sans-serif;color:#0d1b12">
 <div style="max-width:600px;margin:0 auto;padding:24px">
+
   <div style="font-size:26px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px">
     <span style="color:#0f6b34">CONVER</span><span style="color:#25d366">DINO</span>
   </div>
   <div style="font-size:13px;color:#33473b;margin-bottom:24px">Ihr digitaler Verkaufsberater — rund um die Uhr im Einsatz</div>
 
+  <!-- Einstieg -->
   <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;font-size:12px;color:#33473b;margin-bottom:18px">
       <div><strong>Angebot ${o.offer_number}</strong></div>
       <div>Datum: ${dateStr}</div>
     </div>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 14px">Sehr geehrte/r ${o.contact_name || 'Damen und Herren'},</p>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 6px">jeder Interessent, der sich heute nicht sofort gut betreut fühlt, ist morgen beim Mitbewerber. Converdino sorgt dafür, dass <strong>${o.company_name}</strong> keinen einzigen Kontakt mehr verliert — mit einem digitalen Verkaufsberater, der rund um die Uhr für Sie arbeitet.</p>
+  </div>
 
-    <p style="font-size:14px;line-height:1.6;margin:0 0 16px">Sehr geehrte/r ${o.contact_name || 'Damen und Herren'},</p>
-    <p style="font-size:14px;line-height:1.6;margin:0 0 16px">vielen Dank für Ihr Interesse an Converdino. Gerne unterbreiten wir Ihnen folgendes Angebot für
-    <strong>${o.company_name}</strong>:</p>
+  <!-- Was Sie bekommen -->
+  <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
+    <div style="font-size:16px;font-weight:800;color:#0d1b12;margin-bottom:6px">Was Sie bekommen</div>
+    <p style="font-size:14px;line-height:1.6;color:#33473b;margin:0 0 16px">Pro gebuchtem Slot erhalten Sie einen vollständig eingerichteten Verkaufsberater für eines Ihrer Produkte oder Objekte:</p>
+    <table style="width:100%;border-collapse:collapse">${vorteileHtml}</table>
+    <div style="background:#eef9f1;border:1px solid #d3ebda;border-radius:10px;padding:14px 16px;margin-top:18px;font-size:13px;color:#33473b;line-height:1.6">
+      <strong style="color:#0d1b12">Im Paket pro Slot enthalten:</strong><br>
+      Automatischer Wissensaufbau aus Ihren Produktunterlagen · WhatsApp-Verkaufslink · QR-Code (für Fahrzeug, Schaufenster, Inserat) · einbettbares Web-Widget · aktive Verhandlungslogik · sichere Zahlungsabwicklung über Stripe.
+    </div>
+  </div>
 
-    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:18px 0">
+  <!-- Preis -->
+  <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
+    <div style="font-size:16px;font-weight:800;color:#0d1b12;margin-bottom:12px">Ihr Angebot</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
       <tr style="border-bottom:1px solid #eee">
         <td style="padding:8px 0">Converdino — digitaler Verkaufsberater</td>
         <td style="padding:8px 0;text-align:right">${o.slots} ${o.slots === 1 ? 'Slot' : 'Slots'}</td>
@@ -2413,11 +2455,19 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         <td style="padding:10px 0;text-align:right;font-weight:800;font-size:16px;color:#0f6b34">${cvFmtEuro(p.gross)}</td>
       </tr>
     </table>
-
-    <p style="font-size:12px;color:#33473b;line-height:1.5;margin:0 0 4px">Alle Preise zzgl. gesetzlicher Umsatzsteuer. Monatlich wiederkehrend, jederzeit kündbar.</p>
+    <p style="font-size:12px;color:#33473b;line-height:1.5;margin:12px 0 4px">Alle Preise zzgl. gesetzlicher Umsatzsteuer. Monatlich wiederkehrend, jederzeit kündbar.</p>
     ${validStr ? `<p style="font-size:12px;color:#33473b;margin:0">Dieses Angebot ist gültig bis <strong>${validStr}</strong>.</p>` : ''}
   </div>
 
+  <!-- Call to Action -->
+  <div style="background:#0d1b12;border-radius:12px;padding:24px;margin-bottom:16px;text-align:center">
+    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:6px">Überzeugen Sie sich selbst</div>
+    <p style="font-size:13px;color:#b9cdbf;line-height:1.5;margin:0 0 18px">Lernen Sie Converdino in einem kurzen Video­gespräch kennen — oder fordern Sie eine unverbindliche Teststellung an.</p>
+    <a href="${CV_OFFER_CAL_URL}" style="display:inline-block;background:#25d366;color:#0d1b12;font-weight:800;font-size:15px;text-decoration:none;padding:13px 28px;border-radius:9px;margin:4px 6px">📅 Videokonferenz buchen</a>
+    <a href="${testMailto}" style="display:inline-block;background:#fff;color:#0d1b12;font-weight:800;font-size:15px;text-decoration:none;padding:13px 28px;border-radius:9px;margin:4px 6px">🧪 Teststellung anfordern</a>
+  </div>
+
+  <!-- Anbieter -->
   <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:18px 24px;margin-bottom:16px;font-size:12px;color:#33473b;line-height:1.6">
     <strong style="color:#0d1b12">Anbieter</strong><br>
     ${CV_OFFER_PROVIDER.name}<br>
@@ -2426,8 +2476,8 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     Technologie: ${CV_OFFER_PROVIDER.licensor}
   </div>
 
-  <p style="font-size:13px;color:#33473b;line-height:1.6">Bei Fragen oder zur Beauftragung antworten Sie einfach auf diese E-Mail — wir melden uns umgehend.</p>
-  <p style="font-size:13px;color:#33473b;line-height:1.6;margin-top:18px">Mit freundlichen Grüßen<br>Ihr Converdino-Team</p>
+  <p style="font-size:13px;color:#33473b;line-height:1.6">Sie können auch einfach auf diese E-Mail antworten — wir melden uns umgehend.</p>
+  <p style="font-size:13px;color:#33473b;line-height:1.6;margin-top:14px">Mit freundlichen Grüßen<br>Ihr Converdino-Team</p>
 </div></body></html>`;
 
     const text =
@@ -2435,8 +2485,14 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
 
 Sehr geehrte/r ${o.contact_name || 'Damen und Herren'},
 
-vielen Dank für Ihr Interesse an Converdino. Unser Angebot für ${o.company_name}:
+jeder Interessent, der sich heute nicht sofort gut betreut fühlt, ist morgen beim Mitbewerber. Converdino sorgt dafür, dass ${o.company_name} keinen einzigen Kontakt mehr verliert — mit einem digitalen Verkaufsberater, der rund um die Uhr arbeitet.
 
+WAS SIE BEKOMMEN
+${vorteileText}
+
+Im Paket pro Slot enthalten: Automatischer Wissensaufbau aus Ihren Produktunterlagen, WhatsApp-Verkaufslink, QR-Code, einbettbares Web-Widget, aktive Verhandlungslogik, sichere Zahlungsabwicklung über Stripe.
+
+IHR ANGEBOT
 Converdino — digitaler Verkaufsberater: ${o.slots} ${o.slots === 1 ? 'Slot' : 'Slots'}
 Monatspreis (netto): ${cvFmtEuro(p.net)}
 zzgl. ${p.vatRate}% USt: ${cvFmtEuro(p.vat)}
@@ -2444,6 +2500,10 @@ Monatspreis brutto: ${cvFmtEuro(p.gross)}
 
 Alle Preise zzgl. gesetzlicher Umsatzsteuer. Monatlich wiederkehrend, jederzeit kündbar.
 ${validStr ? `Gültig bis: ${validStr}` : ''}
+
+ÜBERZEUGEN SIE SICH SELBST
+Videokonferenz buchen: ${CV_OFFER_CAL_URL}
+Teststellung anfordern: einfach auf diese E-Mail antworten oder an ${CV_OFFER_TEST_TO} schreiben.
 
 Anbieter:
 ${CV_OFFER_PROVIDER.name}
