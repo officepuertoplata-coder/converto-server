@@ -537,33 +537,6 @@ document.querySelectorAll('.faq-q').forEach(q=>{
     if(hint){hint.textContent='Ihr E-Mail-Programm öffnet sich. Bitte die Nachricht noch absenden — wir melden uns zeitnah.';hint.style.color='';}
   });
 })();
-
-/* Conversion-Klicks an Cloudflare Web Analytics melden (Angebot / Beratung) */
-(function(){
-  function track(name){
-    try{
-      if(window.__cfBeacon && typeof window.__cfBeacon==='object'){ /* geladen */ }
-      if(typeof window.cloudflareAnalytics === 'object' && window.cloudflareAnalytics.trackEvent){
-        window.cloudflareAnalytics.trackEvent(name);
-      } else if(window.__cfRUM && window.__cfRUM.trackEvent){
-        window.__cfRUM.trackEvent(name);
-      }
-    }catch(e){}
-  }
-  // Beratungs-/Termin-Buttons (cal.com)
-  document.querySelectorAll('a[href*="cal.com"]').forEach(function(a){
-    a.addEventListener('click',function(){ track('beratung_klick'); });
-  });
-  // Angebot-anfordern-Button (zählt beim Aufklappen/Absenden)
-  var ob=document.getElementById('offerSend');
-  if(ob){ ob.addEventListener('click',function(){ track('angebot_klick'); }); }
-})();
 </script>
-<!-- Cloudflare Web Analytics (cookielos, datensparsam) -->
-<!-- >>> ANPASSEN <<< : DEIN_CLOUDFLARE_TOKEN durch den echten Token aus
-     Cloudflare Dashboard → Web Analytics → Add a site → converdino.com ersetzen.
-     Ohne gültigen Token zählt Cloudflare nichts (verursacht aber auch keinen Fehler). -->
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
-        data-cf-beacon='{"token": "DEIN_CLOUDFLARE_TOKEN"}'></script>
 </body>
 </html>
