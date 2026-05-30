@@ -2320,6 +2320,242 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     }
   });
 
+  // ============================================================
+  // ANGEBOTS-GENERATOR (cv_offers)
+  // Erzeugt Monats-Angebote, berechnet Preis über cvBerechneProgressiv
+  // (dieselbe Logik wie der Preisrechner) und versendet per Resend.
+  // Anbieter: Platin-Sport Marketing & Event GmbH (Generallizenznehmer),
+  // Ynhald Corp als Lizenzgeber. "zzgl. gesetzlicher USt".
+  // ============================================================
+
+  // Anbieter-Stammdaten (zentral, leicht änderbar)
+  const CV_OFFER_PROVIDER = {
+    name:    'Platin-Sport Marketing & Event GmbH',
+    address: 'Ehrenpreisgasse 18, 1220 Wien, Österreich',
+    uid:     'ATU67880769',
+    role:    'Generallizenznehmer',
+    licensor:'Ynhald Corp (Lizenzgeber)'
+  };
+  const CV_OFFER_VAT      = 20;   // USt-Satz in % (Standard, nur informativ — "zzgl. gesetzlicher USt")
+  const CV_OFFER_VALID_DAYS = 14; // Gültigkeit in Tagen
+  const CV_OFFER_FROM     = process.env.CV_OFFER_FROM || 'Converdino <office@ynhald.com>';
+
+  // Hilfsfunktion: aktuelle Preisstufen laden + progressiv rechnen
+  async function cvOfferBerechne(slots) {
+    const { data: tiers, error } = await supabase
+      .from('cv_price_tiers').select('bots, price_per_bot')
+      .eq('active', true).order('bots', { ascending: true });
+    if (error) throw new Error('Preisstufen laden: ' + error.message);
+    const result = cvBerechneProgressiv(slots, tiers || []);
+    const net   = result.total;
+    const vat   = Math.round(net * CV_OFFER_VAT) / 100;     // = net * (CV_OFFER_VAT/100)
+    const gross = Math.round((net + vat) * 100) / 100;
+    return { net, vat, gross, vatRate: CV_OFFER_VAT, detail: result.detail };
+  }
+
+  // Euro-Formatierung (de-AT)
+  function cvFmtEuro(n) {
+    return Number(n).toLocaleString('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  }
+
+  // POST /api/cv/admin/offers/preview — NUR rechnen, nichts speichern/senden
+  app.post('/api/cv/admin/offers/preview', async (req, res) => {
+    try {
+      const slots = parseInt(req.body.slots, 10);
+      if (!slots || slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
+      const p = await cvOfferBerechne(slots);
+      res.json({ slots, ...p });
+    } catch(e) {
+      console.error('[CV offers/preview]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // Baut die HTML- und Text-Mail für ein Angebot
+  function cvBuildOfferEmail(o, p) {
+    const validStr = o.valid_until
+      ? new Date(o.valid_until).toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' })
+      : '';
+    const dateStr = new Date(o.created_at || Date.now()).toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
+
+    const html = `<!DOCTYPE html><html lang="de"><body style="margin:0;background:#f6f9f5;font-family:Arial,Helvetica,sans-serif;color:#0d1b12">
+<div style="max-width:600px;margin:0 auto;padding:24px">
+  <div style="font-size:26px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px">
+    <span style="color:#0f6b34">CONVER</span><span style="color:#25d366">DINO</span>
+  </div>
+  <div style="font-size:13px;color:#33473b;margin-bottom:24px">Ihr digitaler Verkaufsberater — rund um die Uhr im Einsatz</div>
+
+  <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:#33473b;margin-bottom:18px">
+      <div><strong>Angebot ${o.offer_number}</strong></div>
+      <div>Datum: ${dateStr}</div>
+    </div>
+
+    <p style="font-size:14px;line-height:1.6;margin:0 0 16px">Sehr geehrte/r ${o.contact_name || 'Damen und Herren'},</p>
+    <p style="font-size:14px;line-height:1.6;margin:0 0 16px">vielen Dank für Ihr Interesse an Converdino. Gerne unterbreiten wir Ihnen folgendes Angebot für
+    <strong>${o.company_name}</strong>:</p>
+
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:18px 0">
+      <tr style="border-bottom:1px solid #eee">
+        <td style="padding:8px 0">Converdino — digitaler Verkaufsberater</td>
+        <td style="padding:8px 0;text-align:right">${o.slots} ${o.slots === 1 ? 'Slot' : 'Slots'}</td>
+      </tr>
+      <tr style="border-bottom:1px solid #eee">
+        <td style="padding:8px 0">Monatspreis (netto)</td>
+        <td style="padding:8px 0;text-align:right">${cvFmtEuro(p.net)}</td>
+      </tr>
+      <tr style="border-bottom:1px solid #eee">
+        <td style="padding:8px 0">zzgl. ${p.vatRate}% USt</td>
+        <td style="padding:8px 0;text-align:right">${cvFmtEuro(p.vat)}</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 0;font-weight:800;font-size:16px">Monatspreis brutto</td>
+        <td style="padding:10px 0;text-align:right;font-weight:800;font-size:16px;color:#0f6b34">${cvFmtEuro(p.gross)}</td>
+      </tr>
+    </table>
+
+    <p style="font-size:12px;color:#33473b;line-height:1.5;margin:0 0 4px">Alle Preise zzgl. gesetzlicher Umsatzsteuer. Monatlich wiederkehrend, jederzeit kündbar.</p>
+    ${validStr ? `<p style="font-size:12px;color:#33473b;margin:0">Dieses Angebot ist gültig bis <strong>${validStr}</strong>.</p>` : ''}
+  </div>
+
+  <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:18px 24px;margin-bottom:16px;font-size:12px;color:#33473b;line-height:1.6">
+    <strong style="color:#0d1b12">Anbieter</strong><br>
+    ${CV_OFFER_PROVIDER.name}<br>
+    ${CV_OFFER_PROVIDER.address}<br>
+    UID: ${CV_OFFER_PROVIDER.uid} · ${CV_OFFER_PROVIDER.role}<br>
+    Technologie: ${CV_OFFER_PROVIDER.licensor}
+  </div>
+
+  <p style="font-size:13px;color:#33473b;line-height:1.6">Bei Fragen oder zur Beauftragung antworten Sie einfach auf diese E-Mail — wir melden uns umgehend.</p>
+  <p style="font-size:13px;color:#33473b;line-height:1.6;margin-top:18px">Mit freundlichen Grüßen<br>Ihr Converdino-Team</p>
+</div></body></html>`;
+
+    const text =
+`Angebot ${o.offer_number} — Datum: ${dateStr}
+
+Sehr geehrte/r ${o.contact_name || 'Damen und Herren'},
+
+vielen Dank für Ihr Interesse an Converdino. Unser Angebot für ${o.company_name}:
+
+Converdino — digitaler Verkaufsberater: ${o.slots} ${o.slots === 1 ? 'Slot' : 'Slots'}
+Monatspreis (netto): ${cvFmtEuro(p.net)}
+zzgl. ${p.vatRate}% USt: ${cvFmtEuro(p.vat)}
+Monatspreis brutto: ${cvFmtEuro(p.gross)}
+
+Alle Preise zzgl. gesetzlicher Umsatzsteuer. Monatlich wiederkehrend, jederzeit kündbar.
+${validStr ? `Gültig bis: ${validStr}` : ''}
+
+Anbieter:
+${CV_OFFER_PROVIDER.name}
+${CV_OFFER_PROVIDER.address}
+UID: ${CV_OFFER_PROVIDER.uid} · ${CV_OFFER_PROVIDER.role}
+Technologie: ${CV_OFFER_PROVIDER.licensor}
+
+Mit freundlichen Grüßen
+Ihr Converdino-Team`;
+
+    return { html, text };
+  }
+
+  // Eigener Mail-Versand für Angebote (Absender office@, ohne andere Mails zu ändern)
+  async function cvSendOfferEmail(toEmail, subject, html, text) {
+    if (!cvResend) { console.warn('[CV Offer] Resend nicht initialisiert'); return false; }
+    if (!toEmail || !/.+@.+\..+/.test(toEmail)) { console.warn('[CV Offer] Ungültige Empfänger-Email:', toEmail); return false; }
+    try {
+      const result = await cvResend.emails.send({
+        from: CV_OFFER_FROM, to: toEmail, replyTo: CV_MAIL_REPLY_TO, subject, html, text
+      });
+      if (result?.error) { console.error('[CV Offer] Resend-Fehler:', result.error.message || result.error); return false; }
+      console.log(`[CV Offer] ✉️  Angebot versendet → ${toEmail}`);
+      return true;
+    } catch(e) { console.error('[CV Offer] Exception:', e.message); return false; }
+  }
+
+  // POST /api/cv/admin/offers — Angebot erzeugen, speichern, per Mail senden
+  app.post('/api/cv/admin/offers', async (req, res) => {
+    try {
+      const { company_name, address, contact_name, contact_email } = req.body;
+      const slots = parseInt(req.body.slots, 10);
+      if (!company_name || !contact_email) return res.status(400).json({ error: 'Firma und E-Mail sind Pflicht.' });
+      if (!slots || slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
+      if (!/.+@.+\..+/.test(contact_email)) return res.status(400).json({ error: 'E-Mail-Adresse ungültig.' });
+
+      // Preis berechnen (gleiche Logik wie Preisrechner)
+      const p = await cvOfferBerechne(slots);
+
+      // Fortlaufende Angebotsnummer ANG-JAHR-XXXX
+      const year = new Date().getFullYear();
+      const prefix = `ANG-${year}-`;
+      const { data: existing } = await supabase
+        .from('cv_offers').select('offer_number')
+        .like('offer_number', prefix + '%')
+        .order('offer_number', { ascending: false }).limit(1);
+      let next = 1;
+      if (existing && existing.length > 0) {
+        const lastNum = parseInt(String(existing[0].offer_number).replace(prefix, ''), 10);
+        if (!isNaN(lastNum)) next = lastNum + 1;
+      }
+      const offerNumber = prefix + String(next).padStart(4, '0');
+
+      // Gültig-bis
+      const validUntil = new Date();
+      validUntil.setDate(validUntil.getDate() + CV_OFFER_VALID_DAYS);
+      const validUntilStr = validUntil.toISOString().slice(0, 10);
+
+      // In cv_offers speichern
+      const offerRow = {
+        offer_number: offerNumber,
+        company_name, address: address || null,
+        contact_name: contact_name || null, contact_email,
+        slots, price_net: p.net, vat_rate: p.vatRate, price_vat: p.vat, price_gross: p.gross,
+        breakdown: p.detail, valid_until: validUntilStr, status: 'erstellt'
+      };
+      const { data: saved, error: insErr } = await supabase
+        .from('cv_offers').insert(offerRow).select().single();
+      if (insErr) {
+        console.error('[CV offers] INSERT-Fehler:', insErr.message);
+        return res.status(500).json({ error: 'Speichern fehlgeschlagen: ' + insErr.message });
+      }
+
+      // Mail bauen + senden
+      const { html, text } = cvBuildOfferEmail(saved, p);
+      const subject = `Ihr Converdino-Angebot ${offerNumber} für ${company_name}`;
+      const sent = await cvSendOfferEmail(contact_email, subject, html, text);
+
+      // Status aktualisieren
+      if (sent) {
+        await supabase.from('cv_offers')
+          .update({ status: 'versendet', sent_at: new Date().toISOString() })
+          .eq('id', saved.id);
+      }
+
+      res.json({
+        success: true, sent,
+        offer_number: offerNumber,
+        net: p.net, vat: p.vat, gross: p.gross, vatRate: p.vatRate,
+        valid_until: validUntilStr,
+        message: sent ? 'Angebot erstellt und versendet.' : 'Angebot erstellt, aber Mailversand fehlgeschlagen (siehe Log).'
+      });
+    } catch(e) {
+      console.error('[CV offers POST]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // GET /api/cv/admin/offers — erstellte Angebote auflisten (Nachverfolgung)
+  app.get('/api/cv/admin/offers', async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('cv_offers').select('*')
+        .order('created_at', { ascending: false }).limit(100);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ offers: data || [] });
+    } catch(e) {
+      console.error('[CV offers GET]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
   // GET /api/cv/admin/customers — alle Converdino-Kunden auflisten
   app.get('/api/cv/admin/customers', async (req, res) => {
     try {
