@@ -49,6 +49,38 @@
   .sv-info { flex: 1; }
   .sv-title { font-weight: 600; font-size: 14px; }
   .sv-sub { font-size: 12px; color: var(--mu); }
+  /* Gespräche im Slot-Einblick */
+  .slot-conv { margin: 4px 0 10px 38px; }
+  .sc-box { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; max-height: 280px; overflow-y: auto; }
+  .sc-count { position: sticky; top: 0; background: #fff; font-size: 11px; font-weight: 800; color: var(--mu); text-transform: uppercase; letter-spacing: .04em; padding: 6px 2px; border-bottom: 1px solid var(--border); }
+  .sc-item { border-bottom: 1px solid #eef3f0; padding: 8px 4px; cursor: pointer; border-radius: 8px; }
+  .sc-item:last-child { border-bottom: none; }
+  .sc-item:hover { background: #f4f8f6; }
+  .sc-buyer { font-weight: 700; font-size: 13px; color: var(--dark); }
+  .sc-meta { font-size: 11px; color: var(--mu); }
+  .sc-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+  .sc-badge { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 20px; }
+  .scb-lead { background: #fef3c7; color: #92670c; }
+  .scb-deal { background: #dcfce7; color: #166534; }
+  .scb-paid { background: var(--g); color: #fff; }
+  .scb-lost { background: #fee2e2; color: #991b1b; }
+  .scb-mu   { background: #e5eee9; color: #4a5d54; }
+  /* Modal */
+  .cv-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 200; padding: 16px; }
+  .cv-modal-overlay.open { display: flex; }
+  .cv-modal { background: #fff; border-radius: 16px; max-width: 480px; width: 100%; max-height: 88vh; display: flex; flex-direction: column; }
+  .cv-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .cv-modal-title { font-weight: 800; font-size: 16px; }
+  .cv-modal-close { background: none; border: none; font-size: 24px; color: var(--mu); cursor: pointer; line-height: 1; }
+  .cv-modal-body { padding: 18px 20px; overflow-y: auto; }
+  .cm-result { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .cm-row { margin-bottom: 8px; display: flex; }
+  .cm-row.buyer { justify-content: flex-start; }
+  .cm-row.bot { justify-content: flex-end; }
+  .cm-bubble { max-width: 82%; padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+  .cm-row.buyer .cm-bubble { background: #f1f5f3; border: 1px solid var(--border); border-bottom-left-radius: 3px; color: var(--dark); }
+  .cm-row.bot .cm-bubble { background: var(--g); color: #fff; border-bottom-right-radius: 3px; }
+  .sc-empty { font-size: 13px; color: var(--mu); text-align: center; padding: 10px; }
   .kunden-suche { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
   .kunden-suche input { flex: 1; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; }
   .kunden-suche input:focus { outline: none; border-color: var(--g); }
@@ -160,6 +192,16 @@
     <div id="listArea">
       <div class="empty">Lade Kunden …</div>
     </div>
+  </div>
+</div>
+
+<div class="cv-modal-overlay" id="convModal">
+  <div class="cv-modal">
+    <div class="cv-modal-head">
+      <div class="cv-modal-title" id="convModalTitle">💬 Gespräch</div>
+      <button class="cv-modal-close" onclick="closeConvModal()">×</button>
+    </div>
+    <div class="cv-modal-body" id="convModalBody"></div>
   </div>
 </div>
 
@@ -424,16 +466,102 @@ async function toggleSlotView(subId, userLogin) {
         title = '<span style="color:var(--mu);">Kein Artikel eingerichtet</span>';
         sub = 'Status: ' + esc(statusLabel(s.status));
       }
+      // Gespräche-Knopf nur, wenn ein Artikel/Bot existiert (sonst keine Gespräche)
+      const convBtn = a
+        ? '<button type="button" class="btn btn-dark btn-sm" onclick="toggleSlotConvs(\'' + s.id + '\')">💬 Gespräche</button>'
+        : '';
       html += '<div class="sv-slot">' +
         '<div class="sv-num">' + (s.slot_number || '?') + '</div>' +
         '<div class="sv-info"><div class="sv-title">' + title + '</div>' +
         '<div class="sv-sub">' + sub + '</div></div>' +
-      '</div>';
+        convBtn +
+      '</div>' +
+      '<div id="slotconv-' + s.id + '" class="slot-conv" style="display:none;"></div>';
     }
     box.innerHTML = html;
   } catch(e) {
     box.innerHTML = '<div style="color:var(--red);font-size:14px;">Fehler beim Laden: ' + esc(e.message) + '</div>';
   }
+}
+
+// ── Gespräche eines Slots (admin) ──
+const scCache = {};
+
+async function toggleSlotConvs(slotId) {
+  const box = document.getElementById('slotconv-' + slotId);
+  if (!box) return;
+  if (box.style.display !== 'none' && box.innerHTML.trim() !== '') {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = '<div class="sc-empty">Lade Gespräche …</div>';
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId + '/conversations');
+    const d = await r.json();
+    const convs = (d && d.conversations) || [];
+    scCache[slotId] = convs;
+    if (convs.length === 0) {
+      box.innerHTML = '<div class="sc-empty">Noch keine Gespräche geführt.</div>';
+      return;
+    }
+    let html = '<div class="sc-box"><div class="sc-count">' + convs.length + ' Gespräch' + (convs.length === 1 ? '' : 'e') + '</div>';
+    convs.forEach(function(c, idx) {
+      html += '<div class="sc-item" onclick="openConvModal(\'' + slotId + '\',' + idx + ')">' +
+        '<div class="sc-buyer">📱 ' + esc(c.buyer_phone || 'Unbekannt') + '</div>' +
+        '<div class="sc-meta">' + esc(scFmtDate(c.last_message_at || c.created_at)) + ' · ' + c.message_count + ' Nachrichten</div>' +
+        '<div class="sc-badges">' + scBadges(c.events) + '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    box.innerHTML = html;
+  } catch(e) {
+    box.innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
+  }
+}
+
+function scBadges(events) {
+  const has = function(t) { return events.indexOf(t) !== -1; };
+  const b = [];
+  if (has('paid')) b.push('<span class="sc-badge scb-paid">✓ Bezahlt</span>');
+  else if (has('deal') || has('agreed')) b.push('<span class="sc-badge scb-deal">Einigung</span>');
+  else if (has('hot_lead') || has('contact_added')) b.push('<span class="sc-badge scb-lead">Lead</span>');
+  if (has('callback')) b.push('<span class="sc-badge scb-mu">Rückruf</span>');
+  if (has('escalated')) b.push('<span class="sc-badge scb-mu">Eskaliert</span>');
+  if (has('lost')) b.push('<span class="sc-badge scb-lost">Abgebrochen</span>');
+  if (b.length === 0) b.push('<span class="sc-badge scb-mu">Gespräch</span>');
+  return b.join('');
+}
+
+function scFmtDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('de-AT') + ' ' + d.toLocaleTimeString('de-AT', {hour:'2-digit', minute:'2-digit'});
+  } catch(e) { return ''; }
+}
+
+function openConvModal(slotId, idx) {
+  const convs = scCache[slotId] || [];
+  const c = convs[idx];
+  if (!c) return;
+  document.getElementById('convModalTitle').innerHTML = '💬 ' + esc(c.buyer_phone || 'Gespräch');
+  let html = '<div class="cm-result">' + scBadges(c.events) +
+    '<span class="sc-meta">' + esc(scFmtDate(c.last_message_at || c.created_at)) + '</span></div>';
+  if (c.messages.length === 0) {
+    html += '<div class="sc-empty">Keine Nachrichten in diesem Gespräch.</div>';
+  } else {
+    c.messages.forEach(function(m) {
+      html += '<div class="cm-row ' + m.role + '"><div class="cm-bubble">' + esc(m.text) + '</div></div>';
+    });
+  }
+  document.getElementById('convModalBody').innerHTML = html;
+  document.getElementById('convModal').classList.add('open');
+}
+
+function closeConvModal() {
+  document.getElementById('convModal').classList.remove('open');
 }
 
 // ── Slots zuweisen ──
