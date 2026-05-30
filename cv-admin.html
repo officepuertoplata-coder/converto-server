@@ -50,6 +50,7 @@
   .sv-title { font-weight: 600; font-size: 14px; }
   .sv-sub { font-size: 12px; color: var(--mu); }
   .sv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px 38px; }
+  .sv-edit-bar { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
   /* Gespräche im Slot-Einblick */
   .slot-conv { margin: 4px 0 10px 38px; }
   .sc-box { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; max-height: 280px; overflow-y: auto; }
@@ -468,7 +469,9 @@ async function toggleSlotView(subId, userLogin) {
       if (st === 'draft' || st === 'configured') return 'in Einrichtung';
       return st;
     };
-    let html = '';
+    let html = '<div class="sv-edit-bar">' +
+      '<a class="btn btn-dark btn-sm" href="cv-dashboard.html?kunde=' + encodeURIComponent(userLogin) + '">✏️ In Kundenansicht öffnen & bearbeiten</a>' +
+      '</div>';
     for (const s of slots) {
       const a = s.article;
       let title, sub;
