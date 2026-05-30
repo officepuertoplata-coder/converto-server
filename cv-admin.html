@@ -52,6 +52,13 @@
   .sv-sub { font-size: 12px; color: var(--mu); }
   .sv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px 38px; }
   .sv-edit-bar { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
+  .funnel { display: flex; align-items: center; justify-content: space-between; gap: 4px; background: #f7faf8; border: 1px solid #d8e6df; border-radius: 10px; padding: 10px 8px; margin: 0 0 12px 38px; }
+  .funnel-step { flex: 1; text-align: center; }
+  .funnel-num { font-size: 22px; font-weight: 900; color: var(--dark); line-height: 1; }
+  .funnel-num.funnel-lead { color: #b45309; }
+  .funnel-num.funnel-deal { color: var(--g2); }
+  .funnel-lbl { font-size: 10px; font-weight: 700; color: var(--mu); text-transform: uppercase; letter-spacing: .03em; margin-top: 3px; }
+  .funnel-arrow { color: #b8cabf; font-weight: 700; font-size: 14px; flex-shrink: 0; }
   /* Gespräche im Slot-Einblick */
   .slot-conv { margin: 4px 0 10px 38px; }
   .sc-box { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; max-height: 280px; overflow-y: auto; }
@@ -445,6 +452,17 @@ function filterKunden() {
 }
 
 // ── Slot-Einblick: Slots eines Kunden anzeigen (read-only) ──
+function renderFunnel(stats) {
+  const s = stats || { gespraeche: 0, leads: 0, abschluesse: 0 };
+  return '<div class="funnel">' +
+    '<div class="funnel-step"><div class="funnel-num">' + s.gespraeche + '</div><div class="funnel-lbl">Gespräche</div></div>' +
+    '<div class="funnel-arrow">→</div>' +
+    '<div class="funnel-step"><div class="funnel-num funnel-lead">' + s.leads + '</div><div class="funnel-lbl">Leads</div></div>' +
+    '<div class="funnel-arrow">→</div>' +
+    '<div class="funnel-step"><div class="funnel-num funnel-deal">' + s.abschluesse + '</div><div class="funnel-lbl">Abschlüsse</div></div>' +
+  '</div>';
+}
+
 async function toggleSlotView(subId, userLogin) {
   const box = document.getElementById('slotview-' + subId);
   if (!box) return;
@@ -498,6 +516,7 @@ async function toggleSlotView(subId, userLogin) {
         '<div class="sv-info"><div class="sv-title">' + title + '</div>' +
         '<div class="sv-sub">' + sub + '</div></div>' +
       '</div>' +
+      (a ? renderFunnel(s.stats) : '') +
       (slotBtns ? '<div class="sv-actions">' + slotBtns + '</div>' : '') +
       '<div id="slotconv-' + s.id + '" class="slot-conv" style="display:none;"></div>';
     }
