@@ -1731,7 +1731,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   }
 
-  function cvBuildEmail(type, articleTitle, buyerPhone, payload) {
+  function cvBuildEmail(type, articleTitle, buyerPhone, payload, aiSummary) {
     const style = CV_MAIL_STYLES[type] || { icon: '📋', label: 'Bot-Update', color: '#64748b', urgent: false };
     const p = payload || {};
     const subject = `${style.icon} ${style.label} — ${articleTitle}`;
@@ -1787,6 +1787,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         <tr><td style="padding:28px;">
           <div style="font-size:15px;color:#475569;margin-bottom:4px;">Artikel</div>
           <div style="font-size:18px;font-weight:600;color:#0f172a;margin-bottom:20px;">${cvEscapeHtml(articleTitle)}</div>
+          ${aiSummary ? `<div style="margin:0 0 20px;padding:14px 16px;background:#f1f5f9;border-left:3px solid ${style.color};border-radius:6px;font-size:14px;line-height:1.55;color:#334155;"><strong style="display:block;font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:#64748b;margin-bottom:6px;">📝 Gesprächs-Zusammenfassung</strong>${cvEscapeHtml(aiSummary)}</div>` : ''}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
             ${rowsHtml}
           </table>
@@ -1803,6 +1804,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     // Plain-Text-Fallback
     const text = `${style.icon} ${style.label}\n\n` +
       `Artikel: ${articleTitle}\n` +
+      (aiSummary ? `\nZusammenfassung: ${aiSummary}\n\n` : '') +
       rows.map(([k, v]) => `${k}: ${v}`).join('\n') +
       (type === 'paid' ? '\n\nNächste Schritte: 14 Tage Widerrufsfrist abwarten, Artikel + Rechnung senden, Auszahlung folgt manuell.' : '') +
       '\n\n— Converdino';
@@ -1841,6 +1843,51 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   }
 
   // ============================================================
+  // KI-GESPRÄCHSZUSAMMENFASSUNG (Haiku) — für die Verkäufer-Mail
+  // Defensiv: bei Fehler/leerem Verlauf wird null zurückgegeben,
+  // die Mail wird dann ohne Zusammenfassung gesendet.
+  // ============================================================
+  async function cvSummarizeConversation(session) {
+    try {
+      const history = (session && session.history) || [];
+      if (history.length < 2) return null; // zu kurz für sinnvolle Zusammenfassung
+
+      // Verlauf in lesbaren Text umwandeln (Käufer / Bot)
+      const transcript = history.map(function(m) {
+        let txt = '';
+        if (typeof m.content === 'string') txt = m.content;
+        else if (Array.isArray(m.content)) txt = m.content.map(c => (c && c.text) ? c.text : '').join(' ');
+        const wer = (m.role === 'user') ? 'Käufer' : 'Bot';
+        return wer + ': ' + txt;
+      }).filter(z => z.trim().length > 0).join('\n');
+
+      if (!transcript || transcript.length < 20) return null;
+
+      const er = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 250,
+          system: 'Du fasst WhatsApp-Verkaufsgespräche für den Verkäufer zusammen. Schreibe 2-3 kurze, sachliche Sätze auf Deutsch: Was wollte der Käufer, welcher Preis/Stand wurde erreicht, was ist der nächste Schritt. Keine Anrede, keine Floskeln, keine Aufzählung — nur Fließtext.',
+          messages: [{ role: 'user', content: 'Fasse dieses Verkaufsgespräch kurz zusammen:\n\n' + transcript }]
+        })
+      });
+      if (!er.ok) { console.warn('[CV Summary] Haiku-Fehler', er.status); return null; }
+      const data = await er.json();
+      const text = (data && data.content || []).filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
+      return text || null;
+    } catch(e) {
+      console.warn('[CV Summary] Ausnahme:', e.message);
+      return null;
+    }
+  }
+
+  // ============================================================
   // VERKÄUFER-BENACHRICHTIGUNG (jetzt per Email statt WhatsApp)
   // ============================================================
   async function cvNotifySeller(session, buyerPhone, type, payload) {
@@ -1870,8 +1917,15 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         return;
       }
 
+      // KI-Zusammenfassung nur bei relevanten End-Events (spart Kosten)
+      let aiSummary = null;
+      const summarizeTypes = ['agreed', 'paid', 'callback', 'escalated', 'contact_added', 'hot_lead'];
+      if (summarizeTypes.indexOf(type) !== -1) {
+        aiSummary = await cvSummarizeConversation(session);
+      }
+
       const { subject, html, text } = cvBuildEmail(
-        type, session.article.title, buyerPhone, payload
+        type, session.article.title, buyerPhone, payload, aiSummary
       );
       await cvSendEmail(sub.seller_email, subject, html, text);
     } catch(e) {
