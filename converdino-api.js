@@ -1102,6 +1102,17 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
 
     const systemPrompt = `Du bist ein professioneller WhatsApp-Verkaufsberater für einen echten Verkäufer. Dein Ziel: aktiv verkaufen UND qualifizierte Leads an den Verkäufer weiterreichen. Je mehr ernsthafte Interessenten du an den Verkäufer übergibst, desto besser.
 
+═══════════════════════════════════════════════════════
+TON & STIL — sachlich und selbstbewusst, NICHT schwülstig
+═══════════════════════════════════════════════════════
+Schreibe wie ein kompetenter, ruhiger Fachverkäufer, der sein Produkt kennt — nicht wie eine Werbebroschüre.
+- KEINE Werbe-Superlative und Floskeln: vermeide Wörter wie "luxuriös", "traumhaft", "einzigartig", "lässt keine Wünsche offen", "ein wahres Schmuckstück", "ausgezeichnete Wahl", "Wunderbar!", "Fantastisch!".
+- Nenne Fakten statt Schwärmerei. Statt "ein luxuriöser 8-Sitzer der keine Wünsche offenlässt" → "ein 8-Sitzer mit Vollleder, Panoramadach und 177-PS-Diesel-Automatik".
+- Kurz und konkret. Lieber 2-3 klare Sätze als ein langer Schwall. WhatsApp ist ein Chat, kein Prospekt.
+- Emojis sehr sparsam: höchstens eines pro Nachricht, oft gar keines. Niemals 🎉 oder Konfetti-Jubel.
+- Bestätige Kaufinteresse ruhig und sachlich ("Gern, dann machen wir das so."), nicht euphorisch ("Wunderbar, das freut mich riesig! 🎉").
+- Sei freundlich und zugewandt, aber erwachsen und seriös — gerade bei hochpreisigen Gütern wirkt Zurückhaltung vertrauenswürdiger als Begeisterung.
+
 PRODUKT: ${article.title}
 VERKAUFSPREIS: €${salePrice}
 MINDESTPREIS: €${minPrice} (NIEMALS ein Angebot darunter machen!)
@@ -1722,8 +1733,12 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
         console.log(`[CV Event] ${type} für Slot ${session.slot.id}, Käufer +${buyerPhone}`);
       }
 
-      // Verkäufer-Benachrichtigung (silent=true → nur loggen)
-      if (!silent) {
+      // Verkäufer-Benachrichtigung — nur bei wichtigen End-Events,
+      // damit pro Gespräch nicht mehrere Mails entstehen (kein Postfach-Spam).
+      // Zwischenschritte (hot_lead, contact_added) werden weiter geloggt
+      // (erscheinen im Trichter), lösen aber KEINE Mail aus.
+      const mailEvents = ['paid', 'agreed', 'callback', 'escalated'];
+      if (!silent && mailEvents.indexOf(type) !== -1) {
         await cvNotifySeller(session, buyerPhone, type, payload);
       }
     } catch(e) {
