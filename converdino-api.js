@@ -2321,6 +2321,210 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   });
 
   // ============================================================
+  // WEB-CHAT (Weg A) — paralleler Kanal, WhatsApp bleibt unberührt
+  // Eigene Engine cvRunWebTurn: nutzt dieselbe Wissens-/Verhandlungs-
+  // basis, gibt die Antwort aber ZURÜCK (kein sendWAMessage) und
+  // arbeitet mit session_token statt buyer_phone.
+  // ============================================================
+
+  // Web-tauglichen System-Prompt bauen (Kontakt wird per Formular gesichert)
+  function cvBuildWebPrompt(article) {
+    const analysis = article.analysis || {};
+    const anrede = article.anrede || 'Sie';
+    const salePrice = Number(article.sale_price) || 0;
+    const minPrice  = Number(article.min_price) || 0;
+    const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
+    const factsBlock = pdfFacts.length > 0
+      ? pdfFacts.map(f => `• ${f.k}: ${f.v}`).join('\n')
+      : '(keine extrahierten Dokument-Fakten)';
+    const strat = analysis.bot_strategy || {};
+    const argumente = Array.isArray(strat.selling_points) ? strat.selling_points.join('; ') : '';
+    const einwaende = Array.isArray(strat.objection_handling)
+      ? strat.objection_handling.map(o => `${o.objection} → ${o.response}`).join(' | ') : '';
+
+    return `Du bist ein professioneller Verkaufsberater in einem CHAT-FENSTER auf der Webseite eines Händlers. Dein Ziel: aktiv und sachlich verkaufen UND qualifizierte Leads sichern.
+
+═══════════════════════════════════════════════════════
+TON & STIL — sachlich und selbstbewusst, NICHT schwülstig
+═══════════════════════════════════════════════════════
+Schreibe wie ein kompetenter, ruhiger Fachverkäufer, der sein Produkt kennt — nicht wie eine Werbebroschüre.
+- KEINE Werbe-Superlative ("luxuriös", "traumhaft", "einzigartig", "ausgezeichnete Wahl", "Wunderbar!", "Fantastisch!").
+- Nenne Fakten statt Schwärmerei. Kurz und konkret: lieber 2-3 klare Sätze als ein langer Schwall.
+- Emojis sehr sparsam: höchstens eines pro Nachricht, oft gar keines.
+- Sei freundlich, aber erwachsen und seriös — gerade bei hochpreisigen Gütern wirkt Zurückhaltung vertrauenswürdiger.
+
+PRODUKT: ${article.title}
+VERKAUFSPREIS: €${salePrice}
+MINDESTPREIS: €${minPrice} (NIEMALS ein Angebot darunter machen!)
+STANDORT: ${article.location || 'auf Anfrage'}
+ANREDE: ${anrede} (konsequent verwenden)
+
+═══════════════════════════════════════════════════════
+KONTAKT IM WEB-CHAT — WICHTIG (anders als WhatsApp!)
+═══════════════════════════════════════════════════════
+Du chattest mit einem ANONYMEN Webseiten-Besucher. Du hast KEINE Telefonnummer und KEINE E-Mail.
+- Berate und verhandle zunächst ganz normal.
+- Sobald ernsthaftes Kaufinteresse besteht (Preis-Einigung in Sicht, konkrete Kaufabsicht, oder der Besucher möchte einen Rückruf/ein Angebot), bitte den Besucher freundlich, seine Kontaktdaten über das Formular zu hinterlassen, damit sich der zuständige Verkäufer persönlich meldet.
+- Formuliere etwa so: "Damit sich unser Verkäufer direkt bei Ihnen meldet, hinterlassen Sie bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. mit "du" wenn Anrede=Du)
+- Erfinde NIEMALS Kontaktdaten und tu nicht so, als hättest du welche.
+
+═══════════════════════════════════════════════════════
+VERIFIZIERTE FAKTEN ZU DIESEM PRODUKT (aus den Dokumenten)
+═══════════════════════════════════════════════════════
+${factsBlock}
+
+${argumente ? 'VERKAUFSARGUMENTE: ' + argumente : ''}
+${einwaende ? 'EINWAND-ANTWORTEN: ' + einwaende : ''}
+
+REGELN:
+- Beantworte Produktfragen NUR aus den verifizierten Fakten. Was du nicht sicher weißt: ehrlich sagen, dass du das mit dem Verkäufer klärst — niemals erfinden.
+- Branchen-Allgemeinwissen darfst du nutzen, aber trenne es klar von produktspezifischen Fakten ("allgemein üblich ist … — wie es bei DIESEM Gerät konkret ist, kläre ich mit dem Verkäufer").
+- Verhandle innerhalb der Spanne (Verkaufspreis bis Mindestpreis), max. 2-3 kleiner werdende Zugeständnisse, NIE unter den Mindestpreis.
+- Die Kaufabwicklung läuft sicher und treuhänderisch über die Plattform. Kein Privatverkauf, keine private Bargeldübergabe.`;
+  }
+
+  // Web-Bot-Turn: ruft Sonnet, gibt die Antwort als String zurück (kein WhatsApp-Versand)
+  async function cvRunWebTurn(slot, article, history, userMessage) {
+    const systemPrompt = cvBuildWebPrompt(article);
+
+    function normalizeHistory(hist) {
+      const out = [];
+      for (const m of (hist || [])) {
+        if (!m || !m.role) continue;
+        if (m.role !== 'user' && m.role !== 'assistant') continue;
+        let c = m.content; if (typeof c !== 'string') c = String(c || ''); c = c.trim();
+        if (!c) continue;
+        const last = out[out.length - 1];
+        if (last && last.role === m.role) last.content += '\n' + c;
+        else out.push({ role: m.role, content: c });
+      }
+      while (out.length && out[0].role !== 'user') out.shift();
+      return out;
+    }
+
+    const messages = userMessage === null
+      ? [{ role: 'user', content: 'START: Begrüße den Besucher, präsentiere das Produkt sachlich in 2-3 Sätzen und frage, was ihn besonders interessiert.' }]
+      : normalizeHistory(history);
+    if (messages.length === 0) messages.push({ role: 'user', content: userMessage || 'Hallo' });
+
+    let response, lastErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 800,
+            system: systemPrompt,
+            messages
+          })
+        });
+        if (response.ok) break;
+        const errText = await response.text();
+        lastErr = `${response.status}: ${errText.substring(0, 300)}`;
+        console.error(`[CV Web] Versuch ${attempt}/3:`, lastErr);
+        if (response.status === 400) break;
+        await new Promise(r => setTimeout(r, attempt * 700));
+      } catch(e) {
+        lastErr = e.message;
+        console.error(`[CV Web] Versuch ${attempt}/3 Netzfehler:`, e.message);
+        await new Promise(r => setTimeout(r, attempt * 700));
+      }
+    }
+
+    if (!response || !response.ok) {
+      console.error('[CV Web] Call fehlgeschlagen:', lastErr);
+      const du = (article.anrede || 'Sie') === 'Du';
+      return du
+        ? 'Sorry, da war kurz eine technische Störung. Stell deine Frage gern nochmal.'
+        : 'Entschuldigen Sie, da war kurz eine technische Störung. Stellen Sie Ihre Frage gern nochmal.';
+    }
+
+    const data = await response.json();
+    const blocks = data.content || [];
+    let reply = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (!reply) reply = 'Einen Moment bitte.';
+    return reply;
+  }
+
+  // Hilfsfunktion: Slot + Artikel über Bot-Code laden (für Web)
+  async function cvWebLoadSlotArticle(botCode) {
+    const { data: slot } = await supabase
+      .from('cv_slots').select('*').ilike('bot_code', botCode).eq('status', 'active').maybeSingle();
+    if (!slot) return { error: 'Dieser Bot-Code ist nicht aktiv oder ungültig.' };
+    const { data: article } = await supabase
+      .from('cv_articles').select('*').eq('slot_id', slot.id).maybeSingle();
+    if (!article) return { error: 'Artikel nicht gefunden.' };
+    return { slot, article };
+  }
+
+  // POST /api/cv/web/start — neue Web-Chat-Session starten (Begrüßung)
+  // Body: { bot_code }
+  app.post('/api/cv/web/start', async (req, res) => {
+    try {
+      const botCode = (req.body.bot_code || '').trim();
+      if (!botCode) return res.status(400).json({ error: 'Bot-Code fehlt.' });
+      const loaded = await cvWebLoadSlotArticle(botCode);
+      if (loaded.error) return res.status(404).json({ error: loaded.error });
+
+      const token = 'web_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+      const reply = await cvRunWebTurn(loaded.slot, loaded.article, [], null);
+      const history = [{ role: 'assistant', content: reply }];
+
+      const { error: insErr } = await supabase.from('cv_web_sessions').insert({
+        session_token: token, slot_id: loaded.slot.id,
+        messages: history, status: 'active',
+        created_at: new Date().toISOString(), last_message_at: new Date().toISOString()
+      });
+      if (insErr) console.error('[CV Web start] INSERT-Fehler:', insErr.message);
+
+      res.json({ session_token: token, reply, product: loaded.article.title });
+    } catch(e) {
+      console.error('[CV Web start]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // POST /api/cv/web/message — Folgenachricht im Web-Chat
+  // Body: { session_token, message }
+  app.post('/api/cv/web/message', async (req, res) => {
+    try {
+      const token = (req.body.session_token || '').trim();
+      const msg = (req.body.message || '').trim();
+      if (!token || !msg) return res.status(400).json({ error: 'session_token und message erforderlich.' });
+
+      const { data: sess } = await supabase
+        .from('cv_web_sessions').select('*').eq('session_token', token).maybeSingle();
+      if (!sess) return res.status(404).json({ error: 'Session nicht gefunden.' });
+      if (sess.status !== 'active') return res.status(409).json({ error: 'Session ist beendet.' });
+
+      const { data: slot } = await supabase.from('cv_slots').select('*').eq('id', sess.slot_id).maybeSingle();
+      const { data: article } = await supabase.from('cv_articles').select('*').eq('slot_id', sess.slot_id).maybeSingle();
+      if (!slot || !article) return res.status(404).json({ error: 'Artikel nicht mehr verfügbar.' });
+
+      const history = Array.isArray(sess.messages) ? sess.messages.slice() : [];
+      history.push({ role: 'user', content: msg });
+
+      const reply = await cvRunWebTurn(slot, article, history, msg);
+      history.push({ role: 'assistant', content: reply });
+
+      await supabase.from('cv_web_sessions')
+        .update({ messages: history, last_message_at: new Date().toISOString() })
+        .eq('session_token', token);
+
+      res.json({ reply });
+    } catch(e) {
+      console.error('[CV Web message]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // ============================================================
   // ANGEBOTS-GENERATOR (cv_offers)
   // Erzeugt Monats-Angebote, berechnet Preis über cvBerechneProgressiv
   // (dieselbe Logik wie der Preisrechner) und versendet per Resend.
