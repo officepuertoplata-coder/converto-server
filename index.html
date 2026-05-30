@@ -89,7 +89,7 @@ nav{
 }
 .eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--green-bright);box-shadow:0 0 0 4px rgba(37,211,102,.22)}
 .hero h1{font-size:clamp(2.6rem,6vw,4.4rem);margin-bottom:22px}
-.hero h1 .hl{color:var(--green-dark);position:relative;white-space:nowrap}
+.hero h1 .hl{color:var(--green-dark);position:relative}
 .hero p.lead{font-size:clamp(1.1rem,2.3vw,1.4rem);color:var(--ink-soft);max-width:640px;margin-bottom:36px;font-weight:300}
 .hero-cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
 .hero-note{font-size:.9rem;color:var(--ink-soft);margin-top:22px;display:flex;align-items:center;gap:8px}
@@ -208,14 +208,53 @@ footer{background:var(--ink);color:#9fb6a6;padding:54px 0 40px;font-size:.94rem}
 /* ---------- RESPONSIVE ---------- */
 @media(max-width:920px){
   .steps,.vals,.diff-grid,.wa-grid{grid-template-columns:1fr}
+  .hero{padding:60px 0 50px}
+  section.block{padding:64px 0}
 }
-@media(max-width:600px){
-  .nav-links a.muted{display:none}
-  .steps{grid-template-columns:1fr}
-  .offer-form{grid-template-columns:1fr}
-  .offer{padding:44px 26px}
-  .consult{padding:40px 26px}
-  section.block{padding:60px 0}
+@media(max-width:680px){
+  .wrap{padding:0 18px}
+  /* Nav: Schriftzug kleiner, Buttons kompakter, damit alles in eine Zeile passt */
+  .nav-in{height:70px}
+  .logo{font-size:1.9rem}
+  .nav-right{gap:10px}
+  .btn{padding:10px 16px;font-size:.95rem}
+  .btn-login,.btn-nav{padding:10px 16px;font-size:.95rem}
+  /* Hero */
+  .hero{padding:48px 0 40px}
+  .hero h1{font-size:clamp(2rem,8vw,2.8rem)}
+  .hero p.lead{font-size:1.05rem}
+  .eyebrow{font-size:.8rem;padding:7px 13px}
+  .hero-cta{gap:10px}
+  .hero-cta .btn{width:100%;justify-content:center}
+  .hero-facts{gap:9px}
+  .fact{font-size:.95rem;padding:9px 16px}
+  /* Sektionen */
+  section.block{padding:52px 0}
+  .block h2,.wa-head h2{font-size:1.7rem}
+  .block .sub,.wa-head .sub{font-size:1.02rem}
+  .steps,.offer-form{grid-template-columns:1fr}
+  /* Top-CTA Banner: untereinander zentriert */
+  .topcta-in{flex-direction:column;text-align:center;gap:14px}
+  .topcta-in .btn{width:100%;justify-content:center}
+  /* Angebot/Beratung */
+  .offer{padding:40px 22px;border-radius:22px}
+  .offer h2{font-size:1.7rem}
+  .offer p{font-size:1.02rem}
+  .offer-btn{width:100%}
+  .consult{padding:36px 24px;border-radius:22px}
+  .consult .cta-row{flex-direction:column}
+  .consult .cta-row .btn{width:100%;justify-content:center}
+  /* Kacheln etwas kompakter */
+  .step,.val,.wa-card{padding:24px 20px;gap:16px}
+  .step-ic,.wa-ic{width:46px;height:46px}
+  .val-ic{width:44px;height:44px}
+  /* FAQ */
+  .faq-q{font-size:1rem;padding:18px 20px}
+}
+@media(max-width:380px){
+  .logo{font-size:1.65rem}
+  .nav-right{gap:8px}
+  .btn-login,.btn-nav{padding:9px 12px;font-size:.88rem}
 }
 </style>
 </head>
