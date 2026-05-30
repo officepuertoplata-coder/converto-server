@@ -173,6 +173,13 @@
 </div>
 
 
+<div id="viewAsBanner" style="display:none;align-items:center;justify-content:space-between;gap:12px;background:#fff7ed;border-bottom:2px solid #fb923c;padding:12px 24px;flex-wrap:wrap;">
+  <div style="font-size:.9rem;color:#9a3412;font-weight:700;">
+    👁 Du siehst die Ansicht von Kunde „<span id="viewAsName" style="font-weight:900;"></span>" — Änderungen wirken auf dessen Bots.
+  </div>
+  <a href="cv-admin.html" style="background:#ea580c;color:#fff;text-decoration:none;padding:8px 16px;border-radius:8px;font-weight:800;font-size:.82rem;white-space:nowrap;">← Zurück zur Kundenverwaltung</a>
+</div>
+
 <main>
   <div id="app">
     <div style="text-align:center;padding:60px;color:var(--mu);">
@@ -282,6 +289,7 @@ const AUTH_KEY = 'converto_auth_v2';
 
 let auth = null;
 let activeSlotId = null;
+let viewAsCustomer = ''; // Admin sieht Kunden an ('' = sich selbst)
 
 // ── AUTH PRÜFEN ──────────────────────────────────────
 (function init() {
@@ -316,8 +324,23 @@ let activeSlotId = null;
     if (adminLink) adminLink.style.display = 'inline-flex';
   }
 
+  // Admin kann einen Kunden ansehen/bearbeiten via ?kunde=login
+  const params = new URLSearchParams(window.location.search);
+  const kundeParam = (params.get('kunde') || '').toLowerCase().trim();
+  if (istAdmin && kundeParam) {
+    viewAsCustomer = kundeParam;
+    showViewAsBanner(kundeParam);
+  }
+
   loadDashboard();
 })();
+
+function showViewAsBanner(kunde) {
+  const banner = document.getElementById('viewAsBanner');
+  if (!banner) return;
+  document.getElementById('viewAsName').textContent = kunde;
+  banner.style.display = 'flex';
+}
 
 function logout() {
   localStorage.removeItem(AUTH_KEY);
@@ -366,8 +389,14 @@ async function submitPwChange() {
 
 
 // ── DASHBOARD LADEN ──────────────────────────────────
+// Wessen Daten zeigt das Dashboard? Admin im Kunden-Modus → der Kunde, sonst man selbst.
+function currentUserLogin() {
+  if (viewAsCustomer) return viewAsCustomer;
+  return (auth.username || auth.name || 'admin').toLowerCase().trim();
+}
+
 async function loadDashboard() {
-  const userLogin = (auth.username || auth.name || 'admin').toLowerCase().trim();
+  const userLogin = currentUserLogin();
   try {
     const r = await fetch(API + '/api/cv/me?user=' + encodeURIComponent(userLogin));
     const d = await r.json();
