@@ -84,6 +84,15 @@
   .bot-info { background: linear-gradient(135deg, #f0fdf4, #ecfdf5); border: 1px solid #bbf7d0; border-radius: 10px; padding: 10px 12px; font-size: .78rem; color: var(--g2); font-weight: 700; word-break: break-all; }
   .bot-code { font-family: monospace; font-weight: 900; font-size: .85rem; }
 
+  /* MINI-TRICHTER */
+  .funnel { display: flex; align-items: center; justify-content: space-between; gap: 4px; background: #f7faf8; border: 1px solid #d8e6df; border-radius: 10px; padding: 10px 8px; margin-bottom: 10px; }
+  .funnel-step { flex: 1; text-align: center; }
+  .funnel-num { font-size: 1.3rem; font-weight: 900; color: var(--dark); line-height: 1; }
+  .funnel-num.funnel-lead { color: #b45309; }
+  .funnel-num.funnel-deal { color: var(--g2); }
+  .funnel-lbl { font-size: .62rem; font-weight: 700; color: #6b7e74; text-transform: uppercase; letter-spacing: .03em; margin-top: 3px; }
+  .funnel-arrow { color: #b8cabf; font-weight: 700; font-size: .9rem; flex-shrink: 0; }
+
   /* GESPRÄCHE */
   .convbox { background: #f7faf8; border: 1px solid #d8e6df; border-radius: 12px; padding: 6px 12px; margin-bottom: 8px; max-height: 320px; overflow-y: auto; }
   .conv-count { position: sticky; top: 0; background: #f7faf8; font-size: .68rem; font-weight: 800; color: #6b7e74; text-transform: uppercase; letter-spacing: .04em; padding: 6px 2px 8px; border-bottom: 1px solid #e2ece7; z-index: 1; }
@@ -464,10 +473,31 @@ function render(d) {
   }
 }
 
+// Mini-Trichter: Gespräche → Leads → Abschlüsse
+function renderFunnel(stats) {
+  const s = stats || { gespraeche: 0, leads: 0, abschluesse: 0 };
+  return `
+    <div class="funnel">
+      <div class="funnel-step">
+        <div class="funnel-num">${s.gespraeche}</div>
+        <div class="funnel-lbl">Gespräche</div>
+      </div>
+      <div class="funnel-arrow">→</div>
+      <div class="funnel-step">
+        <div class="funnel-num funnel-lead">${s.leads}</div>
+        <div class="funnel-lbl">Leads</div>
+      </div>
+      <div class="funnel-arrow">→</div>
+      <div class="funnel-step">
+        <div class="funnel-num funnel-deal">${s.abschluesse}</div>
+        <div class="funnel-lbl">Abschlüsse</div>
+      </div>
+    </div>`;
+}
+
 function renderSlot(slot) {
   const pill = `<span class="pill ${slot.status}">${pillLabel(slot.status)}</span>`;
   let body = '';
-
   if (slot.status === 'empty' || !slot.article) {
     body = `
       <div class="empty-msg">Kein Artikel eingerichtet</div>
@@ -496,6 +526,7 @@ function renderSlot(slot) {
         <div class="article-meta">€${fmtPrice(slot.article?.sale_price)} · Bot läuft</div>
       </div>
       <div class="bot-info">Code: <span class="bot-code">${esc(slot.bot_code || '—')}</span></div>
+      ${renderFunnel(slot.stats)}
       <button class="btn btn-primary" onclick="goToKnowledge('${slot.id}')" style="margin-bottom:8px;">🧠 Was hat der Bot gelernt?</button>
       <button class="btn btn-soft" onclick="toggleConversations('${slot.id}')" style="margin-bottom:8px;">💬 Gespräche ansehen</button>
       <div id="convbox-${slot.id}" class="convbox" style="display:none;"></div>
