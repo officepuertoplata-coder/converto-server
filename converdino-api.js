@@ -2327,6 +2327,17 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   // arbeitet mit session_token statt buyer_phone.
   // ============================================================
 
+  // CORS NUR für die Web-Chat-Endpoints: Das Widget läuft auf fremden
+  // Händler-Webseiten und muss converdino.com aufrufen dürfen.
+  // Betrifft ausschließlich /api/cv/web/* — alle anderen Routen bleiben unberührt.
+  app.use('/api/cv/web', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
+
   // Web-tauglichen System-Prompt bauen (Kontakt wird per Formular gesichert)
   function cvBuildWebPrompt(article) {
     const analysis = article.analysis || {};
