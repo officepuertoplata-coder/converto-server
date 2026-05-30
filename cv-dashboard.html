@@ -23,6 +23,8 @@
   .nav-user { font-size: .82rem; opacity: .7; }
   .nav-logout { background: rgba(255,255,255,.15); color: #fff; border: none; padding: 7px 14px; border-radius: 8px; font-family: inherit; font-weight: 800; font-size: .78rem; cursor: pointer; }
   .nav-logout:hover { background: rgba(255,255,255,.25); }
+  .nav-admin { background: var(--g, #25D366); color: #fff; border: none; padding: 7px 16px; border-radius: 8px; font-family: inherit; font-weight: 800; font-size: .82rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  .nav-admin:hover { background: var(--g2, #128C7E); }
 
   /* MAIN */
   main { max-width: 1200px; margin: 0 auto; padding: 28px 16px 60px; }
@@ -115,6 +117,7 @@
   <div class="logo">Conver<span>dino</span></div>
   <div class="nav-right">
     <span class="nav-user" id="navUser">admin</span>
+    <a href="cv-admin.html" id="adminLink" class="nav-admin" style="display:none;">⚙️ Kundenverwaltung</a>
     <button class="nav-logout" onclick="openPwChange()">Passwort</button>
     <button class="nav-logout" onclick="logout()">Ausloggen</button>
   </div>
@@ -264,6 +267,15 @@ let activeSlotId = null;
   }
 
   document.getElementById('navUser').textContent = auth.username || auth.name || 'admin';
+
+  // Kundenverwaltung-Knopf nur für Betreiber (admin / superadmin) zeigen
+  const loginName = (auth.username || auth.name || '').toLowerCase().trim();
+  const istAdmin = (loginName === 'admin' || auth.role === 'superadmin');
+  if (istAdmin) {
+    const adminLink = document.getElementById('adminLink');
+    if (adminLink) adminLink.style.display = 'inline-flex';
+  }
+
   loadDashboard();
 })();
 
