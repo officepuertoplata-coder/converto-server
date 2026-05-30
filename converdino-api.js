@@ -2411,7 +2411,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   <div style="font-size:26px;font-weight:800;letter-spacing:-.5px;margin-bottom:4px">
     <span style="color:#0f6b34">CONVER</span><span style="color:#25d366">DINO</span>
   </div>
-  <div style="font-size:13px;color:#33473b;margin-bottom:24px">Ihr digitaler Verkaufsberater — rund um die Uhr im Einsatz</div>
+  <div style="font-size:13px;color:#33473b;margin-bottom:24px">Ihr digitaler Verkaufsberater 24/7 — neue Umsätze, Top-Leads</div>
 
   <!-- Einstieg -->
   <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
@@ -2466,11 +2466,11 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   </div>
 
   <!-- Call to Action -->
-  <div style="background:#0d1b12;border-radius:12px;padding:24px;margin-bottom:16px;text-align:center">
-    <div style="font-size:17px;font-weight:800;color:#fff;margin-bottom:6px">Überzeugen Sie sich selbst</div>
-    <p style="font-size:13px;color:#b9cdbf;line-height:1.5;margin:0 0 18px">Lernen Sie Converdino in einem kurzen Video­gespräch kennen — oder fordern Sie eine unverbindliche Teststellung an.</p>
+  <div style="background:#eef9f1;border:1px solid #d3ebda;border-radius:12px;padding:24px;margin-bottom:16px;text-align:center">
+    <div style="font-size:17px;font-weight:800;color:#0f6b34;margin-bottom:6px">Überzeugen Sie sich selbst</div>
+    <p style="font-size:13px;color:#33473b;line-height:1.5;margin:0 0 18px">Lernen Sie Converdino in einem kurzen Video­gespräch kennen — oder fordern Sie eine unverbindliche Teststellung an.</p>
     <a href="${CV_OFFER_CAL_URL}" style="display:inline-block;background:#25d366;color:#0d1b12;font-weight:800;font-size:15px;text-decoration:none;padding:13px 28px;border-radius:9px;margin:4px 6px">📅 Videokonferenz buchen</a>
-    <a href="${testMailto}" style="display:inline-block;background:#fff;color:#0d1b12;font-weight:800;font-size:15px;text-decoration:none;padding:13px 28px;border-radius:9px;margin:4px 6px">🧪 Teststellung anfordern</a>
+    <a href="${testMailto}" style="display:inline-block;background:#fff;color:#0f6b34;border:2px solid #1faa52;font-weight:800;font-size:15px;text-decoration:none;padding:11px 26px;border-radius:9px;margin:4px 6px">🧪 Teststellung anfordern</a>
   </div>
 
   <!-- Anbieter -->
