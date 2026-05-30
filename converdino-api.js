@@ -2085,6 +2085,130 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     return plain;
   }
 
+  // ============================================================
+  // PREISSTAFFELN (Baustein F) — cv_price_tiers verwalten
+  // ============================================================
+
+  // Progressive Preisberechnung (Stufenmodell):
+  // Jeder Slot bekommt den Preis der höchsten Stufe, deren Schwelle er erreicht.
+  // Kundenpreis = Summe aller Einzelslots.
+  function cvBerechneProgressiv(anzahlSlots, tiers) {
+    const stufen = (tiers || []).slice().sort((a, b) => a.bots - b.bots);
+    if (stufen.length === 0) return { total: 0, detail: [] };
+    let summe = 0;
+    const detail = [];
+    for (let slot = 1; slot <= anzahlSlots; slot++) {
+      let preis = stufen[0].price_per_bot;
+      for (const st of stufen) {
+        if (st.bots <= slot) preis = Number(st.price_per_bot);
+      }
+      summe += Number(preis);
+      detail.push({ slot, preis: Number(preis) });
+    }
+    return { total: Math.round(summe * 100) / 100, detail };
+  }
+
+  // GET — progressiven Preis für eine Slot-Anzahl berechnen
+  app.get('/api/cv/admin/price-calc', async (req, res) => {
+    try {
+      const slots = parseInt(req.query.slots, 10);
+      if (!slots || slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
+      const { data: tiers, error } = await supabase
+        .from('cv_price_tiers').select('bots, price_per_bot')
+        .eq('active', true).order('bots', { ascending: true });
+      if (error) return res.status(500).json({ error: 'Stufen laden: ' + error.message });
+      const result = cvBerechneProgressiv(slots, tiers || []);
+      res.json({ slots, total: result.total, detail: result.detail });
+    } catch(e) {
+      console.error('[CV price-calc]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // GET — alle Preisstufen (für Backoffice + später Buchung)
+  app.get('/api/cv/admin/price-tiers', async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('cv_price_tiers')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      if (error) return res.status(500).json({ error: 'Laden: ' + error.message });
+      res.json({ tiers: data || [] });
+    } catch(e) {
+      console.error('[CV price-tiers GET]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // POST — neue Preisstufe anlegen
+  app.post('/api/cv/admin/price-tiers', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const bots = parseInt(b.bots, 10);
+      const pricePerBot = parseFloat(b.price_per_bot);
+      if (!bots || bots < 1) return res.status(400).json({ error: 'Bots-Anzahl fehlt/ungültig.' });
+      if (isNaN(pricePerBot) || pricePerBot < 0) return res.status(400).json({ error: 'Preis pro Bot fehlt/ungültig.' });
+      const discount = parseInt(b.discount_pct, 10) || 0;
+      const monthly = Math.round(bots * pricePerBot * 100) / 100;
+      const { data, error } = await supabase
+        .from('cv_price_tiers')
+        .insert({
+          bots, price_per_bot: pricePerBot, discount_pct: discount,
+          monthly_total: monthly, sort_order: (b.sort_order != null ? parseInt(b.sort_order,10) : bots),
+          active: true
+        })
+        .select().single();
+      if (error) {
+        console.error('[CV price-tiers POST] Insert-Fehler:', error.message);
+        return res.status(500).json({ error: 'Anlegen: ' + error.message });
+      }
+      res.json({ success: true, tier: data });
+    } catch(e) {
+      console.error('[CV price-tiers POST]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // PUT — Preisstufe ändern
+  app.put('/api/cv/admin/price-tiers/:id', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const upd = { updated_at: new Date().toISOString() };
+      if (b.bots != null) upd.bots = parseInt(b.bots, 10);
+      if (b.price_per_bot != null) upd.price_per_bot = parseFloat(b.price_per_bot);
+      if (b.discount_pct != null) upd.discount_pct = parseInt(b.discount_pct, 10) || 0;
+      if (b.active != null) upd.active = !!b.active;
+      // Monatspreis neu berechnen, wenn bots oder Preis geändert
+      const botsVal = (upd.bots != null) ? upd.bots : null;
+      const priceVal = (upd.price_per_bot != null) ? upd.price_per_bot : null;
+      if (botsVal != null || priceVal != null) {
+        const { data: cur } = await supabase.from('cv_price_tiers').select('bots, price_per_bot').eq('id', req.params.id).maybeSingle();
+        const finalBots = botsVal != null ? botsVal : (cur ? cur.bots : 0);
+        const finalPrice = priceVal != null ? priceVal : (cur ? cur.price_per_bot : 0);
+        upd.monthly_total = Math.round(finalBots * finalPrice * 100) / 100;
+      }
+      const { data, error } = await supabase
+        .from('cv_price_tiers').update(upd).eq('id', req.params.id).select().single();
+      if (error) return res.status(500).json({ error: 'Ändern: ' + error.message });
+      res.json({ success: true, tier: data });
+    } catch(e) {
+      console.error('[CV price-tiers PUT]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // DELETE — Preisstufe löschen
+  app.delete('/api/cv/admin/price-tiers/:id', async (req, res) => {
+    try {
+      const { error } = await supabase.from('cv_price_tiers').delete().eq('id', req.params.id);
+      if (error) return res.status(500).json({ error: 'Löschen: ' + error.message });
+      res.json({ success: true });
+    } catch(e) {
+      console.error('[CV price-tiers DELETE]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
   // GET /api/cv/admin/customers — alle Converdino-Kunden auflisten
   app.get('/api/cv/admin/customers', async (req, res) => {
     try {
