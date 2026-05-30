@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino — Test & Training</title>
+<style>
+  :root{
+    --green:#25d366; --green-dark:#0f6b34; --green-mid:#1faa52;
+    --ink:#0d1b12; --ink-soft:#33473b; --paper:#f6f9f5; --card:#eef9f1; --line:#d3ebda;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--paper);color:var(--ink);line-height:1.55;padding:0 0 120px}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px}
+  .logo{font-weight:800;font-size:30px;letter-spacing:-1px;margin-bottom:4px}
+  .logo .c1{color:var(--green-dark)} .logo .c2{color:var(--green)}
+  .sub{color:var(--ink-soft);font-size:14px;margin-bottom:28px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:20px}
+  .card h2{font-size:17px;color:var(--green-dark);margin-bottom:6px}
+  .card p{font-size:14px;color:var(--ink-soft);margin-bottom:14px}
+  label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--green-mid);margin-bottom:6px}
+  input[type=text]{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 13px;
+    font-size:15px;font-family:inherit;outline:none}
+  input[type=text]:focus{border-color:var(--green-mid)}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--green-dark);color:#fff;border:none;
+    border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;text-decoration:none}
+  .btn:hover{background:#0c5829}
+  .btn-wa{background:var(--green);color:var(--ink)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px}
+  .row .grow{flex:1;min-width:200px}
+  .hint{font-size:12px;color:var(--ink-soft);margin-top:8px}
+  .codebox{background:var(--ink);color:#cfeede;border-radius:10px;padding:14px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12.5px;overflow-x:auto;white-space:pre;margin-top:6px}
+  .qr{margin-top:14px;text-align:center}
+  .qr img{border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px}
+  .qr a{display:inline-block;margin-top:8px;font-size:13px;color:var(--green-dark);font-weight:700}
+  .copybtn{margin-top:10px}
+  .ok{color:var(--green-dark);font-weight:700;font-size:13px;margin-left:8px}
+  .demo-products{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:99px;padding:7px 14px;
+    font-size:13px;font-weight:600;cursor:pointer;color:var(--green-dark)}
+  .chip:hover{background:#e1f4e8}
+  .step{display:flex;gap:12px;margin-bottom:12px}
+  .step .n{flex-shrink:0;width:26px;height:26px;border-radius:7px;background:var(--green);color:var(--ink);
+    font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .step .t{font-size:14px;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="logo"><span class="c1">CONVER</span><span class="c2">DINO</span></div>
+  <div class="sub">Test- &amp; Trainingsseite — probiere den Verkaufsberater auf beiden Wegen aus</div>
+
+  <!-- Bot-Code wählen -->
+  <div class="card">
+    <h2>1 · Welchen Bot möchtest du testen?</h2>
+    <p>Trage den Bot-Code des Slots ein (steht im Dashboard unter jedem Slot, z. B. „Anfrage-45SW").
+       Danach gelten die Wege unten für genau diesen Artikel.</p>
+    <div class="row">
+      <div class="grow">
+        <label for="botcode">Bot-Code</label>
+        <input type="text" id="botcode" placeholder="z. B. Anfrage-45SW" value="Anfrage-45SW">
+      </div>
+      <button class="btn" onclick="applyCode()">Übernehmen</button>
+    </div>
+    <div class="demo-products">
+      <span class="chip" onclick="setCode('Anfrage-45SW')">Peugeot</span>
+      <span class="chip" onclick="setCode('Anfrage-983J')">Breitling</span>
+      <span class="chip" onclick="setCode('Anfrage-6W36')">Sommerkleid</span>
+    </div>
+    <div class="hint" id="codeStatus">Aktiver Test-Code: <strong id="activeCode">Anfrage-45SW</strong></div>
+  </div>
+
+  <!-- Weg 1: Web-Widget -->
+  <div class="card">
+    <h2>2 · Weg A — Web-Chat (das neue Widget)</h2>
+    <p>Unten rechts erscheint der grüne Chat-Button. Klick ihn an und unterhalte dich mit dem Bot —
+       genau so, wie es ein Besucher auf der Händler-Webseite täte. Bei Kaufinteresse blendet der Bot
+       automatisch das Kontaktformular ein.</p>
+    <button class="btn" onclick="reloadWidget()">↻ Web-Chat mit aktuellem Code neu laden</button>
+    <div class="hint">Tipp zum Trainieren: Stelle Fangfragen, versuche zu verhandeln, gib dich als
+       Kaufinteressent — und prüfe, ob der Bot fachlich, im richtigen Ton und nie unter dem Mindestpreis bleibt.</div>
+  </div>
+
+  <!-- Weg 2: WhatsApp -->
+  <div class="card">
+    <h2>3 · Weg B — WhatsApp (QR &amp; Button)</h2>
+    <p>Derselbe Bot über WhatsApp. Scanne den QR-Code mit dem Handy oder klicke den Button —
+       beides öffnet WhatsApp mit dem passenden Start-Text für diesen Slot.</p>
+    <a class="btn btn-wa" id="waBtn" href="#" target="_blank">💬 Per WhatsApp testen</a>
+    <div class="qr">
+      <img id="qrImg" width="200" height="200" alt="QR-Code">
+      <br><a id="qrLink" href="#" target="_blank">QR-Bild in neuem Tab öffnen</a>
+    </div>
+    <div class="hint">Hinweis: Über WhatsApp läuft das Gespräch über eure Bot-Nummer. Jede Testnachricht
+       verbraucht etwas Anthropic-Guthaben — wie im echten Betrieb.</div>
+  </div>
+
+  <!-- Einbau-Anleitung für Händler -->
+  <div class="card">
+    <h2>4 · So baut ein Händler das Web-Widget ein</h2>
+    <p>Der Händler kopiert diese eine Zeile und fügt sie in seine Webseite ein — direkt vor dem
+       schließenden &lt;/body&gt;-Tag. Der Bot-Code unten passt sich an deine Auswahl oben an.</p>
+    <div class="codebox" id="embedCode"></div>
+    <button class="btn copybtn" onclick="copyEmbed()">📋 Code kopieren</button>
+    <span class="ok" id="copyOk" style="display:none">✓ Kopiert</span>
+    <div class="step" style="margin-top:18px">
+      <div class="n">1</div><div class="t">Code kopieren (Button oben).</div>
+    </div>
+    <div class="step">
+      <div class="n">2</div><div class="t">In die Webseite des Händlers einfügen, vor &lt;/body&gt;.</div>
+    </div>
+    <div class="step">
+      <div class="n">3</div><div class="t">Speichern — der Chat-Button erscheint sofort unten rechts.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Das Web-Widget wird hier dynamisch geladen -->
+<script>
+  var API = 'https://converto-server-production.up.railway.app';
+  var WA_NUMBER = '4367764118066'; // eure Bot-Nummer
+
+  function currentCode(){ return document.getElementById('botcode').value.trim() || 'Anfrage-45SW'; }
+
+  function setCode(c){ document.getElementById('botcode').value = c; applyCode(); }
+
+  function applyCode(){
+    var code = currentCode();
+    document.getElementById('activeCode').textContent = code;
+    // WhatsApp-Link + QR aktualisieren
+    var waText = encodeURIComponent('Hallo! Bitte um mehr Information ' + code);
+    var waUrl = 'https://wa.me/' + WA_NUMBER + '?text=' + waText;
+    document.getElementById('waBtn').href = waUrl;
+    var qr = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(waUrl);
+    document.getElementById('qrImg').src = qr;
+    document.getElementById('qrLink').href = qr;
+    // Einbau-Code aktualisieren
+    document.getElementById('embedCode').textContent =
+      '<script src="' + API + '/converdino-widget.js" data-bot="' + code + '"><\/script>';
+    reloadWidget();
+  }
+
+  function reloadWidget(){
+    // bestehendes Widget entfernen
+    var old = document.getElementById('cvw-widget-script');
+    if (old) old.remove();
+    document.querySelectorAll('.cvw-btn, .cvw-panel').forEach(function(el){ el.remove(); });
+    // neu laden mit aktuellem Code
+    var s = document.createElement('script');
+    s.id = 'cvw-widget-script';
+    s.src = API + '/converdino-widget.js?cb=' + Date.now(); // cache-buster
+    s.setAttribute('data-bot', currentCode());
+    document.body.appendChild(s);
+  }
+
+  function copyEmbed(){
+    var txt = document.getElementById('embedCode').textContent;
+    navigator.clipboard.writeText(txt).then(function(){
+      var ok = document.getElementById('copyOk');
+      ok.style.display = 'inline';
+      setTimeout(function(){ ok.style.display = 'none'; }, 2000);
+    });
+  }
+
+  // Initial aufbauen
+  applyCode();
+</script>
+</body>
+</html>
