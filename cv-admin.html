@@ -74,6 +74,13 @@
   .tier-calc-row input { padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; width: 140px; }
   .tier-calc-result { font-size: 20px; font-weight: 900; color: var(--g2); }
   .tier-calc-detail { font-size: 12px; color: var(--mu); margin-top: 8px; line-height: 1.5; }
+  /* Klappbare Karten */
+  .card-toggle { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; user-select: none; margin: 0; }
+  .card-toggle:hover { color: var(--g2); }
+  .card-arrow { font-size: 16px; color: var(--mu); transition: transform .2s; }
+  .card-toggle.collapsed .card-arrow { transform: rotate(-90deg); }
+  .card-body { margin-top: 16px; }
+  .card-body.collapsed { display: none; }
   /* Gespräche im Slot-Einblick */
   .slot-conv { margin: 4px 0 10px 38px; }
   .sc-box { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; max-height: 280px; overflow-y: auto; }
@@ -178,7 +185,8 @@
 
   <!-- Neuer Kunde -->
   <div class="card">
-    <h2>➕ Neuen Kunden anlegen</h2>
+    <h2 class="card-toggle collapsed" onclick="toggleCard(this)">➕ Neuen Kunden anlegen <span class="card-arrow">▾</span></h2>
+    <div class="card-body collapsed">
     <div id="createMsg" class="msg"></div>
     <div class="grid">
       <div class="field">
@@ -218,11 +226,13 @@
       </div>
     </div>
     <button type="button" class="btn" id="createBtn" onclick="createCustomer()">Kunde anlegen</button>
+    </div>
   </div>
 
   <!-- Preisstaffeln -->
   <div class="card">
-    <h2>💶 Preisstaffeln</h2>
+    <h2 class="card-toggle collapsed" onclick="toggleCard(this)">💶 Preisstaffeln <span class="card-arrow">▾</span></h2>
+    <div class="card-body collapsed">
     <div class="sub" style="margin-bottom:14px;">Preis pro Bot/Monat je nach Anzahl. Wird (noch) nicht automatisch abgerechnet — reine Verwaltung.</div>
     <div id="tierMsg" class="msg"></div>
     <div id="tierArea"><div class="empty">Lade Preisstaffeln …</div></div>
@@ -244,11 +254,13 @@
       </div>
       <div id="calcDetail" class="tier-calc-detail"></div>
     </div>
+    </div>
   </div>
 
   <!-- Kundenliste -->
   <div class="card">
-    <h2>📋 Kunden</h2>
+    <h2 class="card-toggle" onclick="toggleCard(this)">📋 Kunden <span class="card-arrow">▾</span></h2>
+    <div class="card-body">
     <div class="kunden-suche">
       <input type="text" id="kundenSuche" placeholder="🔍 Kunde suchen (Login, Firma, Ansprechpartner) …" oninput="filterKunden()">
       <span id="sucheCount" class="suche-count"></span>
@@ -256,6 +268,7 @@
     <div id="listMsg" class="msg"></div>
     <div id="listArea">
       <div class="empty">Lade Kunden …</div>
+    </div>
     </div>
   </div>
 </div>
@@ -401,8 +414,15 @@ function calcPrice() {
   }, 300);
 }
 
-function logout() {
-  localStorage.removeItem(AUTH_KEY);
+// Karte auf-/zuklappen
+function toggleCard(headerEl) {
+  const body = headerEl.nextElementSibling;
+  if (!body) return;
+  headerEl.classList.toggle('collapsed');
+  body.classList.toggle('collapsed');
+}
+
+function logout() {  localStorage.removeItem(AUTH_KEY);
   window.location.href = 'login.html';
 }
 
