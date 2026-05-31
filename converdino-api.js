@@ -217,7 +217,7 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/article', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { title, sale_price, min_price, location, anrede, notes, deposit_percent, mode } = req.body;
+      const { title, sale_price, min_price, location, anrede, notes, deposit_percent, mode, bot_name } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
@@ -261,6 +261,7 @@ module.exports = function(app, supabase, deps) {
             min_price: min_price || null,
             location: location || null,
             anrede: anrede || 'Sie',
+            bot_name: (bot_name && bot_name.trim()) || null,
             notes: notes || null,
             status: 'draft',
             updated_at: new Date().toISOString()
@@ -280,6 +281,7 @@ module.exports = function(app, supabase, deps) {
             min_price: min_price || null,
             location: location || null,
             anrede: anrede || 'Sie',
+            bot_name: (bot_name && bot_name.trim()) || null,
             notes: notes || null,
             status: 'draft'
           })
@@ -1094,6 +1096,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const analysis = article.analysis || {};
     const strategy = analysis.bot_strategy || {};
     const anrede = article.anrede || 'Sie';
+    const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
 
     // Session-State initialisieren falls neu
     if (!session.phase) session.phase = 'interest';
@@ -1126,6 +1129,12 @@ Schreibe wie ein kompetenter, ruhiger Fachverkäufer, der sein Produkt kennt —
 - Emojis sehr sparsam: höchstens eines pro Nachricht, oft gar keines. Niemals 🎉 oder Konfetti-Jubel.
 - Bestätige Kaufinteresse ruhig und sachlich ("Gern, dann machen wir das so."), nicht euphorisch ("Wunderbar, das freut mich riesig! 🎉").
 - Sei freundlich und zugewandt, aber erwachsen und seriös — gerade bei hochpreisigen Gütern wirkt Zurückhaltung vertrauenswürdiger als Begeisterung.
+
+WER DU BIST — Vorstellung & Echtheit:
+${botName
+  ? `Stelle dich in der ersten Nachricht mit "${botName}" vor (z.B. "Hallo, hier ist ${botName}.").`
+  : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Verkaufsberater des Teams vor.`}
+Du gibst dich NIE als Mensch aus. Auf die Frage, ob du echt/ein Mensch/eine KI bist, antworte ehrlich: "Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit dem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, Ihre Fragen und Wünsche so vorzubereiten, dass das Verkaufsteam Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
 
 PRODUKT: ${article.title}
 VERKAUFSPREIS: €${salePrice}
@@ -2388,6 +2397,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   function cvBuildWebPrompt(article) {
     const analysis = article.analysis || {};
     const anrede = article.anrede || 'Sie';
+    const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const salePrice = Number(article.sale_price) || 0;
     const minPrice  = Number(article.min_price) || 0;
     const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
@@ -2409,6 +2419,13 @@ Schreibe wie ein kompetenter, ruhiger Fachverkäufer, der sein Produkt kennt —
 - Nenne Fakten statt Schwärmerei. Kurz und konkret: lieber 2-3 klare Sätze als ein langer Schwall.
 - Emojis sehr sparsam: höchstens eines pro Nachricht, oft gar keines.
 - Sei freundlich, aber erwachsen und seriös — gerade bei hochpreisigen Gütern wirkt Zurückhaltung vertrauenswürdiger.
+
+WER DU BIST — Vorstellung & Echtheit:
+${botName
+  ? `Stelle dich zu Beginn mit "${botName}" vor (z.B. "Hallo, hier ist ${botName}.").`
+  : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Verkaufsberater des Teams vor.`}
+Du gibst dich NIE als Mensch aus. Auf die Frage, ob du echt/ein Mensch/eine KI bist, antworte ehrlich: "Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit dem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, Ihre Fragen und Wünsche so vorzubereiten, dass das Verkaufsteam Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
+
 
 PRODUKT: ${article.title}
 VERKAUFSPREIS: €${salePrice}
@@ -2446,6 +2463,7 @@ REGELN:
   // locker qualifizieren (Rahmenbedingungen), und zur Videokonferenz mit dem Berater führen.
   function cvBuildBeratungPrompt(article) {
     const anrede = article.anrede || 'Sie';
+    const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
     const factsBlock = pdfFacts.length > 0
       ? pdfFacts.map(f => `• ${f.k}: ${f.v}`).join('\n')
@@ -2464,8 +2482,14 @@ HALTUNG & TON — ruhige Kompetenz, KEINE Angstmache
 - ANREDE: ${anrede} (konsequent verwenden).
 
 ═══════════════════════════════════════════════════════
-ABSOLUTE GRENZE — KEINE RECHTSBERATUNG
+WER DU BIST — Vorstellung & Echtheit
 ═══════════════════════════════════════════════════════
+${botName
+  ? `Stelle dich zu Beginn mit "${botName}" vor (z.B. "Hallo, hier ist ${botName}.").`
+  : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Berater des Teams vor.`}
+WICHTIG — Echtheit: Du gibst dich NIE als Mensch aus. Wenn jemand fragt, ob du echt/ein Mensch/eine KI bist, antworte sinngemäß und ehrlich:
+"Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit Ihrem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, alle Ihre Fragen und Wünsche so vorzubereiten, dass unser Team Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
+
 Du sensibilisierst und informierst allgemein — du gibst NIEMALS konkrete rechtliche Einschätzungen zum Einzelfall ("in Ihrem Fall haften Sie für X"). Die rechtliche Bewertung macht ausschließlich unser Berater im persönlichen Gespräch. Wenn jemand eine konkrete rechtliche Einschätzung will, sage freundlich: das bespricht ${berater} verbindlich im persönlichen Termin.
 - Wenn jemand unterhalb einer gesetzlichen Schwelle liegt: sage das NEUTRAL ("Sie liegen unterhalb der direkten Schwelle"), NICHT mit Worten wie "aktuell" oder "noch", die suggerieren, es ändere sich demnächst. Betone stattdessen die INDIREKTE Betroffenheit (z.B. über die Lieferkette der Kunden), die real und gegenwärtig ist.
 
