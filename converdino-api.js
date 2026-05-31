@@ -1528,7 +1528,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       const calledContact = toolCalls.some(t => t.name === 'collect_contact' || t.name === 'agree_deal');
       const calledLink = toolCalls.some(t => t.name === 'create_payment_link');
       const closingNow = toolCalls.some(t => t.name === 'confirm_commitment');
-      if (calledContact && !calledLink && !session.paymentLinkSent && !closingNow
+      if (!istBeratung && calledContact && !calledLink && !session.paymentLinkSent && !closingNow
           && cvStripe && session.buyerName && session.buyerPhone
           && !session._autoLinkTried) {
         session._autoLinkTried = true;  // nur einmal versuchen
