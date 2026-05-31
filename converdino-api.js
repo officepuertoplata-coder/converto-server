@@ -947,7 +947,7 @@ JSON-FORMAT (exakt diese Felder, halte die Texte KOMPAKT):
   "likely_buyer": "Typischer Käufer — 1 Satz",
   "likely_objections": [{ "objection": "Einwand", "response": "Bot-Antwort in ${anrede}-Form" }],
   "bot_strategy": {
-    "opening_message": "Erste Bot-Nachricht in ${anrede}-Form: Begrüßung + Produkt-Highlight, 2-3 Sätze",
+    "opening_message": "Erste Bot-Nachricht in ${anrede}-Form: KURZ (1 Satz) — knappe Begrüßung + nennen worum es geht, dann Frage wie man helfen kann. KEINE Produktbeschreibung.",
     "value_argument": "Hauptargument das den Preis €${article.sale_price} rechtfertigt, 1-2 Sätze",
     "negotiation_steps": [
       "Schritt 1: bei €${article.sale_price} halten",
@@ -1654,7 +1654,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     }
 
     const messages = userMessage === null
-      ? [{ role: 'user', content: 'START: Begrüße den Käufer, präsentiere das Produkt überzeugend in 2-3 Sätzen und frage was ihn besonders interessiert.' }]
+      ? [{ role: 'user', content: 'START: Begrüße den Käufer KURZ und natürlich (1-2 Sätze, wie ein echter Mensch im Chat). Stelle dich knapp vor, nenne kurz das Produkt, das ihn interessiert, und frage, wie du helfen kannst. KEINE lange Produktbeschreibung, KEINE Aufzählung von Ausstattung — das kommt erst, wenn er fragt. Beispiel-Ton: "Hallo, ich bin [Name] vom Verkaufsteam. Sie interessieren sich für den [Produkt] — wie kann ich Ihnen helfen?"' }]
       : normalizeHistory(session.history);
 
     // Sicherheitsnetz: leere oder ungültige messages
@@ -2903,7 +2903,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     }
 
     const messages = userMessage === null
-      ? [{ role: 'user', content: 'START: Begrüße den Besucher, präsentiere das Produkt sachlich in 2-3 Sätzen und frage, was ihn besonders interessiert.' }]
+      ? [{ role: 'user', content: 'START: Begrüße den Besucher KURZ und natürlich (1-2 Sätze, wie ein echter Mensch im Chat). Stelle dich knapp vor, nenne kurz das Thema/Produkt, das ihn interessiert, und frage, wie du helfen kannst. KEINE lange Produkt- oder Themenbeschreibung, KEINE Aufzählungen — das kommt erst, wenn er fragt. Beispiel-Ton: "Hallo, ich bin [Name] vom Beratungsteam. Sie interessieren sich für [Thema] — wie kann ich Ihnen helfen?"' }]
       : normalizeHistory(history);
     if (messages.length === 0) messages.push({ role: 'user', content: userMessage || 'Hallo' });
 
