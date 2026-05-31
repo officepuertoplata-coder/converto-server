@@ -299,6 +299,7 @@ const AUTH_KEY = 'converto_auth_v2';
 let auth = null;
 let activeSlotId = null;
 let viewAsCustomer = ''; // Admin sieht Kunden an ('' = sich selbst)
+let cvBeratungEnabled = false; // ob der Kunde den Beratungs-Modus freigeschaltet hat
 
 // ── AUTH PRÜFEN ──────────────────────────────────────
 (function init() {
@@ -435,6 +436,7 @@ function render(d) {
 
   const sub = d.subscription;
   const slots = d.slots || [];
+  cvBeratungEnabled = !!(sub && sub.beratung_enabled);
   const periodEnd = sub.current_period_end
     ? new Date(sub.current_period_end).toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' })
     : '—';
@@ -526,6 +528,7 @@ function renderSlot(slot) {
         <div class="article-meta">€${fmtPrice(slot.article?.sale_price)} · Bot läuft</div>
       </div>
       <div class="bot-info">Code: <span class="bot-code">${esc(slot.bot_code || '—')}</span></div>
+      ${renderSlotMode(slot)}
       ${renderFunnel(slot.stats)}
       <button class="btn btn-primary" onclick="goToKnowledge('${slot.id}')" style="margin-bottom:8px;">🧠 Was hat der Bot gelernt?</button>
       <button class="btn btn-soft" onclick="toggleConversations('${slot.id}')" style="margin-bottom:8px;">💬 Gespräche ansehen</button>
@@ -550,6 +553,36 @@ function pillLabel(s) {
     empty: 'Leer', configured: 'Bereit', uploading: 'Upload',
     analyzing: 'Analyse', active: 'Aktiv', paused: 'Pausiert'
   }[s] || s;
+}
+
+// ── Modus-Anzeige + Umschalter pro Slot (Verkauf/Beratung) ──
+function renderSlotMode(slot) {
+  const isBeratung = (slot.mode === 'beratung');
+  const label = isBeratung
+    ? '<strong style="color:#0f6b34;">🛡️ Beratungs-Bot</strong>'
+    : '<strong style="color:var(--g2,#1faa52);">🛒 Verkaufs-Bot</strong>';
+  let out = '<div style="margin:8px 0;font-size:.82rem;color:var(--mu);">Modus: ' + label;
+  if (cvBeratungEnabled) {
+    const target = isBeratung ? 'verkauf' : 'beratung';
+    const btnLabel = isBeratung ? 'auf Verkauf umstellen' : 'auf Beratung umstellen';
+    out += ' &nbsp;<button class="btn btn-soft" style="display:inline;padding:3px 10px;font-size:.78rem;width:auto;" onclick="setSlotMode(\'' + slot.id + '\',\'' + target + '\')">' + btnLabel + '</button>';
+  }
+  out += '</div>';
+  return out;
+}
+
+async function setSlotMode(slotId, mode) {
+  try {
+    const r = await fetch(API + '/api/cv/admin/slot/' + slotId + '/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: mode })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) { toast(d.error || 'Modus konnte nicht gesetzt werden.'); return; }
+    toast(mode === 'beratung' ? '✓ Auf Beratungs-Bot umgestellt' : '✓ Auf Verkaufs-Bot umgestellt');
+    loadDashboard();
+  } catch(e) { toast('Fehler: ' + e.message); }
 }
 
 // ── ARTIKEL MODAL ────────────────────────────────────

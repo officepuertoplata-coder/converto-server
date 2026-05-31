@@ -197,6 +197,7 @@ module.exports = function(app, supabase, deps) {
           slots_total: sub.slots_total,
           slots_used: enrichedSlots.filter(s => s.status !== 'empty').length,
           status: sub.status,
+          beratung_enabled: sub.beratung_enabled === true,
           current_period_end: sub.current_period_end
         },
         slots: enrichedSlots
@@ -3123,6 +3124,7 @@ Ihr Converdino-Team`;
         seller_email: s.seller_email || null,
         commission_pct: s.commission_pct != null ? s.commission_pct : null,
         status: s.status,
+        beratung_enabled: s.beratung_enabled === true,
         slots_total: s.slots_total || 0,
         slots_created: slotCounts[s.id] || 0,
         created_at: s.created_at
@@ -3299,6 +3301,31 @@ Ihr Converdino-Team`;
   });
 
 
+  // POST /api/cv/admin/slot/:slotId/mode — Modus eines Slots setzen (verkauf/beratung)
+  // Beratung nur erlaubt, wenn die Subscription beratung_enabled = true hat.
+  app.post('/api/cv/admin/slot/:slotId/mode', async (req, res) => {
+    try {
+      const slotId = req.params.slotId;
+      const mode = (req.body.mode === 'beratung') ? 'beratung' : 'verkauf';
+
+      const { data: slot } = await supabase
+        .from('cv_slots').select('id, subscription_id').eq('id', slotId).maybeSingle();
+      if (!slot) return res.status(404).json({ error: 'Slot nicht gefunden' });
+
+      if (mode === 'beratung') {
+        const { data: sub } = await supabase
+          .from('cv_subscriptions').select('beratung_enabled').eq('id', slot.subscription_id).maybeSingle();
+        if (!sub || sub.beratung_enabled !== true) {
+          return res.status(403).json({ error: 'Beratungs-Modus ist für diesen Kunden nicht freigeschaltet.' });
+        }
+      }
+
+      await supabase.from('cv_slots').update({ mode }).eq('id', slotId);
+      res.json({ success: true, mode });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+
   // PUT /api/cv/admin/customers/:subId — Stammdaten ändern
   app.put('/api/cv/admin/customers/:subId', async (req, res) => {
     try {
@@ -3378,7 +3405,28 @@ Ihr Converdino-Team`;
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  // DELETE /api/cv/admin/customers/:subId — Kunde endgültig löschen
+  // POST /api/cv/admin/customers/:subId/beratung — Beratungs-Modus freigeben/sperren (190 €/Mon.)
+  app.post('/api/cv/admin/customers/:subId/beratung', async (req, res) => {
+    try {
+      const subId = req.params.subId;
+      const enabled = req.body.enabled === true || req.body.enabled === 'true';
+
+      const { data: sub } = await supabase
+        .from('cv_subscriptions').select('id').eq('id', subId).maybeSingle();
+      if (!sub) return res.status(404).json({ error: 'Kunde nicht gefunden' });
+
+      await supabase.from('cv_subscriptions')
+        .update({ beratung_enabled: enabled }).eq('id', subId);
+
+      // Beim Entzug: bestehende Beratungs-Slots zurück auf Verkauf stellen (Sicherheit)
+      if (!enabled) {
+        await supabase.from('cv_slots')
+          .update({ mode: 'verkauf' }).eq('subscription_id', subId).eq('mode', 'beratung');
+      }
+
+      res.json({ success: true, enabled });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
   app.delete('/api/cv/admin/customers/:subId', async (req, res) => {
     try {
       const subId = req.params.subId;

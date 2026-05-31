@@ -855,6 +855,16 @@ async function loadCustomers() {
               '<button type="button" class="btn btn-dark btn-sm" onclick="resetPw(\'' + c.id + '\')">Setzen</button>' +
             '</div>' +
           '</div>' +
+          '<div style="margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:10px;background:#f8faf9;">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:6px;">🛡️ Beratungs-Modus (190 €/Mon.)</div>' +
+            '<div style="font-size:12px;color:var(--mu);margin-bottom:8px;">' +
+              (c.beratung_enabled
+                ? 'Freigeschaltet — dieser Kunde kann Slots auf „Beratung" stellen.'
+                : 'Nicht freigeschaltet. Erst freigeben, dann kann der Kunde Beratungs-Slots nutzen.') +
+            '</div>' +
+            '<button type="button" class="btn btn-sm" style="background:' + (c.beratung_enabled ? 'var(--amber)' : 'var(--g2)') + ';" onclick="toggleBeratung(\'' + c.id + '\',' + (!c.beratung_enabled) + ')">' +
+              (c.beratung_enabled ? 'Beratung sperren' : 'Beratung freigeben') + '</button>' +
+          '</div>' +
           '<div class="edit-danger">' +
             '<button type="button" class="btn btn-sm" style="background:var(--amber);" onclick="toggleActive(\'' + c.id + '\',' + (!isActive) + ')">' +
               (isActive ? 'Kunde deaktivieren' : 'Kunde aktivieren') + '</button>' +
@@ -925,6 +935,7 @@ async function toggleSlotView(subId, userLogin) {
     const r = await fetch(API + '/api/cv/me?user=' + encodeURIComponent(userLogin));
     const d = await r.json();
     const slots = (d && d.slots) || [];
+    const beratungEnabled = !!(d && d.subscription && d.subscription.beratung_enabled);
     if (slots.length === 0) {
       box.innerHTML = '<div style="color:var(--mu);font-size:14px;">Dieser Kunde hat noch keine Slots.</div>';
       return;
@@ -961,6 +972,18 @@ async function toggleSlotView(subId, userLogin) {
           '<button type="button" class="btn btn-g btn-sm" onclick="openSettingsModal(\'' + s.id + '\')">⚙️ Einstellungen</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="toggleSlotConvs(\'' + s.id + '\')">💬 Gespräche</button>';
       }
+      // Modus-Anzeige + Umschalter (Beratung nur wenn Kunde freigeschaltet)
+      const isBeratung = (s.mode === 'beratung');
+      let modeBlock = '<div style="margin:6px 0 0 38px;font-size:12px;">' +
+        'Modus: <strong style="color:' + (isBeratung ? '#0f6b34' : 'var(--g2)') + ';">' +
+        (isBeratung ? '🛡️ Beratung' : '🛒 Verkauf') + '</strong>';
+      if (beratungEnabled) {
+        modeBlock += ' &nbsp; <button type="button" class="btn btn-sm" style="background:var(--g2);padding:4px 10px;font-size:12px;" onclick="setSlotMode(\'' + s.id + '\',\'' + (isBeratung ? 'verkauf' : 'beratung') + '\',\'' + esc(userLogin) + '\',\'' + subId + '\')">' +
+          (isBeratung ? '→ auf Verkauf' : '→ auf Beratung') + '</button>';
+      } else {
+        modeBlock += ' <span style="color:var(--mu);">(Beratung gesperrt — erst freigeben)</span>';
+      }
+      modeBlock += '</div>';
       html += '<div class="sv-slot">' +
         '<div class="sv-num">' + (s.slot_number || '?') + '</div>' +
         '<div class="sv-info"><div class="sv-title">' + title + '</div>' +
@@ -969,6 +992,7 @@ async function toggleSlotView(subId, userLogin) {
       (a ? renderFunnel(s.stats) : '') +
       (a ? renderFairUse(s.stats) : '') +
       (slotBtns ? '<div class="sv-actions">' + slotBtns + '</div>' : '') +
+      modeBlock +
       '<div id="slotconv-' + s.id + '" class="slot-conv" style="display:none;"></div>';
     }
     box.innerHTML = html;
@@ -1295,6 +1319,48 @@ async function toggleActive(subId, makeActive) {
       loadCustomers();
     }
   } catch(e) { showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false); }
+}
+
+// ── Beratungs-Modus freigeben/sperren (190 €/Mon.) ──
+async function toggleBeratung(subId, enable) {
+  clearMsg('listMsg');
+  const txt = enable
+    ? 'Beratungs-Modus für diesen Kunden FREIGEBEN?\n\nDamit kann der Kunde Slots auf „Beratung" stellen (kostenpflichtiges Feature, 190 €/Mon. — Abrechnung erfolgt separat/manuell).'
+    : 'Beratungs-Modus SPERREN?\n\nBestehende Beratungs-Slots dieses Kunden werden zur Sicherheit auf „Verkauf" zurückgestellt.';
+  if (!confirm(txt)) return;
+  try {
+    const r = await fetch(API + '/api/cv/admin/customers/' + subId + '/beratung', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enable })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      showMsg('listMsg', d.error || 'Aktion fehlgeschlagen.', false);
+    } else {
+      showMsg('listMsg', enable ? '✅ Beratungs-Modus freigegeben.' : '✅ Beratungs-Modus gesperrt.', true);
+      loadCustomers();
+    }
+  } catch(e) { showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false); }
+}
+
+// ── Modus eines Slots setzen (Verkauf/Beratung) ──
+async function setSlotMode(slotId, mode, userLogin, subId) {
+  try {
+    const r = await fetch(API + '/api/cv/admin/slot/' + slotId + '/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: mode })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      alert(d.error || 'Modus konnte nicht gesetzt werden.');
+      return;
+    }
+    // Slot-Ansicht neu laden (zweimal toggeln = neu aufbauen)
+    const box = document.getElementById('slotview-' + subId);
+    if (box) { box.innerHTML = ''; box.style.display = 'none'; toggleSlotView(subId, userLogin); }
+  } catch(e) { alert('Verbindungsfehler: ' + e.message); }
 }
 
 // ── Kunde endgültig löschen ──
