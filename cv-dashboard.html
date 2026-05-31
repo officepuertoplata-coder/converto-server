@@ -514,10 +514,13 @@ function renderSlot(slot) {
       <div class="empty-msg">Kein Artikel eingerichtet</div>
       <button class="btn btn-primary" onclick="openArticleModal('${slot.id}')">📦 Artikel einrichten</button>`;
   } else if (slot.status === 'configured') {
+    const metaConf = (slot.mode === 'beratung')
+      ? 'Beratungs-Bot'
+      : '€' + fmtPrice(slot.article.sale_price) + ' · Mindest €' + fmtPrice(slot.article.min_price);
     body = `
       <div class="article-card">
         <div class="article-title">${esc(slot.article.title)}</div>
-        <div class="article-meta">€${fmtPrice(slot.article.sale_price)} · Mindest €${fmtPrice(slot.article.min_price)}</div>
+        <div class="article-meta">${metaConf}</div>
       </div>
       <button class="btn btn-success" onclick="goToUpload('${slot.id}')">📎 Weiter zu Fotos & Dokumente</button>
       <button class="btn btn-soft" onclick="openSettingsModal('${slot.id}')">⚙️ Einstellungen ansehen / bearbeiten</button>
@@ -531,10 +534,13 @@ function renderSlot(slot) {
       <div class="spinner"></div>
       <button class="btn btn-soft" onclick="goToUpload('${slot.id}')">📎 Weiter bearbeiten</button>`;
   } else if (slot.status === 'active') {
+    const metaActive = (slot.mode === 'beratung')
+      ? 'Beratung · Bot läuft'
+      : '€' + fmtPrice(slot.article?.sale_price) + ' · Bot läuft';
     body = `
       <div class="article-card">
         <div class="article-title">${esc(slot.article?.title || 'Artikel')}</div>
-        <div class="article-meta">€${fmtPrice(slot.article?.sale_price)} · Bot läuft</div>
+        <div class="article-meta">${metaActive}</div>
       </div>
       <div class="bot-info">Code: <span class="bot-code">${esc(slot.bot_code || '—')}</span></div>
       ${renderSlotMode(slot)}

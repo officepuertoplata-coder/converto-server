@@ -1266,6 +1266,12 @@ WICHTIG zu Werkzeugen:
 
 STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur antworten. Niemals Fakten erfinden.`;
 
+    // BERATUNGS-MODUS: anderen Prompt verwenden (kein Verkauf/keine Preise/Lead an Berater übergeben)
+    const istBeratung = (slot && slot.mode === 'beratung');
+    const effectiveSystemPrompt = istBeratung
+      ? cvBuildBeratungPrompt(article) + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
+      : systemPrompt;
+
     // ── Tools definieren ──
     const tools = [
       {
@@ -1397,6 +1403,11 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
 
     // API-Call mit automatischem Retry (gegen transiente Fehler)
     let response, lastErr;
+    // Bei Beratung: nur Lead-/Kontakt-Tools zulassen (keine Preis-/Deal-/Zahlungs-Tools)
+    const beratungToolNamen = ['flag_hot_lead', 'collect_contact', 'request_callback'];
+    const effectiveTools = istBeratung
+      ? tools.filter(t => beratungToolNamen.indexOf(t.name) !== -1)
+      : tools;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1409,8 +1420,8 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
             max_tokens: 800,
-            system: systemPrompt,
-            tools,
+            system: effectiveSystemPrompt,
+            tools: effectiveTools,
             messages
           })
         });
@@ -1451,7 +1462,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
             body: JSON.stringify({
               model: 'claude-sonnet-4-6',
               max_tokens: 700,
-              system: systemPrompt + '\n\nWICHTIG: Antworte in diesem Fall NUR mit normalem Text, ohne Werkzeuge.',
+              system: effectiveSystemPrompt + '\n\nWICHTIG: Antworte in diesem Fall NUR mit normalem Text, ohne Werkzeuge.',
               messages
             })
           });
