@@ -846,6 +846,7 @@ async function loadCustomers() {
           '</div>' +
           '<div class="edit-actions">' +
             '<button type="button" class="btn btn-g btn-sm" onclick="saveCustomer(\'' + c.id + '\')">Speichern</button>' +
+            '<span id="saveMsg-' + c.id + '" style="margin-left:10px;font-size:13px;font-weight:700;"></span>' +
           '</div>' +
           '<div class="edit-sub">' +
             '<label>Passwort zurücksetzen</label>' +
@@ -969,6 +970,7 @@ async function toggleSlotView(subId, userLogin) {
       if (a) {
         slotBtns =
           '<button type="button" class="btn btn-g btn-sm" onclick="openKnowledgeModal(\'' + s.id + '\')">🧠 Wissen</button>' +
+          '<button type="button" class="btn btn-g btn-sm" onclick="openDocsModal(\'' + s.id + '\')">📂 Dokumente</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="openSettingsModal(\'' + s.id + '\')">⚙️ Einstellungen</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="openStrategieModal(\'' + s.id + '\')">🎯 Strategie</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="toggleSlotConvs(\'' + s.id + '\')">💬 Gespräche</button>';
@@ -1230,6 +1232,64 @@ async function saveStrategie() {
   } catch(e) { msg.style.color = 'var(--red)'; msg.textContent = 'Verbindungsfehler: ' + e.message; }
 }
 
+// ── Dokumente eines Slots ansehen (read-only) ──
+async function openDocsModal(slotId) {
+  document.getElementById('convModalTitle').innerHTML = '📂 Dokumente';
+  document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Lade …</div>';
+  document.getElementById('convModal').classList.add('open');
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    const ups = Array.isArray(d.uploads) ? d.uploads : [];
+    if (ups.length === 0) {
+      document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Diesem Slot sind keine Dokumente hinterlegt.</div>';
+      return;
+    }
+    const fotos = ups.filter(u => u.kind === 'photo');
+    const analyse = ups.filter(u => u.kind === 'pdf' && u.purpose !== 'dossier');
+    const dossier = ups.filter(u => u.kind === 'pdf' && u.purpose === 'dossier');
+    const notizen = ups.filter(u => u.kind === 'note');
+
+    const docRow = function(u, shareBadge) {
+      const link = u.public_url
+        ? '<a href="' + esc(u.public_url) + '" target="_blank" style="color:var(--g2);font-weight:700;white-space:nowrap;">Öffnen ↗</a>'
+        : '<span style="color:#999;font-size:12px;">kein Link</span>';
+      const badge = shareBadge
+        ? ' <span style="background:#dcfce7;color:#166534;font-size:11px;font-weight:800;padding:1px 7px;border-radius:6px;">teilbar</span>'
+        : '';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:#f8faf9;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;margin-bottom:6px;">' +
+        '<span>📄</span><span style="flex:1;word-break:break-all;">' + esc(u.file_name || 'Dokument') + badge + '</span>' + link + '</div>';
+    };
+
+    let html = '';
+
+    if (dossier.length > 0) {
+      html += '<div style="font-weight:800;font-size:13px;color:#1d4ed8;margin:4px 0 8px;">📋 Verkaufsdossier — der Bot teilt diese auf Anfrage (' + dossier.length + ')</div>';
+      html += dossier.map(u => docRow(u, u.shareable)).join('');
+    }
+    if (analyse.length > 0) {
+      html += '<div style="font-weight:800;font-size:13px;color:#555;margin:14px 0 8px;">🧠 Analyse-Dokumente — nur fürs KI-Wissen, werden nicht geteilt (' + analyse.length + ')</div>';
+      html += analyse.map(u => docRow(u, false)).join('');
+    }
+    if (fotos.length > 0) {
+      html += '<div style="font-weight:800;font-size:13px;color:#555;margin:14px 0 8px;">🖼️ Fotos (' + fotos.length + ')</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;">' +
+        fotos.map(u => u.public_url
+          ? '<a href="' + esc(u.public_url) + '" target="_blank" style="aspect-ratio:1;border-radius:6px;overflow:hidden;border:1px solid #e5e7eb;"><img src="' + esc(u.public_url) + '" style="width:100%;height:100%;object-fit:cover;display:block;"></a>'
+          : '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#f0f0f0;border-radius:6px;">🖼️</div>'
+        ).join('') + '</div>';
+    }
+    if (notizen.length > 0) {
+      html += '<div style="font-weight:800;font-size:13px;color:#555;margin:14px 0 8px;">📝 Notizen (' + notizen.length + ')</div>';
+      html += notizen.map(u => '<div style="padding:9px 11px;background:#f8faf9;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;margin-bottom:6px;">' + esc(u.content || u.file_name || '—') + '</div>').join('');
+    }
+
+    document.getElementById('convModalBody').innerHTML = html;
+  } catch(e) {
+    document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
+  }
+}
+
 // ── Slots zuweisen ──
 async function addSlots(subId) {
   clearMsg('listMsg');
@@ -1296,7 +1356,8 @@ function toggleEdit(subId) {
 
 // ── Stammdaten speichern ──
 async function saveCustomer(subId) {
-  clearMsg('listMsg');
+  const localMsg = document.getElementById('saveMsg-' + subId);
+  if (localMsg) { localMsg.style.color = '#555'; localMsg.textContent = 'Speichere …'; }
   const body = {
     company_name: document.getElementById('e-company-' + subId).value.trim(),
     contact_name: document.getElementById('e-contact-' + subId).value.trim(),
@@ -1312,12 +1373,14 @@ async function saveCustomer(subId) {
     });
     const d = await r.json();
     if (!r.ok || !d.success) {
-      showMsg('listMsg', d.error || 'Speichern fehlgeschlagen.', false);
+      if (localMsg) { localMsg.style.color = 'var(--red)'; localMsg.textContent = '✕ ' + (d.error || 'Fehlgeschlagen'); }
     } else {
-      showMsg('listMsg', '✅ Stammdaten gespeichert.', true);
-      loadCustomers();
+      if (localMsg) { localMsg.style.color = 'var(--g2)'; localMsg.textContent = '✅ Gespeichert'; }
+      // Kunde NICHT neu laden → Karte bleibt offen, Kontext bleibt erhalten
     }
-  } catch(e) { showMsg('listMsg', 'Verbindungsfehler: ' + e.message, false); }
+  } catch(e) {
+    if (localMsg) { localMsg.style.color = 'var(--red)'; localMsg.textContent = '✕ ' + e.message; }
+  }
 }
 
 // ── Passwort-Vorschlag für Bearbeitung ──
