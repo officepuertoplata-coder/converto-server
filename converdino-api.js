@@ -217,7 +217,7 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/article', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { title, sale_price, min_price, location, anrede, notes, deposit_percent, mode, bot_name } = req.body;
+      const { title, sale_price, min_price, location, anrede, notes, deposit_percent, mode, bot_name, berater_name } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
@@ -262,6 +262,7 @@ module.exports = function(app, supabase, deps) {
             location: location || null,
             anrede: anrede || 'Sie',
             bot_name: (bot_name && bot_name.trim()) || null,
+            berater_name: (berater_name && berater_name.trim()) || null,
             notes: notes || null,
             status: 'draft',
             updated_at: new Date().toISOString()
@@ -282,6 +283,7 @@ module.exports = function(app, supabase, deps) {
             location: location || null,
             anrede: anrede || 'Sie',
             bot_name: (bot_name && bot_name.trim()) || null,
+            berater_name: (berater_name && berater_name.trim()) || null,
             notes: notes || null,
             status: 'draft'
           })
@@ -1729,7 +1731,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   // ── Fallback-Text falls Bot nur Tool ohne Text aufrief ───
   function cvFallbackTextForTool(toolName, anrede, article, istBeratung) {
     const du = anrede === 'Du';
-    const berater = 'Herr XYZ'; // Platzhalter — echten Namen später eintragen
+    const berater = (article && article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : 'unser Berater';
 
     // BERATUNGS-MODUS: warmer Abschluss mit Nachbetreuungs-Versprechen, kein Verkauf
     if (istBeratung) {
@@ -2473,7 +2475,7 @@ REGELN:
     const factsBlock = pdfFacts.length > 0
       ? pdfFacts.map(f => `• ${f.k}: ${f.v}`).join('\n')
       : '(keine extrahierten Dokument-Fakten)';
-    const berater = 'Herr XYZ'; // Platzhalter — echten Namen später eintragen
+    const berater = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : 'unser Berater';
 
     return `Du bist ein kompetenter, seriöser Berater in einem CHAT-FENSTER auf einer Unternehmens-Webseite. Das Thema ist erklärungsbedürftig und ernst (z.B. Lieferanten-Risiken, Compliance, persönliche Haftung der Geschäftsführung). Dein Ziel: dem Gegenüber das Problembewusstsein schärfen, Vertrauen durch Fachkompetenz aufbauen und einen qualifizierten Lead an unseren Berater übergeben — NICHT verkaufen, NICHT verhandeln, KEINE Preise nennen.
 
