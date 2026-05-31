@@ -217,7 +217,7 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/article', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { title, sale_price, min_price, location, anrede, notes, deposit_percent, mode, bot_name, berater_name } = req.body;
+      const { title, sale_price, min_price, location, anrede, notes, deposit_percent, mode, bot_name, berater_name, strategie } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
@@ -263,6 +263,7 @@ module.exports = function(app, supabase, deps) {
             anrede: anrede || 'Sie',
             bot_name: (bot_name && bot_name.trim()) || null,
             berater_name: (berater_name && berater_name.trim()) || null,
+            strategie: (strategie && strategie.trim()) || null,
             notes: notes || null,
             status: 'draft',
             updated_at: new Date().toISOString()
@@ -284,6 +285,7 @@ module.exports = function(app, supabase, deps) {
             anrede: anrede || 'Sie',
             bot_name: (bot_name && bot_name.trim()) || null,
             berater_name: (berater_name && berater_name.trim()) || null,
+            strategie: (strategie && strategie.trim()) || null,
             notes: notes || null,
             status: 'draft'
           })
@@ -582,10 +584,13 @@ module.exports = function(app, supabase, deps) {
   // ============================================================
   app.post('/api/cv/article/:id/persona', async (req, res) => {
     try {
-      const { bot_name, berater_name } = req.body;
+      const { bot_name, berater_name, strategie } = req.body;
       const update = { updated_at: new Date().toISOString() };
       update.bot_name = (bot_name && String(bot_name).trim()) || null;
       update.berater_name = (berater_name && String(berater_name).trim()) || null;
+      if (strategie !== undefined) {
+        update.strategie = (strategie && String(strategie).trim()) || null;
+      }
 
       const { data, error } = await supabase
         .from('cv_articles')
@@ -1180,6 +1185,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const ansprechperson = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : '';
+    const strategieText = (article.strategie && article.strategie.trim()) ? article.strategie.trim() : '';
 
     // Session-State initialisieren falls neu
     if (!session.phase) session.phase = 'interest';
@@ -1356,7 +1362,11 @@ WICHTIG zu Werkzeugen:
 - IMMER wenn der Käufer einen Namen (oder eine abweichende Telefonnummer) nennt → rufe collect_contact mit den Daten auf. Antworte NIE nur mit Text wenn ein Name genannt wurde — das Werkzeug ist Pflicht, sonst gehen die Daten verloren.
 - Bei Reservierungs-/Kaufabsicht gilt der Pflicht-Ablauf: collect_contact (Name + bestätigte WA-Nummer) → dann create_payment_link. Niemals mit "danke" enden bevor der Zahlungslink verschickt ist.
 
-STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur antworten. Niemals Fakten erfinden.`;
+STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur antworten. Niemals Fakten erfinden.${strategieText ? `
+
+═══ GESPRÄCHSSTRATEGIE (vom Betreiber vorgegeben — wichtig!) ═══
+Folge dieser Strategie im Gespräch. Es ist eine Reihenfolge von Angeboten: Biete zuerst das Erste an; wenn der Interessent ablehnt oder zögert, gehe zum Nächsten über — Schritt für Schritt, natürlich und nicht aufdringlich. Dränge nie, biete an. Links/Angebote genau so weitergeben wie angegeben:
+${strategieText}` : ''}`;
 
     // BERATUNGS-MODUS: anderen Prompt verwenden (kein Verkauf/keine Preise/Lead an Berater übergeben)
     const istBeratung = (slot && slot.mode === 'beratung');
@@ -2486,6 +2496,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const ansprechperson = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : '';
+    const strategieText = (article.strategie && article.strategie.trim()) ? article.strategie.trim() : '';
     const salePrice = Number(article.sale_price) || 0;
     const minPrice  = Number(article.min_price) || 0;
     const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
@@ -2543,7 +2554,11 @@ REGELN:
 - Beantworte Produktfragen NUR aus den verifizierten Fakten. Was du nicht sicher weißt: ehrlich sagen, dass du das mit dem Verkäufer klärst — niemals erfinden.
 - Branchen-Allgemeinwissen darfst du nutzen, aber trenne es klar von produktspezifischen Fakten ("allgemein üblich ist … — wie es bei DIESEM Gerät konkret ist, kläre ich mit dem Verkäufer").
 - Verhandle innerhalb der Spanne (Verkaufspreis bis Mindestpreis), max. 2-3 kleiner werdende Zugeständnisse, NIE unter den Mindestpreis.
-- Die Kaufabwicklung läuft sicher und treuhänderisch über die Plattform. Kein Privatverkauf, keine private Bargeldübergabe.`;
+- Die Kaufabwicklung läuft sicher und treuhänderisch über die Plattform. Kein Privatverkauf, keine private Bargeldübergabe.${strategieText ? `
+
+═══ GESPRÄCHSSTRATEGIE (vom Betreiber vorgegeben — wichtig!) ═══
+Folge dieser Strategie. Es ist eine Reihenfolge von Angeboten: biete zuerst das Erste an; bei Ablehnung/Zögern gehe natürlich zum Nächsten über. Dränge nie, biete an. Links/Angebote genau wie angegeben weitergeben:
+${strategieText}` : ''}`;
   }
 
   // BERATUNGS-MODUS: Prompt für erklärungsbedürftige Dienstleistungen (z.B. Supplier Risk Management).
@@ -2558,6 +2573,7 @@ REGELN:
       ? pdfFacts.map(f => `• ${f.k}: ${f.v}`).join('\n')
       : '(keine extrahierten Dokument-Fakten)';
     const berater = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : 'unser Berater';
+    const strategieText = (article.strategie && article.strategie.trim()) ? article.strategie.trim() : '';
 
     return `Du bist ein kompetenter, seriöser Berater in einem CHAT-FENSTER auf einer Unternehmens-Webseite. Das Thema ist erklärungsbedürftig und ernst (z.B. Lieferanten-Risiken, Compliance, persönliche Haftung der Geschäftsführung). Dein Ziel: dem Gegenüber das Problembewusstsein schärfen, Vertrauen durch Fachkompetenz aufbauen und einen qualifizierten Lead an unseren Berater übergeben — NICHT verkaufen, NICHT verhandeln, KEINE Preise nennen.
 
@@ -2620,7 +2636,11 @@ ${factsBlock}
 
 REGELN:
 - Stütze dich beim Fachlichen auf die hinterlegten Fakten. Allgemeines Branchen-/Compliance-Wissen darfst du nutzen, aber klar als allgemein kennzeichnen und Konkretes dem persönlichen Termin überlassen.
-- Was du nicht sicher weißt: ehrlich sagen, dass ${berater} das im Gespräch klärt — niemals erfinden.`;
+- Was du nicht sicher weißt: ehrlich sagen, dass ${berater} das im Gespräch klärt — niemals erfinden.${strategieText ? `
+
+═══ GESPRÄCHSSTRATEGIE (vom Betreiber vorgegeben — wichtig!) ═══
+Folge dieser Strategie. Es ist eine Reihenfolge von Angeboten: biete zuerst das Erste an; wenn der Interessent ablehnt oder zögert, gehe ruhig zum Nächsten über — Schritt für Schritt, seriös und nicht drängend. Links/Angebote genau wie angegeben weitergeben:
+${strategieText}` : ''}`;
   }
 
   // Web-Bot-Turn: ruft Sonnet, gibt die Antwort als String zurück (kein WhatsApp-Versand)
