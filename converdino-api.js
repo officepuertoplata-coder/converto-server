@@ -1773,6 +1773,46 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
         await cvHandleToolCall(session, phone, tc.name, tc.input || {});
       }
 
+      // ── ZWEITER AUFRUF nach Werkzeug-Nutzung ──────────────────
+      // Damit der Bot nach einer Aktion (z.B. Dokument teilen) noch offene Fragen
+      // des Nutzers beantwortet, statt abzubrechen. Tool-Ergebnis zurückgeben,
+      // vollständige Folgeantwort formulieren lassen.
+      if (toolCalls.length > 0) {
+        try {
+          const toolResults = toolCalls.map(tc => ({
+            type: 'tool_result',
+            tool_use_id: tc.id,
+            content: (tc.name === 'share_document')
+              ? (session._shareLink ? `Dokument wurde dem Nutzer als Download-Link bereitgestellt.` : 'Dokument bereits zuvor geteilt oder nicht gefunden.')
+              : 'Aktion ausgeführt.'
+          }));
+          const followMessages = messages.concat([
+            { role: 'assistant', content: blocks },
+            { role: 'user', content: toolResults }
+          ]);
+          const followSystem = effectiveSystemPrompt +
+            '\n\n⚠️ Das angeforderte Werkzeug wurde soeben ausgeführt (ein eventueller Link wird automatisch angehängt — wiederhole keine URL selbst). Formuliere jetzt eine natürliche, KURZE Antwort: Falls der Nutzer in seiner letzten Nachricht NEBEN der Werkzeug-Anfrage noch etwas anderes gefragt hat, beantworte das jetzt ebenfalls kurz. Keine Werkzeuge mehr aufrufen, nur Text.';
+          let r2;
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            r2 = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+              body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, system: followSystem, messages: followMessages })
+            });
+            if (r2.ok) break;
+            if (r2.status === 400) break;
+            await new Promise(r => setTimeout(r, attempt * 600));
+          }
+          if (r2 && r2.ok) {
+            const d2 = await r2.json();
+            const t2 = (d2.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+            if (t2) botReply = t2.replace(/\[\[KONTAKT\]\]/g, '').trim();
+          }
+        } catch(e) {
+          console.error('[CV Bot] Zweiter Aufruf nach Tool fehlgeschlagen:', e.message);
+        }
+      }
+
       // Falls Bot nur ein Tool aufrief ohne Text — sinnvollen Fallback-Text bauen
       if (!botReply && toolCalls.length > 0) {
         botReply = cvFallbackTextForTool(toolCalls[0].name, anrede, article, istBeratung);
@@ -3000,6 +3040,47 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
             if (!sharedLinks.some(l => l.url === doc.public_url)) sharedLinks.push(shareLink);
           }
         }
+      }
+    }
+
+    // ── ZWEITER AUFRUF nach Werkzeug-Nutzung ──────────────────
+    // Damit der Bot nach dem Teilen noch offene Fragen des Nutzers beantwortet,
+    // statt das Gespräch abzubrechen. Wir geben das Tool-Ergebnis zurück und lassen
+    // ihn eine vollständige Folgeantwort formulieren.
+    if (toolCalls.length > 0) {
+      try {
+        const toolResults = toolCalls.map(tc => ({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: (tc.name === 'share_document')
+            ? (shareLink ? `Dokument "${shareLink.name}" wurde dem Nutzer als Download-Link bereitgestellt.` : 'Dokument bereits zuvor geteilt oder nicht gefunden.')
+            : 'Aktion ausgeführt.'
+        }));
+        const followMessages = messages.concat([
+          { role: 'assistant', content: blocks },
+          { role: 'user', content: toolResults }
+        ]);
+        const followSystem = systemPrompt +
+          '\n\n⚠️ Das angeforderte Werkzeug wurde soeben ausgeführt (der Link wird automatisch an deine Antwort angehängt — wiederhole die URL NICHT selbst). Formuliere jetzt eine natürliche, vollständige Antwort: Falls der Nutzer in seiner letzten Nachricht NEBEN der Werkzeug-Anfrage noch etwas anderes gefragt hat (z.B. eine Rückfrage), beantworte das jetzt ebenfalls kurz. Sei knapp.';
+        let r2;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          r2 = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+            body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, system: followSystem, messages: followMessages })
+          });
+          if (r2.ok) break;
+          if (r2.status === 400) break;
+          await new Promise(r => setTimeout(r, attempt * 600));
+        }
+        if (r2 && r2.ok) {
+          const d2 = await r2.json();
+          const t2 = (d2.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+          if (t2) reply = t2;   // vollständige Folgeantwort übernimmt
+        }
+      } catch(e) {
+        console.error('[CV Web] Zweiter Aufruf nach Tool fehlgeschlagen:', e.message);
+        // Fällt sanft zurück auf den ersten Text/Fallback unten
       }
     }
 
