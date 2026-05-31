@@ -749,10 +749,22 @@ async function showMarketing(slotId) {
     // Overlay SCHWEBEND (erscheint sanft, dezent animiert)
     const overlayFloat = '<!-- Converdino WhatsApp Widget (schwebend) -->\n' + (slot.widget_code || '');
 
+    // Web-Chat-Widget (Chatfenster direkt auf der Webseite — eigener Kanal, nicht WhatsApp)
+    const webWidgetSnippet = '<!-- Converdino Web-Chat -->\n<script src="https://converto-server-production.up.railway.app/converdino-widget.js" data-bot="' + code + '"><\/script>';
+
     document.getElementById('assetBody').innerHTML = `
       <div style="margin-bottom:16px;">
         <div class="field-label">Anfrage-Nummer</div>
         <div style="font-family:monospace;font-size:1.05rem;font-weight:900;color:var(--g2);background:#f0fdf4;padding:9px 14px;border-radius:8px;">${esc(code)}</div>
+      </div>
+
+      <div style="margin-bottom:22px;border:1.5px solid #25D366;border-radius:10px;padding:14px;background:#f0fdf4;">
+        <div class="field-label" style="color:#0f6b34;">💬 Web-Chat (Chatfenster auf Ihrer Webseite)</div>
+        <div style="font-size:.78rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
+          Ein echtes Chatfenster direkt auf Ihrer Seite — der Besucher chattet sofort mit dem Verkaufsberater, ohne zu WhatsApp zu wechseln. Diese eine Zeile vor dem schließenden &lt;/body&gt;-Tag Ihrer Webseite einfügen.
+        </div>
+        <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(webWidgetSnippet)}</textarea>
+        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Einbett-Code kopieren</button>
       </div>
 
       <div style="margin-bottom:20px;">
@@ -787,7 +799,7 @@ async function showMarketing(slotId) {
       </div>
 
       <div>
-        <div class="field-label">🎈 Overlay schwebend (erscheint automatisch)</div>
+        <div class="field-label">🎈 Overlay schwebend – WhatsApp (erscheint automatisch)</div>
         <textarea readonly style="width:100%;height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(overlayFloat)}</textarea>
         <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
       </div>`;
