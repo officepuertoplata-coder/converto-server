@@ -240,6 +240,11 @@
           <option value="Du">Du (locker)</option>
         </select>
       </div>
+      <div class="field">
+        <div class="field-label">Vorstellung des Bots (optional)</div>
+        <input id="f-botname" type="text" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Verkaufsteam">
+        <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Wie der Bot sich vorstellt. Person oder Team — frei wählbar. Leer = neutral.</div>
+      </div>
       <div class="field" id="f-deposit-wrap">
         <div class="field-label">Anzahlung zur Reservierung (%)</div>
         <input id="f-deposit" type="number" min="1" max="100" step="1" placeholder="10" value="10">
@@ -608,6 +613,7 @@ function openArticleModal(slotId) {
   document.getElementById('f-minprice').value = '';
   document.getElementById('f-location').value = '';
   document.getElementById('f-anrede').value = 'Sie';
+  document.getElementById('f-botname').value = '';
   document.getElementById('articleErr').textContent = '';
   // Modus-Auswahl nur zeigen, wenn der Kunde für Beratung freigeschaltet ist
   const modeWrap = document.getElementById('f-mode-wrap');
@@ -635,6 +641,7 @@ async function saveArticle() {
   const minprice = parseFloat(document.getElementById('f-minprice').value);
   const articleLocation = document.getElementById('f-location').value.trim();
   const anrede   = document.getElementById('f-anrede').value;
+  const botName  = document.getElementById('f-botname').value.trim();
   const deposit  = parseInt(document.getElementById('f-deposit').value) || 10;
   const mode     = (document.getElementById('f-mode-wrap').style.display !== 'none')
                      ? document.getElementById('f-mode').value : 'verkauf';
@@ -644,7 +651,7 @@ async function saveArticle() {
   if (!title) { err.textContent = 'Artikelbezeichnung fehlt'; return; }
 
   // Preis-Pflicht NUR im Verkaufs-Modus
-  const payload = { title, location: articleLocation, anrede, mode };
+  const payload = { title, location: articleLocation, anrede, mode, bot_name: botName };
   if (mode === 'beratung') {
     payload.sale_price = null;
     payload.min_price = null;
@@ -1307,6 +1314,10 @@ function renderSettingsEdit() {
       </select>
     </div>
     <div class="field">
+      <div class="field-label">Vorstellung des Bots (optional)</div>
+      <input id="s-botname" type="text" value="${esc(a.bot_name || '')}" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Verkaufsteam">
+    </div>
+    <div class="field">
       <div class="field-label">Preis-Anzeige</div>
       <select id="s-pricevis" onchange="toggleStrictField()">
         <option value="public" ${(a.price_visibility || 'public') !== 'on_request' ? 'selected' : ''}>Öffentlich – Bot nennt Preis sofort</option>
@@ -1372,6 +1383,7 @@ async function saveSettings() {
   const minprice = parseFloat(document.getElementById('s-minprice').value);
   const loc      = document.getElementById('s-location').value.trim();
   const anrede   = document.getElementById('s-anrede').value;
+  const botName  = document.getElementById('s-botname').value.trim();
   const pricevis = document.getElementById('s-pricevis').value;
   const strict   = document.getElementById('s-strict').value === 'true';
   const deposit  = parseInt(document.getElementById('s-deposit').value) || 10;
@@ -1395,10 +1407,10 @@ async function saveSettings() {
 
   try {
     const bodyObj = isBeratung
-      ? { title, sale_price: null, min_price: null, location: loc, anrede, mode: 'beratung',
+      ? { title, sale_price: null, min_price: null, location: loc, anrede, mode: 'beratung', bot_name: botName,
           price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
           wa_starttext: wastart, cta_text: cta, pull_text: pull }
-      : { title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit, mode: 'verkauf',
+      : { title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit, mode: 'verkauf', bot_name: botName,
           price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
           wa_starttext: wastart, cta_text: cta, pull_text: pull };
     const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/article', {
