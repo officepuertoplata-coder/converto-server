@@ -217,11 +217,14 @@ module.exports = function(app, supabase, deps) {
   app.post('/api/cv/slot/:id/article', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { title, sale_price, min_price, location, anrede, notes, deposit_percent } = req.body;
+      const { title, sale_price, min_price, location, anrede, notes, deposit_percent, mode } = req.body;
 
       if (!title || title.trim() === '') {
         return res.status(400).json({ error: 'Artikelbezeichnung fehlt' });
       }
+
+      // Gewünschter Modus (Standard verkauf). Beratung nur bei freigeschaltetem Kunden.
+      const wantBeratung = (mode === 'beratung');
 
       // Slot prüfen
       const { data: slot, error: slotErr } = await supabase
@@ -231,6 +234,15 @@ module.exports = function(app, supabase, deps) {
         .maybeSingle();
       if (slotErr) return res.status(500).json({ error: 'Slot-Lesefehler: ' + slotErr.message });
       if (!slot)   return res.status(404).json({ error: 'Slot nicht gefunden' });
+
+      // Beratungs-Modus erfordert eine freigeschaltete Subscription
+      if (wantBeratung && slot.subscription_id) {
+        const { data: sub } = await supabase
+          .from('cv_subscriptions').select('beratung_enabled').eq('id', slot.subscription_id).maybeSingle();
+        if (!sub || sub.beratung_enabled !== true) {
+          return res.status(403).json({ error: 'Beratungs-Modus ist für dieses Konto nicht freigeschaltet.' });
+        }
+      }
 
       // Falls bereits Artikel im Slot → ersetzen
       const { data: existing } = await supabase
@@ -277,8 +289,9 @@ module.exports = function(app, supabase, deps) {
         article = inserted;
       }
 
-      // Slot Status + Anzahlungssatz updaten
+      // Slot Status + Anzahlungssatz + Modus updaten
       const slotUpdate = { status: 'configured', updated_at: new Date().toISOString() };
+      slotUpdate.mode = wantBeratung ? 'beratung' : 'verkauf';
       if (deposit_percent != null && deposit_percent >= 1 && deposit_percent <= 100) {
         slotUpdate.deposit_percent = deposit_percent;
       }

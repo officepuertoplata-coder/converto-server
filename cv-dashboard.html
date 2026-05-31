@@ -206,10 +206,18 @@
       <button class="modal-close" onclick="closeArticleModal()">×</button>
     </div>
     <div class="modal-body">
+      <div class="field" id="f-mode-wrap" style="display:none;">
+        <div class="field-label">Bot-Typ</div>
+        <select id="f-mode" onchange="onArticleModeChange()">
+          <option value="verkauf">🛒 Verkaufs-Bot (Produkt mit Preis)</option>
+          <option value="beratung">🛡️ Beratungs-Bot (Dienstleistung, ohne Preis)</option>
+        </select>
+      </div>
       <div class="field">
         <div class="field-label">Artikelbezeichnung *</div>
         <input id="f-title" type="text" placeholder="z.B. Peugeot Traveller 2018">
       </div>
+      <div id="f-verkauf-felder">
       <div class="field-row">
         <div class="field">
           <div class="field-label">Verkaufspreis (€) *</div>
@@ -219,6 +227,7 @@
           <div class="field-label">Mindestpreis (€) *</div>
           <input id="f-minprice" type="number" min="0" step="0.01" placeholder="22000">
         </div>
+      </div>
       </div>
       <div class="field">
         <div class="field-label">Standort</div>
@@ -231,7 +240,7 @@
           <option value="Du">Du (locker)</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field" id="f-deposit-wrap">
         <div class="field-label">Anzahlung zur Reservierung (%)</div>
         <input id="f-deposit" type="number" min="1" max="100" step="1" placeholder="10" value="10">
         <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Prozent des verhandelten Preises, den der Käufer als Anzahlung zahlt. Rest bei Übergabe.</div>
@@ -594,8 +603,21 @@ function openArticleModal(slotId) {
   document.getElementById('f-location').value = '';
   document.getElementById('f-anrede').value = 'Sie';
   document.getElementById('articleErr').textContent = '';
+  // Modus-Auswahl nur zeigen, wenn der Kunde für Beratung freigeschaltet ist
+  const modeWrap = document.getElementById('f-mode-wrap');
+  document.getElementById('f-mode').value = 'verkauf';
+  modeWrap.style.display = cvBeratungEnabled ? 'block' : 'none';
+  onArticleModeChange(); // Felder passend ein-/ausblenden
   document.getElementById('articleModal').classList.add('open');
   setTimeout(() => document.getElementById('f-title').focus(), 100);
+}
+
+// Felder je nach gewähltem Bot-Typ ein-/ausblenden
+function onArticleModeChange() {
+  const mode = document.getElementById('f-mode').value;
+  const beratung = (mode === 'beratung');
+  document.getElementById('f-verkauf-felder').style.display = beratung ? 'none' : 'block';
+  document.getElementById('f-deposit-wrap').style.display = beratung ? 'none' : 'block';
 }
 function closeArticleModal() {
   document.getElementById('articleModal').classList.remove('open');
@@ -608,14 +630,27 @@ async function saveArticle() {
   const articleLocation = document.getElementById('f-location').value.trim();
   const anrede   = document.getElementById('f-anrede').value;
   const deposit  = parseInt(document.getElementById('f-deposit').value) || 10;
+  const mode     = (document.getElementById('f-mode-wrap').style.display !== 'none')
+                     ? document.getElementById('f-mode').value : 'verkauf';
   const err      = document.getElementById('articleErr');
   const btn      = document.getElementById('saveArticleBtn');
 
-  if (!title)              { err.textContent = 'Artikelbezeichnung fehlt'; return; }
-  if (!price || price <= 0)        { err.textContent = 'Verkaufspreis erforderlich'; return; }
-  if (!minprice || minprice <= 0)  { err.textContent = 'Mindestpreis erforderlich'; return; }
-  if (minprice > price)    { err.textContent = 'Mindestpreis muss unter Verkaufspreis liegen'; return; }
-  if (deposit < 1 || deposit > 100) { err.textContent = 'Anzahlung muss zwischen 1 und 100% liegen'; return; }
+  if (!title) { err.textContent = 'Artikelbezeichnung fehlt'; return; }
+
+  // Preis-Pflicht NUR im Verkaufs-Modus
+  const payload = { title, location: articleLocation, anrede, mode };
+  if (mode === 'beratung') {
+    payload.sale_price = null;
+    payload.min_price = null;
+  } else {
+    if (!price || price <= 0)        { err.textContent = 'Verkaufspreis erforderlich'; return; }
+    if (!minprice || minprice <= 0)  { err.textContent = 'Mindestpreis erforderlich'; return; }
+    if (minprice > price)            { err.textContent = 'Mindestpreis muss unter Verkaufspreis liegen'; return; }
+    if (deposit < 1 || deposit > 100){ err.textContent = 'Anzahlung muss zwischen 1 und 100% liegen'; return; }
+    payload.sale_price = price;
+    payload.min_price = minprice;
+    payload.deposit_percent = deposit;
+  }
 
   err.textContent = '';
   btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
@@ -624,7 +659,7 @@ async function saveArticle() {
     const r = await fetch(API + '/api/cv/slot/' + activeSlotId + '/article', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location: articleLocation, anrede, deposit_percent: deposit })
+      body: JSON.stringify(payload)
     });
     const d = await r.json();
     if (!d.success) {
@@ -1339,23 +1374,31 @@ async function saveSettings() {
   const pull     = document.getElementById('s-pull').value.trim();
   const err      = document.getElementById('settingsErr');
   const btn      = document.getElementById('settingsSaveBtn');
+  const isBeratung = (settingsSlot && settingsSlot.mode === 'beratung');
 
-  if (!title)                      { err.textContent = 'Artikelbezeichnung fehlt'; return; }
-  if (!price || price <= 0)        { err.textContent = 'Verkaufspreis erforderlich'; return; }
-  if (!minprice || minprice <= 0)  { err.textContent = 'Mindestpreis erforderlich'; return; }
-  if (minprice > price)            { err.textContent = 'Mindestpreis muss unter Verkaufspreis liegen'; return; }
-  if (deposit < 1 || deposit > 100){ err.textContent = 'Anzahlung muss zwischen 1 und 100% liegen'; return; }
+  if (!title) { err.textContent = 'Artikelbezeichnung fehlt'; return; }
+  if (!isBeratung) {
+    if (!price || price <= 0)        { err.textContent = 'Verkaufspreis erforderlich'; return; }
+    if (!minprice || minprice <= 0)  { err.textContent = 'Mindestpreis erforderlich'; return; }
+    if (minprice > price)            { err.textContent = 'Mindestpreis muss unter Verkaufspreis liegen'; return; }
+    if (deposit < 1 || deposit > 100){ err.textContent = 'Anzahlung muss zwischen 1 und 100% liegen'; return; }
+  }
 
   err.textContent = '';
   btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
 
   try {
+    const bodyObj = isBeratung
+      ? { title, sale_price: null, min_price: null, location: loc, anrede, mode: 'beratung',
+          price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
+          wa_starttext: wastart, cta_text: cta, pull_text: pull }
+      : { title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit, mode: 'verkauf',
+          price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
+          wa_starttext: wastart, cta_text: cta, pull_text: pull };
     const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/article', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit,
-        price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
-        wa_starttext: wastart, cta_text: cta, pull_text: pull })
+      body: JSON.stringify(bodyObj)
     });
     const d = await r.json();
     if (!d.success) {
