@@ -1505,7 +1505,7 @@ Folge dieser Strategie im Gespräch. Es ist eine Reihenfolge von Angeboten: Biet
 ${strategieText}` : ''}${shareableDocs.length > 0 ? `
 
 ═══ TEILBARE DOKUMENTE ═══
-Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es im Gespräch passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was das Dokument enthält, und teile dann den Link. Gib NUR diese Dokumente heraus:
+Diese Unterlagen darfst du dem Interessenten als Download-Link geben — aber ERST, wenn er ausdrücklich zugestimmt hat oder sie selbst angefordert hat. NICHT teilen, nur weil ein Thema erwähnt wird oder du gerade eine Rückfrage stellst. Richtig: erst anbieten ("Soll ich Ihnen die Unterlagen dazu schicken?"), Zustimmung abwarten, dann mit share_document teilen. Sage kurz, was das Dokument enthält. Gib NUR diese Dokumente heraus:
 ${shareableDocs.map(d => '• ' + d.file_name).join('\n')}` : ''}
 
 ═══ LINKS AM GESPRÄCHSENDE BÜNDELN ═══
@@ -1542,7 +1542,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
       },
       {
         name: 'share_document',
-        description: 'Teile ein freigegebenes Dokument (z.B. Datenblatt, Broschüre, Dossier) mit dem Interessenten, indem du ihm den Download-Link gibst. Nutze dies, wenn der Interessent Unterlagen möchte oder die Strategie es vorsieht. Du erhältst den Link zurück und teilst ihn dann mit einer kurzen Beschreibung, was drin ist. Gib NUR Dokumente aus der Liste der freigegebenen Dokumente heraus.',
+        description: 'Teile ein freigegebenes Dokument als Download-Link — aber NUR, wenn der Interessent dem Erhalt ausdrücklich zugestimmt hat oder die Unterlagen klar selbst angefordert hat ("ja, gerne", "schicken Sie mir das", "das Dossier bitte"). NICHT verwenden, nur weil ein Thema erwähnt wird oder du gerade eine Rückfrage stellst. Reihenfolge: erst anbieten/fragen ("Soll ich Ihnen die Unterlagen dazu schicken?") → Zustimmung abwarten → DANN dieses Werkzeug. Du erhältst den Link zurück und beschreibst kurz, was drin ist. Gib NUR Dokumente aus der Liste der freigegebenen Dokumente heraus.',
         input_schema: {
           type: 'object',
           properties: {
@@ -2823,7 +2823,7 @@ Folge dieser Strategie. Es ist eine Reihenfolge von Angeboten: biete zuerst das 
 ${strategieText}` : ''}${docs.length > 0 ? `
 
 ═══ TEILBARE DOKUMENTE ═══
-Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was drin ist, dann wird der Link automatisch angehängt. Gib NUR diese Dokumente heraus:
+Diese Unterlagen darfst du dem Interessenten als Download-Link geben — aber ERST, wenn er ausdrücklich zugestimmt hat oder sie selbst angefordert hat. NICHT teilen, nur weil ein Thema erwähnt wird oder du gerade eine Rückfrage stellst. Richtig: erst anbieten ("Soll ich Ihnen die Unterlagen dazu schicken?"), Zustimmung abwarten, dann mit share_document teilen. Sage kurz, was drin ist, dann wird der Link automatisch angehängt. Gib NUR diese Dokumente heraus:
 ${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
   }
 
@@ -2917,7 +2917,7 @@ Folge dieser Strategie. Es ist eine Reihenfolge von Angeboten: biete zuerst das 
 ${strategieText}` : ''}${docs.length > 0 ? `
 
 ═══ TEILBARE DOKUMENTE ═══
-Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es im Gespräch passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was das Dokument enthält, und teile dann den Link. Gib NUR diese Dokumente heraus:
+Diese Unterlagen darfst du dem Interessenten als Download-Link geben — aber ERST, wenn er ausdrücklich zugestimmt hat oder sie selbst angefordert hat. NICHT teilen, nur weil ein Thema erwähnt wird oder du gerade eine Rückfrage stellst. Richtig: erst anbieten ("Soll ich Ihnen die Unterlagen dazu schicken?"), Zustimmung abwarten, dann mit share_document teilen. Sage kurz, was das Dokument enthält. Gib NUR diese Dokumente heraus:
 ${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}
 
 ═══ LINKS AM GESPRÄCHSENDE BÜNDELN ═══
