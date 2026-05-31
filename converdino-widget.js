@@ -104,8 +104,13 @@
   function addMsg(text, who) {
     var d = document.createElement('div');
     d.className = 'cvw-msg ' + (who === 'user' ? 'cvw-user' : 'cvw-bot');
+    var raw = text == null ? '' : String(text);
+    // Markdown-Sternchen aus Bot-Nachrichten entfernen (**fett** / *kursiv* → reiner Text)
+    if (who !== 'user') {
+      raw = raw.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
+    }
     // Text sicher escapen, dann erkannte URLs in klickbare Links umwandeln
-    var safe = escapeHtml(text);
+    var safe = escapeHtml(raw);
     safe = safe.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
       return '<a href="' + url + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;word-break:break-all;">' + url + '</a>';
     });
