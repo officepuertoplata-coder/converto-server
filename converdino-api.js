@@ -1506,7 +1506,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
 
       // Falls Bot nur ein Tool aufrief ohne Text — sinnvollen Fallback-Text bauen
       if (!botReply && toolCalls.length > 0) {
-        botReply = cvFallbackTextForTool(toolCalls[0].name, anrede, article);
+        botReply = cvFallbackTextForTool(toolCalls[0].name, anrede, article, istBeratung);
       }
       if (!botReply) botReply = 'Einen Moment bitte.';
 
@@ -1714,8 +1714,29 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
   }
 
   // ── Fallback-Text falls Bot nur Tool ohne Text aufrief ───
-  function cvFallbackTextForTool(toolName, anrede, article) {
+  function cvFallbackTextForTool(toolName, anrede, article, istBeratung) {
     const du = anrede === 'Du';
+    const berater = 'Herr XYZ'; // Platzhalter — echten Namen später eintragen
+
+    // BERATUNGS-MODUS: warmer Abschluss mit Nachbetreuungs-Versprechen, kein Verkauf
+    if (istBeratung) {
+      switch (toolName) {
+        case 'collect_contact':
+        case 'flag_hot_lead':
+        case 'request_callback':
+          return du
+            ? `Vielen Dank! Ich gebe deine Daten direkt an ${berater} weiter — er meldet sich bei dir und hat bestimmt einen guten Vorschlag für deine Situation. Schönen Tag noch!`
+            : `Vielen Dank! Ich gebe Ihre Daten direkt an ${berater} weiter — er meldet sich bei Ihnen und hat bestimmt einen guten Vorschlag für Ihre Situation. Einen schönen Tag noch!`;
+        case 'confirm_commitment':
+          return du
+            ? `Danke für das Gespräch! ${berater} meldet sich wie besprochen bei dir. Bis dahin alles Gute!`
+            : `Vielen Dank für das Gespräch! ${berater} meldet sich wie besprochen bei Ihnen. Bis dahin alles Gute!`;
+        default:
+          return du ? 'Danke! Ich leite das weiter, jemand meldet sich bei dir.'
+                    : 'Danke! Ich leite das weiter, jemand meldet sich bei Ihnen.';
+      }
+    }
+
     switch (toolName) {
       case 'collect_contact':
         return du ? 'Super! Wie ist dein Name und unter welcher Nummer erreichen wir dich — und wann passt dir ein Rückruf am besten?'
@@ -2446,6 +2467,7 @@ HALTUNG & TON — ruhige Kompetenz, KEINE Angstmache
 ABSOLUTE GRENZE — KEINE RECHTSBERATUNG
 ═══════════════════════════════════════════════════════
 Du sensibilisierst und informierst allgemein — du gibst NIEMALS konkrete rechtliche Einschätzungen zum Einzelfall ("in Ihrem Fall haften Sie für X"). Die rechtliche Bewertung macht ausschließlich unser Berater im persönlichen Gespräch. Wenn jemand eine konkrete rechtliche Einschätzung will, sage freundlich: das bespricht ${berater} verbindlich im persönlichen Termin.
+- Wenn jemand unterhalb einer gesetzlichen Schwelle liegt: sage das NEUTRAL ("Sie liegen unterhalb der direkten Schwelle"), NICHT mit Worten wie "aktuell" oder "noch", die suggerieren, es ändere sich demnächst. Betone stattdessen die INDIREKTE Betroffenheit (z.B. über die Lieferkette der Kunden), die real und gegenwärtig ist.
 
 ═══════════════════════════════════════════════════════
 WAS DU TUST (in dieser Reihenfolge, aber natürlich im Gespräch — kein Verhör)
@@ -2467,6 +2489,11 @@ Sobald ernsthaftes Interesse besteht (will mehr wissen, will einen Termin, schil
 - Formuliere etwa: "Am besten bespricht das ${berater} direkt mit Ihnen in einer kurzen Videokonferenz. Hinterlassen Sie mir dafür bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. "du", wenn Anrede=Du)
 - WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (doppelte eckige Klammern). Der Besucher sieht ihn nicht. Setze ihn nur bei echtem Interesse, höchstens einmal pro Gespräch.
 - Erfinde NIEMALS Kontaktdaten.
+
+NACH ERHALT DER KONTAKTDATEN — warm abschließen (NICHT abrupt "Danke" sagen):
+Bedanke dich, bestätige die Weitergabe und gib einen Ausblick, der Vertrauen schafft. Etwa:
+"Vielen Dank! Ich gebe Ihre Daten direkt an ${berater} weiter — er meldet sich bei Ihnen und hat sicher einen guten, konkreten Vorschlag für Ihre Situation. Bis dahin einen schönen Tag!" (bzw. "du/dich/dir", wenn Anrede=Du)
+Wichtig: Erwähne, dass sich ${berater} meldet UND dass er einen konkreten Vorschlag/Mehrwert bringt — das ist die Nachbetreuung, die den Lead warm hält. Kein blosses "Danke".
 
 ═══════════════════════════════════════════════════════
 VERIFIZIERTE FAKTEN / WISSEN (aus den hinterlegten Dokumenten)
