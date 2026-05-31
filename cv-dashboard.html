@@ -1181,10 +1181,10 @@ function renderSettingsView() {
   if (!isActive && !isBusy && settingsArticle) {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderSettingsEdit()">✏️ Bearbeiten</button>';
   } else if (isActive && settingsArticle && istBeratung) {
-    foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Berater & Vorstellung</button>';
+    foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Verhalten & Strategie</button>';
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderMarketingEdit()">📣 Marketing-Texte</button>';
   } else if (isActive && settingsArticle) {
-    foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Ansprechpartner</button>';
+    foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Verhalten & Strategie</button>';
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderMarketingEdit()">📣 Marketing-Texte</button>';
   }
   document.getElementById('settingsFoot').innerHTML = foot;
@@ -1282,7 +1282,7 @@ function renderBeraterEdit() {
     ? 'Name der Person, die den Interessenten für die Videokonferenz kontaktiert. Leer = "unser Berater".'
     : 'Name der Person, die sich beim Interessenten meldet (Rückruf, Übergabe). Leer = neutral.';
   document.getElementById('settingsBody').innerHTML = `
-    <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">✏️ ${istBeratung ? 'Berater & Vorstellung' : 'Ansprechpartner & Vorstellung'}</div>
+    <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">✏️ ${istBeratung ? 'Verhalten & Strategie' : 'Verhalten & Strategie'}</div>
     <div class="field">
       <div class="field-label">Vorstellung des Bots (optional)</div>
       <input id="b-botname" type="text" value="${esc(a.bot_name || '')}" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Team">

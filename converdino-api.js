@@ -979,7 +979,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
         }).eq('id', article.id);
 
         // Bot-Assets generieren
-        const botCode = 'BOT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const botCode = 'Anfrage-' + Math.random().toString(36).substring(2, 6).toUpperCase();
         const waNumber = (process.env.WA_BOT_NUMBER || '4367764118066').replace(/[^0-9]/g, '');
         const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(botCode)}`;
         const qrUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(waLink)}`;

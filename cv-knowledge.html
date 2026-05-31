@@ -176,10 +176,12 @@ function renderKundensicht(article) {
   // Beruhigende Bestätigung — Zahl, ohne die Fakten selbst zu zeigen
   if (erkannt > 0) {
     html += `
-      <div class="info-banner" style="background:#f0fdf4;border-color:#bbf7d0;">
-        <div class="info-banner-icon">✓</div>
-        <div><strong>${erkannt} Information${erkannt === 1 ? '' : 'en'} aus deinen Unterlagen erkannt.</strong><br>
-        Dein Bot hat deine Dokumente und Bilder ausgewertet und kann damit Fragen beantworten.</div>
+      <div style="background:linear-gradient(135deg,#1faa52,#0f6b34);color:#fff;border-radius:14px;padding:18px 20px;margin-bottom:18px;display:flex;align-items:center;gap:14px;box-shadow:0 4px 14px rgba(15,107,52,.25);">
+        <div style="font-size:2rem;line-height:1;">✓</div>
+        <div>
+          <div style="font-size:1.15rem;font-weight:900;margin-bottom:2px;">${erkannt} Information${erkannt === 1 ? '' : 'en'} erkannt</div>
+          <div style="font-size:.85rem;opacity:.92;">Dein Bot hat deine Dokumente und Bilder ausgewertet und kann damit Fragen beantworten.</div>
+        </div>
       </div>`;
   } else {
     html += `
@@ -197,13 +199,31 @@ function renderKundensicht(article) {
         <div class="section-sub">Das hast du beigesteuert. Zum Ändern gehe zurück zum Upload.</div>
       </div>`;
   if (ups.length > 0) {
-    html += '<div style="display:flex;flex-direction:column;gap:8px;">' +
-      ups.map(u => `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8faf9;border:1px solid var(--border);border-radius:10px;font-size:.85rem;">
-          <span>${(u.kind === 'photo' || (u.mime_type||'').indexOf('image') === 0) ? '🖼️' : '📄'}</span>
-          <span style="flex:1;word-break:break-all;">${esc(u.filename || u.original_name || 'Datei')}</span>
-        </div>`).join('') +
-      '</div>';
+    const fotos = ups.filter(u => u.kind === 'photo');
+    const docs = ups.filter(u => u.kind !== 'photo');
+    html += '<div>';
+    // Fotos als Thumbnail-Raster
+    if (fotos.length > 0) {
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-bottom:' + (docs.length ? '12px' : '0') + ';">' +
+        fotos.map(u => {
+          const url = u.public_url || '';
+          return `<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:#f0f0f0;">
+            ${url ? `<img src="${esc(url)}" alt="${esc(u.file_name||'Foto')}" style="width:100%;height:100%;object-fit:cover;display:block;">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:1.4rem;">🖼️</div>'}
+          </div>`;
+        }).join('') +
+        '</div>';
+    }
+    // Dokumente als kompakte Zeilen mit echtem Namen
+    if (docs.length > 0) {
+      html += '<div style="display:flex;flex-direction:column;gap:6px;">' +
+        docs.map(u => `
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;background:#f8faf9;border:1px solid var(--border);border-radius:8px;font-size:.83rem;">
+            <span>${u.kind === 'note' ? '📝' : '📄'}</span>
+            <span style="flex:1;word-break:break-all;">${esc(u.file_name || (u.kind === 'note' ? 'Notiz' : 'Dokument'))}</span>
+          </div>`).join('') +
+        '</div>';
+    }
+    html += '</div>';
   } else {
     html += '<div style="font-size:.85rem;color:var(--mu);padding:8px 0;">Noch keine Unterlagen hochgeladen.</div>';
   }
