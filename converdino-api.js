@@ -448,6 +448,72 @@ module.exports = function(app, supabase, deps) {
 
 
   // ============================================================
+  // GET /api/cv/public/:botcode
+  //    ÖFFENTLICHE Produktseite (Landingpage) — KEIN Login.
+  //    Gibt NUR unbedenkliche Felder heraus: Titel, Standort, Fotos,
+  //    sichere Kurzbeschreibung, Bot-Code, WA-Link, ggf. Preis.
+  //    NIEMALS: Mindestpreis, Strategie, Verhandlungslogik, interne Felder.
+  //    Nur für AKTIVE Bots.
+  // ============================================================
+  app.get('/api/cv/public/:botcode', async (req, res) => {
+    try {
+      const code = (req.params.botcode || '').trim();
+      if (!code) return res.status(400).json({ error: 'Kein Code' });
+
+      // Slot per Bot-Code finden (case-insensitive), nur aktiv
+      const { data: slot } = await supabase
+        .from('cv_slots').select('*')
+        .ilike('bot_code', code)
+        .maybeSingle();
+      if (!slot || slot.status !== 'active') {
+        return res.status(404).json({ error: 'Nicht gefunden oder nicht aktiv' });
+      }
+
+      const { data: article } = await supabase
+        .from('cv_articles').select('*').eq('slot_id', slot.id).maybeSingle();
+      if (!article) return res.status(404).json({ error: 'Kein Artikel' });
+
+      // Fotos (nur öffentlich abrufbare)
+      const { data: ups } = await supabase
+        .from('cv_uploads').select('kind, public_url, sort_order')
+        .eq('article_id', article.id)
+        .order('sort_order', { ascending: true });
+      const photos = (ups || []).filter(u => u.kind === 'photo' && u.public_url).map(u => u.public_url);
+
+      // Sichere Beschreibung NUR aus unbedenklichen Wissens-Feldern
+      const analysis = article.analysis || {};
+      const safe = {
+        summary: analysis.summary || '',
+        condition: analysis.condition || '',
+        key_facts: Array.isArray(analysis.key_facts) ? analysis.key_facts.slice(0, 8) : [],
+        selling_points: Array.isArray(analysis.selling_points) ? analysis.selling_points.slice(0, 6) : []
+      };
+
+      // Preis nur, wenn Einstellung 'public' (sonst auf Anfrage)
+      const istBeratung = (slot.mode === 'beratung');
+      const showPrice = !istBeratung && (article.price_visibility || 'public') !== 'on_request';
+      const price = showPrice ? (Number(article.sale_price) || null) : null;
+
+      res.json({
+        ok: true,
+        mode: istBeratung ? 'beratung' : 'verkauf',
+        title: article.title || '',
+        location: article.location || '',
+        anrede: article.anrede || 'Sie',
+        bot_code: slot.bot_code,
+        price,
+        price_on_request: !showPrice,
+        photos,
+        description: safe
+      });
+    } catch(e) {
+      console.error('[CV /public/:botcode]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+
+  // ============================================================
   // GET /api/cv/slot/:id/conversations
   //    Alle Bot-Gespräche eines Slots (für die Gesprächsansicht)
   //    Liefert pro Gespräch: Käufer, Verlauf, Status, Zeit + Events
@@ -1188,6 +1254,10 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const { article, slot } = session;
     const phoneId = session.phoneId;
     const shareableDocs = Array.isArray(session.shareableDocs) ? session.shareableDocs : [];
+    const sharedLinks = Array.isArray(session.sharedLinks) ? session.sharedLinks : [];
+    const sharedLinksHinweis = sharedLinks.length > 0
+      ? '\n\nBereits geteilte Dokument-Links (diese am Ende mit aufführen, falls du zusammenfasst):\n' + sharedLinks.map(l => '• ' + l.name + ': ' + l.url).join('\n')
+      : '';
     const analysis = article.analysis || {};
     const strategy = analysis.bot_strategy || {};
     const anrede = article.anrede || 'Sie';
@@ -1378,12 +1448,15 @@ ${strategieText}` : ''}${shareableDocs.length > 0 ? `
 
 ═══ TEILBARE DOKUMENTE ═══
 Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es im Gespräch passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was das Dokument enthält, und teile dann den Link. Gib NUR diese Dokumente heraus:
-${shareableDocs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
+${shareableDocs.map(d => '• ' + d.file_name).join('\n')}` : ''}
+
+═══ LINKS AM GESPRÄCHSENDE BÜNDELN ═══
+Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", oder der Interessent will erstmal nichts weiter), und du im Verlauf einen oder mehrere Links/Dokumente geteilt hast: Fasse zum Abschluss alle besprochenen Links kurz und übersichtlich in EINER Nachricht zusammen, damit der Interessent alles auf einen Blick hat. Kurz beschriften, was jeder Link ist. Nur Links nennen, die du im Gespräch tatsächlich geteilt/angeboten hast — nichts erfinden. Wenn keine Links geteilt wurden, lass die Zusammenfassung weg.${sharedLinksHinweis}`;
 
     // BERATUNGS-MODUS: anderen Prompt verwenden (kein Verkauf/keine Preise/Lead an Berater übergeben)
     const istBeratung = (slot && slot.mode === 'beratung');
     const effectiveSystemPrompt = istBeratung
-      ? cvBuildBeratungPrompt(article, 'whatsapp', shareableDocs) + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
+      ? cvBuildBeratungPrompt(article, 'whatsapp', shareableDocs, sharedLinks) + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
       : systemPrompt;
 
     // ── Tools definieren ──
@@ -1740,6 +1813,10 @@ ${shareableDocs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
                  || docs.find(d => (d.file_name || '').toLowerCase().indexOf(wanted) !== -1 && wanted.length > 2);
           if (doc && doc.public_url) {
             session._shareLink = { name: doc.file_name, url: doc.public_url };
+            if (!Array.isArray(session.sharedLinks)) session.sharedLinks = [];
+            if (!session.sharedLinks.some(x => x.url === doc.public_url)) {
+              session.sharedLinks.push({ name: doc.file_name, url: doc.public_url });
+            }
             await cvLogEvent(session, phone, 'document_shared', { document: doc.file_name }, true);
           } else {
             session._shareLink = null;
@@ -2609,9 +2686,13 @@ ${strategieText}` : ''}`;
   // BERATUNGS-MODUS: Prompt für erklärungsbedürftige Dienstleistungen (z.B. Supplier Risk Management).
   // Kein Verkauf, keine Preise, keine Verhandlung. Ziel: Problembewusstsein schaffen,
   // locker qualifizieren (Rahmenbedingungen), und zur Videokonferenz mit dem Berater führen.
-  function cvBuildBeratungPrompt(article, kanal, shareableDocs) {
+  function cvBuildBeratungPrompt(article, kanal, shareableDocs, sharedLinks) {
     const istWhatsApp = (kanal === 'whatsapp');
     const docs = Array.isArray(shareableDocs) ? shareableDocs : [];
+    const geteilt = Array.isArray(sharedLinks) ? sharedLinks : [];
+    const geteiltHinweis = geteilt.length > 0
+      ? '\n\nBereits geteilte Dokument-Links (diese am Ende mit aufführen, falls du zusammenfasst):\n' + geteilt.map(l => '• ' + l.name + ': ' + l.url).join('\n')
+      : '';
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
@@ -2690,14 +2771,17 @@ ${strategieText}` : ''}${docs.length > 0 ? `
 
 ═══ TEILBARE DOKUMENTE ═══
 Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es im Gespräch passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was das Dokument enthält, und teile dann den Link. Gib NUR diese Dokumente heraus:
-${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
+${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}
+
+═══ LINKS AM GESPRÄCHSENDE BÜNDELN ═══
+Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal nichts weiter, oder ihr habt einen Abschluss gefunden), und du im Verlauf einen oder mehrere Links/Dokumente geteilt hast: Fasse zum Abschluss alle besprochenen Links kurz und übersichtlich in EINER Nachricht zusammen, damit der Interessent alles auf einen Blick hat. Beschrifte kurz, was jeder Link ist. Nenne nur Links, die du im Gespräch tatsächlich geteilt oder angeboten hast — nichts erfinden. Wurden keine Links geteilt, lass die Zusammenfassung weg.${geteiltHinweis}`;
   }
 
   // Web-Bot-Turn: ruft Sonnet, gibt die Antwort als String zurück (kein WhatsApp-Versand)
   // Wählt je nach Slot-Modus den passenden Prompt: 'beratung' oder (Standard) 'verkauf'.
   async function cvRunWebTurn(slot, article, history, userMessage) {
     const systemPrompt = (slot && slot.mode === 'beratung')
-      ? cvBuildBeratungPrompt(article, 'web', [])
+      ? cvBuildBeratungPrompt(article, 'web', [], [])
       : cvBuildWebPrompt(article);
 
     function normalizeHistory(hist) {

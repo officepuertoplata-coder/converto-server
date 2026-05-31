@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --green:#1faa52; --g2:#0f6b34; --ink:#14241b; --mu:#5f6f66;
+    --bg:#f6f9f6; --card:#ffffff; --line:#e3ede6; --wa:#25D366;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Outfit',sans-serif; background:var(--bg); color:var(--ink);
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(circle at 15% 0%, #eafaf0 0%, transparent 45%);
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:0 18px 60px}
+
+  /* Header */
+  .top{display:flex; align-items:center; gap:9px; padding:20px 4px 14px}
+  .top .logo{font-family:'Fraunces',serif; font-weight:700; font-size:1.25rem; letter-spacing:-.01em}
+  .top .logo .c{color:var(--g2)} .top .logo .d{color:var(--green)}
+
+  /* Loading / Error */
+  .state{text-align:center; padding:80px 20px; color:var(--mu)}
+  .state .big{font-family:'Fraunces',serif; font-size:1.4rem; color:var(--ink); margin-bottom:8px}
+
+  /* Gallery */
+  .gallery{border-radius:18px; overflow:hidden; background:var(--card); border:1px solid var(--line); margin-bottom:18px; box-shadow:0 10px 40px rgba(15,107,52,.06)}
+  .gallery .main{width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#eef3ef}
+  .thumbs{display:flex; gap:6px; padding:8px; overflow-x:auto}
+  .thumbs img{width:64px; height:64px; object-fit:cover; border-radius:8px; cursor:pointer; flex:0 0 auto; border:2px solid transparent; opacity:.7; transition:.15s}
+  .thumbs img.active{border-color:var(--green); opacity:1}
+  .noimg{width:100%; aspect-ratio:4/3; display:flex; align-items:center; justify-content:center; font-size:3rem; background:linear-gradient(135deg,#eafaf0,#f6f9f6); color:#bcdccb}
+
+  /* Card */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:24px 22px; margin-bottom:18px; box-shadow:0 10px 40px rgba(15,107,52,.05)}
+  h1{font-family:'Fraunces',serif; font-weight:600; font-size:1.85rem; line-height:1.15; letter-spacing:-.015em; margin-bottom:6px}
+  .loc{color:var(--mu); font-size:.95rem; margin-bottom:16px; display:flex; align-items:center; gap:5px}
+  .price{font-family:'Fraunces',serif; font-weight:700; font-size:2rem; color:var(--g2); margin-bottom:4px}
+  .price.req{font-size:1.25rem; color:var(--ink)}
+  .price-sub{font-size:.8rem; color:var(--mu); margin-bottom:20px}
+
+  .summary{font-size:1.02rem; color:#2c3c33; margin:18px 0; padding-top:18px; border-top:1px solid var(--line)}
+
+  .facts{list-style:none; margin:14px 0}
+  .facts li{padding:7px 0 7px 26px; position:relative; font-size:.97rem; border-bottom:1px dashed var(--line)}
+  .facts li:last-child{border-bottom:none}
+  .facts li::before{content:"✓"; position:absolute; left:0; top:7px; color:var(--green); font-weight:800}
+
+  .sectitle{font-family:'Fraunces',serif; font-size:1.05rem; font-weight:600; margin:20px 0 8px; color:var(--ink)}
+
+  .points{list-style:none; display:flex; flex-direction:column; gap:8px; margin-top:8px}
+  .points li{background:#f3faf5; border:1px solid var(--line); border-radius:10px; padding:10px 14px; font-size:.95rem}
+
+  /* CTA */
+  .cta-wrap{position:sticky; bottom:0; padding:14px 0 4px; background:linear-gradient(to top, var(--bg) 70%, transparent)}
+  .cta{display:flex; align-items:center; justify-content:center; gap:10px; width:100%; background:var(--wa); color:#fff; font-family:'Outfit',sans-serif; font-weight:700; font-size:1.12rem; padding:16px; border-radius:14px; text-decoration:none; box-shadow:0 8px 24px rgba(37,211,102,.4); transition:.18s; border:none; cursor:pointer}
+  .cta:hover{transform:translateY(-2px); box-shadow:0 12px 30px rgba(37,211,102,.5)}
+  .cta-hint{text-align:center; font-size:.82rem; color:var(--mu); margin-top:10px}
+
+  .foot{text-align:center; font-size:.78rem; color:var(--mu); margin-top:30px; padding-top:20px; border-top:1px solid var(--line)}
+  .foot a{color:var(--g2); text-decoration:none; font-weight:600}
+
+  .reveal{opacity:0; transform:translateY(10px); animation:rise .6s ease forwards}
+  @keyframes rise{to{opacity:1; transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="logo"><span class="c">Conver</span><span class="d">dino</span></span>
+  </div>
+  <div id="content">
+    <div class="state"><div class="big">Lädt …</div><div>Einen Moment bitte.</div></div>
+  </div>
+</div>
+
+<script>
+const API = 'https://converto-server-production.up.railway.app';
+const WA_NUMBER = '4367764118066';
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function fmtPrice(n){ try{ return Number(n).toLocaleString('de-DE'); }catch(e){ return n; } }
+
+const params = new URLSearchParams(location.search);
+const code = (params.get('code') || '').trim();
+
+if (!code) {
+  showError('Kein Produkt angegeben', 'Dieser Link ist unvollständig.');
+} else {
+  load();
+}
+
+function showError(big, sub){
+  document.getElementById('content').innerHTML =
+    '<div class="state"><div class="big">' + esc(big) + '</div><div>' + esc(sub) + '</div></div>';
+}
+
+async function load(){
+  try{
+    const r = await fetch(API + '/api/cv/public/' + encodeURIComponent(code));
+    if (!r.ok){ showError('Nicht verfügbar', 'Dieses Angebot ist derzeit nicht erreichbar.'); return; }
+    const d = await r.json();
+    if (!d.ok){ showError('Nicht verfügbar', 'Dieses Angebot ist derzeit nicht erreichbar.'); return; }
+    render(d);
+  }catch(e){
+    showError('Verbindungsfehler', 'Bitte später erneut versuchen.');
+  }
+}
+
+function render(d){
+  const waLink = 'https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(d.bot_code || '');
+  const istBeratung = d.mode === 'beratung';
+
+  // Galerie
+  let gallery = '';
+  if (d.photos && d.photos.length > 0){
+    const thumbs = d.photos.length > 1
+      ? '<div class="thumbs">' + d.photos.map((u,i) =>
+          '<img src="' + esc(u) + '" class="' + (i===0?'active':'') + '" onclick="swap(this,\'' + esc(u) + '\')">').join('') + '</div>'
+      : '';
+    gallery = '<div class="gallery reveal"><img class="main" id="mainImg" src="' + esc(d.photos[0]) + '" alt="">' + thumbs + '</div>';
+  } else {
+    gallery = '<div class="gallery reveal"><div class="noimg">' + (istBeratung ? '🛡️' : '📦') + '</div></div>';
+  }
+
+  // Preis
+  let priceBlock = '';
+  if (!istBeratung){
+    if (d.price_on_request || !d.price){
+      priceBlock = '<div class="price req">Preis auf Anfrage</div><div class="price-sub">Sprich uns direkt an — wir beraten dich gern.</div>';
+    } else {
+      priceBlock = '<div class="price">€ ' + fmtPrice(d.price) + '</div>';
+    }
+  }
+
+  // Beschreibung
+  const desc = d.description || {};
+  let body = '';
+  if (desc.summary) body += '<div class="summary">' + esc(desc.summary) + '</div>';
+
+  if (desc.key_facts && desc.key_facts.length){
+    body += '<ul class="facts">' + desc.key_facts.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>';
+  }
+  if (desc.condition){
+    body += '<div class="sectitle">Zustand</div><div style="font-size:.97rem;color:#2c3c33;">' + esc(desc.condition) + '</div>';
+  }
+  if (desc.selling_points && desc.selling_points.length){
+    body += '<div class="sectitle">' + (istBeratung ? 'Das bieten wir' : 'Auf einen Blick') + '</div>' +
+            '<ul class="points">' + desc.selling_points.map(p => '<li>' + esc(p) + '</li>').join('') + '</ul>';
+  }
+
+  const ctaText = istBeratung ? 'Beratung per WhatsApp starten' : 'Per WhatsApp anfragen';
+  const ctaHint = istBeratung
+    ? 'Kostenlos & unverbindlich — direkt im Chat.'
+    : 'Stell deine Fragen oder verhandle direkt im Chat.';
+
+  document.getElementById('content').innerHTML =
+    gallery +
+    '<div class="card reveal" style="animation-delay:.08s">' +
+      '<h1>' + esc(d.title || 'Angebot') + '</h1>' +
+      (d.location ? '<div class="loc">📍 ' + esc(d.location) + '</div>' : '') +
+      priceBlock +
+      body +
+    '</div>' +
+    '<div class="cta-wrap reveal" style="animation-delay:.16s">' +
+      '<a class="cta" href="' + waLink + '" target="_blank" rel="noopener">' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2zm5.8 14.3c-.25.7-1.45 1.3-2 1.4-.5.1-1.15.14-1.85-.12-.43-.14-.98-.32-1.7-.63-2.97-1.28-4.9-4.27-5.05-4.47-.15-.2-1.2-1.6-1.2-3.05 0-1.45.76-2.16 1.03-2.46.27-.3.6-.37.8-.37l.57.01c.18.01.43-.07.67.5.25.6.85 2.05.92 2.2.07.15.12.32.02.52-.1.2-.15.32-.3.5-.15.18-.32.4-.45.53-.15.15-.3.3-.13.6.17.3.77 1.27 1.65 2.05 1.13 1 2.08 1.32 2.38 1.47.3.15.47.12.65-.07.18-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.7.8 2 .95.3.15.5.22.57.35.07.12.07.72-.18 1.42z"/></svg>' +
+        esc(ctaText) +
+      '</a>' +
+      '<div class="cta-hint">' + esc(ctaHint) + '</div>' +
+    '</div>' +
+    '<div class="foot">Bereitgestellt über <a href="https://converdino.com" target="_blank" rel="noopener">Converdino</a> — der digitale Verkaufsberater.</div>';
+}
+
+function swap(el, url){
+  document.getElementById('mainImg').src = url;
+  document.querySelectorAll('.thumbs img').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+</script>
+</body>
+</html>
