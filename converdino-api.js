@@ -3200,6 +3200,8 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
       const name  = (req.body.name  || '').trim();
       const email = (req.body.email || '').trim();
       const phone = (req.body.phone || '').trim();
+      const company = (req.body.company || '').trim();
+      const website = (req.body.website || '').trim();
       if (!token) return res.status(400).json({ error: 'session_token fehlt.' });
       if (!name)  return res.status(400).json({ error: 'Name fehlt.' });
       if (!email && !phone) return res.status(400).json({ error: 'Bitte E-Mail oder Telefon angeben.' });
@@ -3243,11 +3245,13 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
       <tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">Name</td><td style="padding:8px 0;text-align:right;font-weight:600">${name}</td></tr>
       ${email ? `<tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">E-Mail</td><td style="padding:8px 0;text-align:right;font-weight:600">${email}</td></tr>` : ''}
       ${phone ? `<tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">Telefon</td><td style="padding:8px 0;text-align:right;font-weight:600">${phone}</td></tr>` : ''}
+      ${company ? `<tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">Unternehmen</td><td style="padding:8px 0;text-align:right;font-weight:600">${company}</td></tr>` : ''}
+      ${website ? `<tr style="border-bottom:1px solid #eee"><td style="padding:8px 0;color:#33473b">Webseite</td><td style="padding:8px 0;text-align:right;font-weight:600">${website}</td></tr>` : ''}
     </table>
     <p style="font-size:13px;color:#33473b;line-height:1.6;margin:16px 0 0">Bitte zeitnah persönlich melden — der Interessent erwartet Ihren Kontakt.</p>
   </div>
 </div></body></html>`;
-        const text = `Neuer Web-Lead — ${productTitle}\n\nName: ${name}\n${email ? 'E-Mail: ' + email + '\n' : ''}${phone ? 'Telefon: ' + phone + '\n' : ''}\nBitte zeitnah persönlich melden.`;
+        const text = `Neuer Web-Lead — ${productTitle}\n\nName: ${name}\n${email ? 'E-Mail: ' + email + '\n' : ''}${phone ? 'Telefon: ' + phone + '\n' : ''}${company ? 'Unternehmen: ' + company + '\n' : ''}${website ? 'Webseite: ' + website + '\n' : ''}\nBitte zeitnah persönlich melden.`;
         mailed = await cvSendEmail(sellerEmail, subject, html, text);
       } else {
         console.warn('[CV Web lead] Keine seller_email/Benachrichtigung — Lead gespeichert, aber nicht gemailt.');

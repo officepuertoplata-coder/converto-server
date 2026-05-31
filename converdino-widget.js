@@ -204,6 +204,8 @@
       '<input id="cvw-name"  placeholder="Name *" autocomplete="name">' +
       '<input id="cvw-email" placeholder="E-Mail" autocomplete="email" type="email">' +
       '<input id="cvw-phone" placeholder="Telefon" autocomplete="tel">' +
+      '<input id="cvw-company" placeholder="Unternehmen" autocomplete="organization">' +
+      '<input id="cvw-website" placeholder="Webseite" autocomplete="url">' +
       '<button id="cvw-leadbtn">Absenden</button>';
     body.appendChild(f);
     scrollDown();
@@ -216,13 +218,15 @@
     var name  = formEl.querySelector('#cvw-name').value.trim();
     var email = formEl.querySelector('#cvw-email').value.trim();
     var phone = formEl.querySelector('#cvw-phone').value.trim();
+    var company = formEl.querySelector('#cvw-company').value.trim();
+    var website = formEl.querySelector('#cvw-website').value.trim();
     if (!name) { formEl.querySelector('#cvw-name').focus(); return; }
     if (!email && !phone) { formEl.querySelector('#cvw-email').focus(); return; }
     var leadBtn = formEl.querySelector('#cvw-leadbtn');
     leadBtn.disabled = true; leadBtn.textContent = 'Sende …';
     fetch(API + '/api/cv/web/lead', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: sessionToken, name: name, email: email, phone: phone })
+      body: JSON.stringify({ session_token: sessionToken, name: name, email: email, phone: phone, company: company, website: website })
     }).then(function (r) { return r.json(); }).then(function (d) {
       formEl.innerHTML = '<div class="cvw-form-ok">✓ Vielen Dank! Unser Verkäufer meldet sich in Kürze bei Ihnen.</div>';
       scrollDown();
