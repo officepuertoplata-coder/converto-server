@@ -1518,9 +1518,12 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     const erstHinweisWA = schonGeantwortet
       ? '\n\n⚠️ WICHTIG: Dies ist NICHT der Gesprächsbeginn — ihr habt euch bereits unterhalten. Stelle dich NICHT vor, begrüße NICHT erneut, sage nicht nochmal "Hallo, hier ist …". Antworte direkt und natürlich auf die letzte Nachricht, als Fortsetzung des laufenden Gesprächs.'
       : '';
+    // In die Unterhaltung "hineinwachsen": früh sehr knapp, später etwas mehr Prosa.
+    const botAntworten = Array.isArray(session.history) ? session.history.filter(m => m && m.role === 'assistant').length : 0;
+    const laengenHinweisWA = cvLaengenHinweis(botAntworten);
     const effectiveSystemPrompt = (istBeratung
       ? cvBuildBeratungPrompt(article, 'whatsapp', shareableDocs, sharedLinks) + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
-      : systemPrompt) + erstHinweisWA;
+      : systemPrompt) + erstHinweisWA + laengenHinweisWA;
 
     // ── Tools definieren ──
     const tools = [
@@ -2002,6 +2005,25 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     } catch(e) {
       console.error('[CV tool]', toolName, e.message);
     }
+  }
+
+  // ── Antwortlänge je nach Gesprächsphase ("hineinwachsen") ───
+  // botAntworten = wie oft der Bot in dieser Session schon geantwortet hat.
+  //  0 = die kommende Antwort ist die Begrüßung (separat kurz geregelt)
+  //  1 = die 2. Bot-Antwort  → so knapp wie möglich, aber aussagekräftig
+  //  2 = die 3. Bot-Antwort  → etwas mehr Prosa erlaubt, aber dosiert
+  //  3+ = normal, generell eher knapp
+  function cvLaengenHinweis(botAntworten) {
+    if (botAntworten === 1) {
+      return '\n\n📏 ANTWORTLÄNGE: Halte diese Antwort SO KNAPP WIE MÖGLICH — idealerweise 1, höchstens 2 Sätze. Auf den Punkt, aber aussagekräftig. Noch keine Ausschweifungen, keine Aufzählungen. Beantworte nur, wonach gefragt wurde.';
+    }
+    if (botAntworten === 2) {
+      return '\n\n📏 ANTWORTLÄNGE: Jetzt darfst du etwas ausführlicher werden — aber dosiert, maximal 2-3 Sätze. Bring etwas mehr Substanz, ohne auszuufern.';
+    }
+    if (botAntworten >= 3) {
+      return '\n\n📏 ANTWORTLÄNGE: Antworte natürlich und vollständig, aber bleibe insgesamt eher knapp — kein langer Fließtext, keine unnötigen Wiederholungen. Lieber ein, zwei klare Sätze mehr als ein Absatz.';
+    }
+    return '';
   }
 
   // ── Fallback-Text falls Bot nur Tool ohne Text aufrief ───
@@ -2872,7 +2894,9 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     const basePrompt = (slot && slot.mode === 'beratung')
       ? cvBuildBeratungPrompt(article, 'web', docs, [])
       : cvBuildWebPrompt(article, docs);
-    const systemPrompt = basePrompt + erstHinweis;
+    // In die Unterhaltung "hineinwachsen": früh sehr knapp, später etwas mehr Prosa.
+    const botAntwortenWeb = Array.isArray(history) ? history.filter(m => m && m.role === 'assistant').length : 0;
+    const systemPrompt = basePrompt + erstHinweis + cvLaengenHinweis(botAntwortenWeb);
 
     // Werkzeug zum Teilen freigegebener Dokumente (nur wenn welche vorhanden sind)
     const webTools = docs.length > 0 ? [{
