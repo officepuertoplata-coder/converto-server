@@ -1117,6 +1117,13 @@ function renderSettingsView() {
       <div style="font-size:.9rem;font-weight:800;text-align:right;">${value}</div>
     </div>`;
 
+  // Für lange Texte (z.B. Gesprächsstrategie): Label oben, Text darunter über volle Breite, linksbündig
+  const rowBlock = (label, value) => `
+    <div style="padding:11px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:.82rem;color:var(--mu);font-weight:700;margin-bottom:6px;">${label}</div>
+      <div style="font-size:.9rem;font-weight:500;text-align:left;white-space:pre-wrap;line-height:1.5;">${value}</div>
+    </div>`;
+
   const avail = a.availability || 'available';
   const priceVis = a.price_visibility || 'public';
   const priceStrict = a.price_strict === true;
@@ -1157,7 +1164,7 @@ function renderSettingsView() {
       ${row('WhatsApp-Starttext', esc(a.wa_starttext || '— (Standard)'))}
       ${row('Call-to-Action', esc(a.cta_text || '— (Standard)'))}
       ${row('Handlungsaufforderung', esc(a.pull_text || '— (Standard)'))}
-      ${a.strategie ? row('Gesprächsstrategie', '<span style="white-space:pre-wrap;">' + esc(a.strategie) + '</span>') : ''}
+      ${a.strategie ? rowBlock('Gesprächsstrategie', esc(a.strategie)) : ''}
       ${row('Verfügbarkeit', availLabel)}
       ${row('Slot-Zustand', pillLabel(s.status))}`
     : `
@@ -1175,7 +1182,7 @@ function renderSettingsView() {
       ${row('WhatsApp-Starttext', esc(a.wa_starttext || '— (Standard)'))}
       ${row('Call-to-Action', esc(a.cta_text || '— (Standard)'))}
       ${row('Handlungsaufforderung', esc(a.pull_text || '— (Standard)'))}
-      ${a.strategie ? row('Gesprächsstrategie', '<span style="white-space:pre-wrap;">' + esc(a.strategie) + '</span>') : ''}
+      ${a.strategie ? rowBlock('Gesprächsstrategie', esc(a.strategie)) : ''}
       ${row('Verfügbarkeit', availLabel)}
       ${row('Slot-Zustand', pillLabel(s.status))}`;
 

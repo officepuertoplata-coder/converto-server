@@ -314,6 +314,62 @@ module.exports = function(app, supabase, deps) {
 
 
   // ============================================================
+  // 2b. PATCH /api/cv/slot/:id/quicksettings
+  //    Schnell-Einstellungen am AKTIVEN Bot ändern, ohne Neu-Analyse.
+  //    Body (alle optional): wa_starttext, cta_text, pull_text, availability
+  //    Schreibt in cv_articles (Artikel des Slots). Nur gesendete Felder werden geändert.
+  // ============================================================
+  app.patch('/api/cv/slot/:id/quicksettings', async (req, res) => {
+    try {
+      const slotId = req.params.id;
+      const { wa_starttext, cta_text, pull_text, availability } = req.body || {};
+
+      // Artikel des Slots holen
+      const { data: article, error: artErr } = await supabase
+        .from('cv_articles')
+        .select('*')
+        .eq('slot_id', slotId)
+        .maybeSingle();
+      if (artErr) return res.status(500).json({ success: false, error: 'Artikel-Lesefehler: ' + artErr.message });
+      if (!article) return res.status(404).json({ success: false, error: 'Kein Artikel für diesen Slot gefunden' });
+
+      // Nur tatsächlich gesendete Felder aktualisieren (undefined = nicht anfassen)
+      const upd = {};
+      if (wa_starttext !== undefined) upd.wa_starttext = (wa_starttext || '').trim();
+      if (cta_text    !== undefined) upd.cta_text    = (cta_text    || '').trim();
+      if (pull_text   !== undefined) upd.pull_text   = (pull_text   || '').trim();
+      if (availability !== undefined) {
+        const allowed = ['available', 'reserved', 'sold'];
+        if (!allowed.includes(availability)) {
+          return res.status(400).json({ success: false, error: 'Ungültiger Verfügbarkeits-Wert' });
+        }
+        upd.availability = availability;
+      }
+
+      if (Object.keys(upd).length === 0) {
+        return res.status(400).json({ success: false, error: 'Keine Felder zum Speichern übergeben' });
+      }
+
+      const { data: updated, error: updErr } = await supabase
+        .from('cv_articles')
+        .update(upd)
+        .eq('id', article.id)
+        .select('*')
+        .maybeSingle();
+      if (updErr) {
+        console.error('[CV quicksettings] UPDATE-Fehler:', updErr.message);
+        return res.status(500).json({ success: false, error: 'Speicherfehler: ' + updErr.message });
+      }
+
+      res.json({ success: true, article: updated || { ...article, ...upd } });
+    } catch(e) {
+      console.error('[CV /slot/:id/quicksettings]', e);
+      res.status(500).json({ success: false, error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+
+  // ============================================================
   // 3. POST /api/cv/slot/:id/upload
   //    Datei in Slot hochladen (Foto, PDF, Notiz)
   //    Body: { kind: 'photo'|'pdf'|'note', file_name, file_base64, content_type, content }
