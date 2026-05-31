@@ -141,6 +141,9 @@
 
 <main>
   <div id="header"></div>
+  <div id="liveBanner" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;color:#0f6b34;padding:12px 14px;border-radius:10px;margin-bottom:16px;font-size:.85rem;">
+    ✓ Dieser Bot läuft bereits. Du kannst hier jederzeit Dokumente ergänzen oder entfernen — <strong>Vertriebsdokumente sind sofort verfügbar</strong>, ohne dass der Bot neu analysiert oder unterbrochen wird.
+  </div>
 
   <!-- FOTOS -->
   <div class="section">
@@ -214,9 +217,10 @@
 <div class="bottom-bar">
   <div class="bb-info">
     <strong id="totalSummary">0 Dateien hochgeladen</strong>
-    <span>KI analysiert alles und aktiviert den Bot</span>
+    <span id="bbHint">KI analysiert alles und aktiviert den Bot</span>
   </div>
   <button class="activate-btn" id="activateBtn" onclick="activateBot()">🤖 Bot aktivieren →</button>
+  <button class="activate-btn" id="doneBtn" onclick="location.href='cv-dashboard.html'" style="display:none;">✓ Fertig</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -248,6 +252,18 @@ async function loadSlot() {
     }
     renderHeader(d.slot, d.article);
     renderUploads(d.uploads || []);
+
+    // Bei laufendem Bot: kein "Bot aktivieren" (würde neu analysieren), nur Verwalten
+    if (d.slot.status === 'active') {
+      const actBtn = document.getElementById('activateBtn');
+      const doneBtn = document.getElementById('doneBtn');
+      const hint = document.getElementById('bbHint');
+      if (actBtn) actBtn.style.display = 'none';
+      if (doneBtn) doneBtn.style.display = '';
+      if (hint) hint.textContent = 'Bot läuft — neue Dokumente wirken sofort, ohne Neu-Analyse.';
+      const banner = document.getElementById('liveBanner');
+      if (banner) banner.style.display = 'block';
+    }
   } catch(e) {
     document.getElementById('header').innerHTML =
       '<div style="background:#fee2e2;color:var(--red);padding:14px;border-radius:10px;">Verbindungsfehler: ' + esc(e.message) + '</div>';
