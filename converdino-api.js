@@ -1278,7 +1278,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     // BERATUNGS-MODUS: anderen Prompt verwenden (kein Verkauf/keine Preise/Lead an Berater übergeben)
     const istBeratung = (slot && slot.mode === 'beratung');
     const effectiveSystemPrompt = istBeratung
-      ? cvBuildBeratungPrompt(article) + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
+      ? cvBuildBeratungPrompt(article, 'whatsapp') + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
       : systemPrompt;
 
     // ── Tools definieren ──
@@ -1507,6 +1507,10 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
       const textParts = blocks.filter(b => b.type === 'text').map(b => b.text);
       const toolCalls = blocks.filter(b => b.type === 'tool_use');
       let botReply = textParts.join('\n').trim();
+      // Sicherheitsnetz: WhatsApp kennt kein Formular — falls das Modell doch [[KONTAKT]] setzt, entfernen
+      if (botReply.indexOf('[[KONTAKT]]') !== -1) {
+        botReply = botReply.replace(/\[\[KONTAKT\]\]/g, '').trim();
+      }
 
       // Tools verarbeiten
       for (const tc of toolCalls) {
@@ -2461,7 +2465,8 @@ REGELN:
   // BERATUNGS-MODUS: Prompt für erklärungsbedürftige Dienstleistungen (z.B. Supplier Risk Management).
   // Kein Verkauf, keine Preise, keine Verhandlung. Ziel: Problembewusstsein schaffen,
   // locker qualifizieren (Rahmenbedingungen), und zur Videokonferenz mit dem Berater führen.
-  function cvBuildBeratungPrompt(article) {
+  function cvBuildBeratungPrompt(article, kanal) {
+    const istWhatsApp = (kanal === 'whatsapp');
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
@@ -2510,8 +2515,13 @@ Nenne KEINE Preise und keine Preisstruktur. Wenn jemand nach dem Preis fragt: fr
 LEAD ÜBERGEBEN
 ═══════════════════════════════════════════════════════
 Sobald ernsthaftes Interesse besteht (will mehr wissen, will einen Termin, schildert eine konkrete Situation), bitte freundlich um die Kontaktdaten, damit ${berater} sich persönlich meldet und einen Termin für die Videokonferenz abstimmt.
-- Formuliere etwa: "Am besten bespricht das ${berater} direkt mit Ihnen in einer kurzen Videokonferenz. Hinterlassen Sie mir dafür bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. "du", wenn Anrede=Du)
-- WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (doppelte eckige Klammern). Der Besucher sieht ihn nicht. Setze ihn nur bei echtem Interesse, höchstens einmal pro Gespräch.
+${istWhatsApp
+? `- Du bist in WhatsApp. Es gibt KEIN Formular. Bitte den Interessenten einfach, dir Name und am besten eine E-Mail oder Telefonnummer direkt hier als Nachricht zu schreiben.
+- Formuliere etwa: "Am besten bespricht das ${berater} direkt mit Ihnen in einer kurzen Videokonferenz. Schreiben Sie mir dafür einfach kurz Ihren Namen und wie ${berater} Sie am besten erreicht (E-Mail oder Telefon)." (bzw. "du", wenn Anrede=Du)
+- Verwende NIEMALS den Marker [[KONTAKT]] und sprich NICHT von einem "Formular" — das gibt es in WhatsApp nicht.
+- Sobald der Interessent dir Name/Kontakt genannt hat, sichere den Lead mit dem Werkzeug collect_contact (damit ${berater} informiert wird).`
+: `- Formuliere etwa: "Am besten bespricht das ${berater} direkt mit Ihnen in einer kurzen Videokonferenz. Hinterlassen Sie mir dafür bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. "du", wenn Anrede=Du)
+- WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (doppelte eckige Klammern). Der Besucher sieht ihn nicht. Setze ihn nur bei echtem Interesse, höchstens einmal pro Gespräch.`}
 - Erfinde NIEMALS Kontaktdaten.
 
 NACH ERHALT DER KONTAKTDATEN — warm abschließen (NICHT abrupt "Danke" sagen):
@@ -2533,7 +2543,7 @@ REGELN:
   // Wählt je nach Slot-Modus den passenden Prompt: 'beratung' oder (Standard) 'verkauf'.
   async function cvRunWebTurn(slot, article, history, userMessage) {
     const systemPrompt = (slot && slot.mode === 'beratung')
-      ? cvBuildBeratungPrompt(article)
+      ? cvBuildBeratungPrompt(article, 'web')
       : cvBuildWebPrompt(article);
 
     function normalizeHistory(hist) {
