@@ -18,7 +18,7 @@
     line-height:1.6; -webkit-font-smoothing:antialiased;
     background-image:radial-gradient(circle at 15% 0%, #eafaf0 0%, transparent 45%);
   }
-  .wrap{max-width:760px; margin:0 auto; padding:0 18px 60px}
+  .wrap{max-width:760px; margin:0 auto; padding:0 18px 110px}
 
   /* Header */
   .top{display:flex; align-items:center; gap:9px; padding:20px 4px 14px}
@@ -62,6 +62,7 @@
   .cta{display:flex; align-items:center; justify-content:center; gap:10px; width:100%; background:var(--wa); color:#fff; font-family:'Outfit',sans-serif; font-weight:700; font-size:1.12rem; padding:16px; border-radius:14px; text-decoration:none; box-shadow:0 8px 24px rgba(37,211,102,.4); transition:.18s; border:none; cursor:pointer}
   .cta:hover{transform:translateY(-2px); box-shadow:0 12px 30px rgba(37,211,102,.5)}
   .cta-hint{text-align:center; font-size:.82rem; color:var(--mu); margin-top:10px}
+  .cta-lead{text-align:center; font-size:.95rem; color:var(--ink); font-weight:500; margin-bottom:12px; line-height:1.4}
 
   .foot{text-align:center; font-size:.78rem; color:var(--mu); margin-top:30px; padding-top:20px; border-top:1px solid var(--line)}
   .foot a{color:var(--g2); text-decoration:none; font-weight:600}
@@ -156,9 +157,11 @@ function render(d){
   }
 
   const ctaText = istBeratung ? 'Beratung per WhatsApp starten' : 'Per WhatsApp anfragen';
-  const ctaHint = istBeratung
+  const ctaHintDefault = istBeratung
     ? 'Kostenlos & unverbindlich — direkt im Chat.'
     : 'Stell deine Fragen oder verhandle direkt im Chat.';
+  // Eigener Call-to-Action-Text aus dem Marketing-Material, falls hinterlegt
+  const ctaHint = (d.cta_text && d.cta_text.trim()) ? d.cta_text.trim() : ctaHintDefault;
 
   document.getElementById('content').innerHTML =
     gallery +
@@ -169,13 +172,22 @@ function render(d){
       body +
     '</div>' +
     '<div class="cta-wrap reveal" style="animation-delay:.16s">' +
+      '<div class="cta-lead">' + esc(ctaHint) + '</div>' +
       '<a class="cta" href="' + waLink + '" target="_blank" rel="noopener">' +
         '<svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2zm5.8 14.3c-.25.7-1.45 1.3-2 1.4-.5.1-1.15.14-1.85-.12-.43-.14-.98-.32-1.7-.63-2.97-1.28-4.9-4.27-5.05-4.47-.15-.2-1.2-1.6-1.2-3.05 0-1.45.76-2.16 1.03-2.46.27-.3.6-.37.8-.37l.57.01c.18.01.43-.07.67.5.25.6.85 2.05.92 2.2.07.15.12.32.02.52-.1.2-.15.32-.3.5-.15.18-.32.4-.45.53-.15.15-.3.3-.13.6.17.3.77 1.27 1.65 2.05 1.13 1 2.08 1.32 2.38 1.47.3.15.47.12.65-.07.18-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.7.8 2 .95.3.15.5.22.57.35.07.12.07.72-.18 1.42z"/></svg>' +
         esc(ctaText) +
       '</a>' +
-      '<div class="cta-hint">' + esc(ctaHint) + '</div>' +
     '</div>' +
     '<div class="foot">Bereitgestellt über <a href="https://converdino.com" target="_blank" rel="noopener">Converdino</a> — der digitale Verkaufsberater.</div>';
+
+  // Web-Chat-Widget einbinden (chattet direkt auf der Seite, zusätzlich zum WhatsApp-Knopf)
+  if (d.bot_code && !document.getElementById('cv-web-widget')) {
+    const ws = document.createElement('script');
+    ws.id = 'cv-web-widget';
+    ws.src = API + '/converdino-widget.js';
+    ws.setAttribute('data-bot', d.bot_code);
+    document.body.appendChild(ws);
+  }
 }
 
 function swap(el, url){

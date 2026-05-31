@@ -501,6 +501,7 @@ module.exports = function(app, supabase, deps) {
         location: article.location || '',
         anrede: article.anrede || 'Sie',
         bot_code: slot.bot_code,
+        cta_text: (article.cta_text && article.cta_text.trim()) ? article.cta_text.trim() : '',
         price,
         price_on_request: !showPrice,
         photos,
