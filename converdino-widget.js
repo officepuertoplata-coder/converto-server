@@ -95,10 +95,21 @@
   // --- Hilfsfunktionen ---
   function scrollDown() { body.scrollTop = body.scrollHeight; }
 
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(m) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
+    });
+  }
+
   function addMsg(text, who) {
     var d = document.createElement('div');
     d.className = 'cvw-msg ' + (who === 'user' ? 'cvw-user' : 'cvw-bot');
-    d.textContent = text;
+    // Text sicher escapen, dann erkannte URLs in klickbare Links umwandeln
+    var safe = escapeHtml(text);
+    safe = safe.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;word-break:break-all;">' + url + '</a>';
+    });
+    d.innerHTML = safe.replace(/\n/g, '<br>');
     body.appendChild(d);
     scrollDown();
     return d;

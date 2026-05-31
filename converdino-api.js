@@ -2614,8 +2614,9 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
   });
 
   // Web-tauglichen System-Prompt bauen (Kontakt wird per Formular gesichert)
-  function cvBuildWebPrompt(article) {
+  function cvBuildWebPrompt(article, shareableDocs) {
     const analysis = article.analysis || {};
+    const docs = Array.isArray(shareableDocs) ? shareableDocs : [];
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const ansprechperson = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : '';
@@ -2681,7 +2682,11 @@ REGELN:
 
 ═══ GESPRÄCHSSTRATEGIE (vom Betreiber vorgegeben — wichtig!) ═══
 Folge dieser Strategie. Es ist eine Reihenfolge von Angeboten: biete zuerst das Erste an; bei Ablehnung/Zögern gehe natürlich zum Nächsten über. Dränge nie, biete an. Links/Angebote genau wie angegeben weitergeben:
-${strategieText}` : ''}`;
+${strategieText}` : ''}${docs.length > 0 ? `
+
+═══ TEILBARE DOKUMENTE ═══
+Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was drin ist, dann wird der Link automatisch angehängt. Gib NUR diese Dokumente heraus:
+${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
   }
 
   // BERATUNGS-MODUS: Prompt für erklärungsbedürftige Dienstleistungen (z.B. Supplier Risk Management).
@@ -2780,10 +2785,25 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
 
   // Web-Bot-Turn: ruft Sonnet, gibt die Antwort als String zurück (kein WhatsApp-Versand)
   // Wählt je nach Slot-Modus den passenden Prompt: 'beratung' oder (Standard) 'verkauf'.
-  async function cvRunWebTurn(slot, article, history, userMessage) {
+  async function cvRunWebTurn(slot, article, history, userMessage, shareableDocs) {
+    const docs = Array.isArray(shareableDocs) ? shareableDocs : [];
+    const sharedLinks = [];
     const systemPrompt = (slot && slot.mode === 'beratung')
-      ? cvBuildBeratungPrompt(article, 'web', [], [])
-      : cvBuildWebPrompt(article);
+      ? cvBuildBeratungPrompt(article, 'web', docs, [])
+      : cvBuildWebPrompt(article, docs);
+
+    // Werkzeug zum Teilen freigegebener Dokumente (nur wenn welche vorhanden sind)
+    const webTools = docs.length > 0 ? [{
+      name: 'share_document',
+      description: 'Teile ein freigegebenes Dokument (z.B. Datenblatt, Broschüre, Dossier) mit dem Interessenten, indem du ihm den Download-Link gibst. Nutze dies, wenn der Interessent Unterlagen möchte oder die Strategie es vorsieht. Sage kurz, was drin ist. Gib NUR Dokumente aus der Liste der freigegebenen Dokumente heraus.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          document_name: { type: 'string', description: 'Der exakte Dateiname aus der Liste der freigegebenen Dokumente' }
+        },
+        required: ['document_name']
+      }
+    }] : [];
 
     function normalizeHistory(hist) {
       const out = [];
@@ -2808,6 +2828,13 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     let response, lastErr;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        const body = {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 800,
+          system: systemPrompt,
+          messages
+        };
+        if (webTools.length > 0) body.tools = webTools;
         response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -2815,12 +2842,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
             'anthropic-version': '2023-06-01',
             'content-type': 'application/json'
           },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 800,
-            system: systemPrompt,
-            messages
-          })
+          body: JSON.stringify(body)
         });
         if (response.ok) break;
         const errText = await response.text();
@@ -2846,6 +2868,23 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     const data = await response.json();
     const blocks = data.content || [];
     let reply = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+
+    // share_document-Aufrufe verarbeiten → passenden Link suchen
+    const toolCalls = blocks.filter(b => b.type === 'tool_use');
+    let shareLink = null;
+    for (const tc of toolCalls) {
+      if (tc.name === 'share_document') {
+        const wanted = ((tc.input && tc.input.document_name) || '').trim().toLowerCase();
+        let doc = docs.find(x => (x.file_name || '').toLowerCase() === wanted)
+               || docs.find(x => (x.file_name || '').toLowerCase().indexOf(wanted) !== -1 && wanted.length > 2);
+        if (doc && doc.public_url) {
+          shareLink = { name: doc.file_name, url: doc.public_url };
+          if (!sharedLinks.some(l => l.url === doc.public_url)) sharedLinks.push(shareLink);
+        }
+      }
+    }
+
+    if (!reply && toolCalls.length > 0) reply = 'Gern — hier sind die Unterlagen:';
     if (!reply) reply = 'Einen Moment bitte.';
 
     // Kontaktformular-Marker erkennen und aus dem sichtbaren Text entfernen
@@ -2854,7 +2893,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
       showContactForm = true;
       reply = reply.replace(/\[\[KONTAKT\]\]/g, '').trim();
     }
-    return { reply, showContactForm };
+    return { reply, showContactForm, shareLink };
   }
 
   // Hilfsfunktion: Slot + Artikel über Bot-Code laden (für Web)
@@ -2921,17 +2960,27 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
       const { data: article } = await supabase.from('cv_articles').select('*').eq('slot_id', sess.slot_id).maybeSingle();
       if (!slot || !article) return res.status(404).json({ error: 'Artikel nicht mehr verfügbar.' });
 
+      // Teilbare Dokumente laden (shareable=true, öffentlich abrufbar)
+      const { data: shareDocs } = await supabase
+        .from('cv_uploads').select('file_name, public_url, kind')
+        .eq('article_id', article.id).eq('shareable', true);
+      const shareableDocs = (shareDocs || []).filter(d => d.public_url);
+
       const history = Array.isArray(sess.messages) ? sess.messages.slice() : [];
       history.push({ role: 'user', content: msg });
 
-      const turn = await cvRunWebTurn(slot, article, history, msg);
-      history.push({ role: 'assistant', content: turn.reply });
+      const turn = await cvRunWebTurn(slot, article, history, msg, shareableDocs);
+      let replyOut = turn.reply;
+      if (turn.shareLink && turn.shareLink.url) {
+        replyOut = replyOut.replace(/\s*$/, '') + '\n\n📎 ' + turn.shareLink.name + ': ' + turn.shareLink.url;
+      }
+      history.push({ role: 'assistant', content: replyOut });
 
       await supabase.from('cv_web_sessions')
         .update({ messages: history, last_message_at: new Date().toISOString() })
         .eq('session_token', token);
 
-      res.json({ reply: turn.reply, show_contact_form: turn.showContactForm });
+      res.json({ reply: replyOut, show_contact_form: turn.showContactForm });
     } catch(e) {
       console.error('[CV Web message]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
