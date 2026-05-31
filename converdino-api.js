@@ -550,6 +550,17 @@ module.exports = function(app, supabase, deps) {
       const showPrice = !istBeratung && (article.price_visibility || 'public') !== 'on_request';
       const price = showPrice ? (Number(article.sale_price) || null) : null;
 
+      // Verkäufer-Stammdaten (Firma + Adresse) für die Anbieter-Kennzeichnung
+      let seller = null;
+      if (slot.subscription_id) {
+        const { data: sub } = await supabase
+          .from('cv_subscriptions').select('company_name, address')
+          .eq('id', slot.subscription_id).maybeSingle();
+        if (sub && (sub.company_name || sub.address)) {
+          seller = { company: sub.company_name || '', address: sub.address || '' };
+        }
+      }
+
       res.json({
         ok: true,
         mode: istBeratung ? 'beratung' : 'verkauf',
@@ -558,6 +569,7 @@ module.exports = function(app, supabase, deps) {
         anrede: article.anrede || 'Sie',
         bot_code: slot.bot_code,
         cta_text: (article.cta_text && article.cta_text.trim()) ? article.cta_text.trim() : '',
+        seller,
         price,
         price_on_request: !showPrice,
         photos,

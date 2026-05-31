@@ -21,9 +21,10 @@
   .wrap{max-width:760px; margin:0 auto; padding:0 18px 110px}
 
   /* Header */
-  .top{display:flex; align-items:center; gap:9px; padding:20px 4px 14px}
-  .top .logo{font-family:'Fraunces',serif; font-weight:700; font-size:1.25rem; letter-spacing:-.01em}
+  .top{display:flex; flex-direction:column; align-items:center; gap:2px; padding:26px 4px 18px; text-align:center}
+  .top .logo{font-family:'Fraunces',serif; font-weight:700; font-size:2rem; letter-spacing:.01em; text-transform:uppercase}
   .top .logo .c{color:var(--g2)} .top .logo .d{color:var(--green)}
+  .top .praes{font-size:.72rem; letter-spacing:.18em; text-transform:uppercase; color:var(--mu); font-weight:600; margin-top:2px}
 
   /* Loading / Error */
   .state{text-align:center; padding:80px 20px; color:var(--mu)}
@@ -64,8 +65,11 @@
   .cta-hint{text-align:center; font-size:.82rem; color:var(--mu); margin-top:10px}
   .cta-lead{text-align:center; font-size:.95rem; color:var(--ink); font-weight:500; margin-bottom:12px; line-height:1.4}
 
-  .foot{text-align:center; font-size:.78rem; color:var(--mu); margin-top:30px; padding-top:20px; border-top:1px solid var(--line)}
+  .foot{text-align:center; font-size:.78rem; color:var(--mu); margin-top:30px; padding-top:20px; border-top:1px solid var(--line); line-height:1.55}
   .foot a{color:var(--g2); text-decoration:none; font-weight:600}
+  .foot-block{margin-bottom:14px}
+  .foot-h{font-size:.7rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink); font-weight:700; margin-bottom:4px}
+  .foot-meta{margin-top:6px; font-size:.72rem}
 
   .reveal{opacity:0; transform:translateY(10px); animation:rise .6s ease forwards}
   @keyframes rise{to{opacity:1; transform:none}}
@@ -75,6 +79,7 @@
 <div class="wrap">
   <div class="top">
     <span class="logo"><span class="c">Conver</span><span class="d">dino</span></span>
+    <span class="praes">präsentiert</span>
   </div>
   <div id="content">
     <div class="state"><div class="big">Lädt …</div><div>Einen Moment bitte.</div></div>
@@ -178,7 +183,19 @@ function render(d){
         esc(ctaText) +
       '</a>' +
     '</div>' +
-    '<div class="foot">Bereitgestellt über <a href="https://converdino.com" target="_blank" rel="noopener">Converdino</a> — der digitale Verkaufsberater.</div>';
+    '<div class="foot">' +
+      (d.seller && (d.seller.company || d.seller.address)
+        ? '<div class="foot-block"><div class="foot-h">Anbieter</div>' +
+            (d.seller.company ? '<div>' + esc(d.seller.company) + '</div>' : '') +
+            (d.seller.address ? '<div>' + esc(d.seller.address) + '</div>' : '') +
+          '</div>'
+        : '') +
+      '<div class="foot-block"><div class="foot-h">Impressum</div>' +
+        '<div>Ynhald Corp</div>' +
+        '<div><a href="mailto:office@ynhald.com">office@ynhald.com</a></div>' +
+      '</div>' +
+      '<div class="foot-meta">Vermittlung &amp; technische Bereitstellung über <a href="https://converdino.com" target="_blank" rel="noopener">Converdino</a> — der digitale Verkaufsberater.</div>' +
+    '</div>';
 
   // Web-Chat-Widget einbinden (chattet direkt auf der Seite, zusätzlich zum WhatsApp-Knopf)
   if (d.bot_code && !document.getElementById('cv-web-widget')) {
