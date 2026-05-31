@@ -1475,6 +1475,7 @@ GRUNDREGEL: Wenn du ein Werkzeug nutzt, schreibe IMMER auch einen kurzen begleit
 - create_payment_link: NACH der Einigung UND wenn du Name + Kontaktdaten hast — erstellt den sicheren Anzahlungs-Zahlungslink und schickt ihn dem Käufer. Nutze dies wenn der Käufer bereit ist zu reservieren/zu zahlen.
 - escalate_to_sales: Wenn der Käufer hartnäckig UNTER €${minPrice} will und nicht nachgibt. Sage sinngemäß: "Meine Möglichkeiten sind hier erschöpft, aber ich habe einen Vorschlag — unser Verkaufsleiter meldet sich bei Ihnen, der hat oft noch die eine oder andere Idee."
 - request_callback: Wenn ein Rückruf/Termin vereinbart wird — mit konkretem Zeitfenster.
+- send_booking_link: SOBALD der Interessent einem Termin-/Buchungslink zustimmt ("ja bitte", "schicken Sie den Link") oder danach fragt — rufe DIESES Werkzeug auf. Der konkrete Link wird automatisch angehängt; schreibe NIE selbst eine cal.com- oder Termin-URL aus dem Gedächtnis. Wenn du einen Termin anbietest und der Interessent zustimmt, MUSST du in derselben Antwort dieses Werkzeug nutzen — kündige den Link nicht nur an, ohne ihn zu liefern.
 - confirm_commitment: Der allerletzte Schritt, der das Gespräch beendet — siehe Commitment-Phase unten.
 
 ═══════════════════════════════════════════════════════
@@ -1630,6 +1631,11 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
         }
       },
       {
+        name: 'send_booking_link',
+        description: 'Sende dem Interessenten den Termin-/Buchungslink (z.B. für ein Videogespräch), damit er selbst einen Termin wählen kann. Nutze dies, SOBALD der Interessent einem Termin/Buchungslink zustimmt ("ja bitte", "schicken Sie mir den Link") oder ausdrücklich danach fragt. Der konkrete Link wird automatisch angehängt — du musst ihn NICHT selbst aus dem Gedächtnis schreiben. Schreibe nur einen kurzen Begleitsatz.',
+        input_schema: { type: 'object', properties: {} }
+      },
+      {
         name: 'confirm_commitment',
         description: 'ALLERLETZTER Schritt der das Gespräch beendet. Rufe dies erst auf nachdem du dich verabschiedet hast. Bei Erfolg (committed=true) erst nachdem der Käufer aktiv zugestimmt hat. Bei Misserfolg (committed=false) nachdem du fair abgeschlossen und die Tür offen gelassen hast.',
         input_schema: {
@@ -1680,7 +1686,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     // API-Call mit automatischem Retry (gegen transiente Fehler)
     let response, lastErr;
     // Bei Beratung: nur Lead-/Kontakt-Tools zulassen (keine Preis-/Deal-/Zahlungs-Tools)
-    const beratungToolNamen = ['flag_hot_lead', 'collect_contact', 'request_callback', 'share_document'];
+    const beratungToolNamen = ['flag_hot_lead', 'collect_contact', 'request_callback', 'share_document', 'send_booking_link'];
     const effectiveTools = istBeratung
       ? tools.filter(t => beratungToolNamen.indexOf(t.name) !== -1)
       : tools;
@@ -1831,10 +1837,21 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
       }
       if (!botReply) botReply = 'Einen Moment bitte.';
 
-      // Wenn ein Dokument geteilt wurde: Link an die Antwort anhängen
+      // Wenn ein Dokument/Link geteilt wurde: an die Antwort anhängen (kein Duplikat)
       if (session._shareLink && session._shareLink.url) {
-        botReply = botReply.replace(/\s*$/, '') + '\n\n📎 ' + session._shareLink.url;
+        if (botReply.indexOf(session._shareLink.url) === -1) {
+          const icon = (session._shareLink.name === 'Termin buchen') ? '📅' : '📎';
+          const label = (session._shareLink.name === 'Termin buchen') ? 'Termin buchen: ' : '';
+          botReply = botReply.replace(/\s*$/, '') + '\n\n' + icon + ' ' + label + session._shareLink.url;
+        }
         session._shareLink = null;
+      }
+
+      // Markdown-Sternchen aus der frei formulierten Bot-Antwort entfernen
+      // (der Bot setzt manchmal *…* / **…**; in WhatsApp unerwünscht laut Vorgabe).
+      // Fest codierte Nachrichten (z.B. Preis-Hervorhebung) sind davon NICHT betroffen.
+      if (botReply) {
+        botReply = botReply.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
       }
 
       await sendWAMessage(phoneId, phone, botReply);
@@ -2027,6 +2044,15 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
           session.notified = true;
           break;
 
+        case 'send_booking_link': {
+          const link = cvFindBookingLink(session.article && session.article.strategie);
+          if (link) {
+            session._shareLink = { name: 'Termin buchen', url: link };
+            await cvLogEvent(session, phone, 'booking_link_sent', { url: link });
+          }
+          break;
+        }
+
         case 'confirm_commitment':
           if (input.committed) {
             // Erfolg ist meist schon durch agree_deal/escalate/callback geloggt.
@@ -2061,6 +2087,18 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     } catch(e) {
       console.error('[CV tool]', toolName, e.message);
     }
+  }
+
+  // ── Buchungslink (z.B. cal.com) aus dem Strategie-Text ziehen ───
+  // So muss der Link nur EINMAL in der Strategie gepflegt werden und wird
+  // beim Werkzeug send_booking_link automatisch zuverlässig angehängt.
+  function cvFindBookingLink(strategieText) {
+    if (!strategieText) return null;
+    // Bevorzugt cal.com, sonst irgendein https-Link in der Strategie
+    const cal = strategieText.match(/https?:\/\/(?:www\.)?cal\.com\/[^\s)]+/i);
+    if (cal) return cal[0].replace(/[.,;]+$/, '');
+    const any = strategieText.match(/https?:\/\/[^\s)]+/i);
+    return any ? any[0].replace(/[.,;]+$/, '') : null;
   }
 
   // ── Antwortlänge je nach Gesprächsphase ("hineinwachsen") ───
@@ -2908,6 +2946,7 @@ ${istWhatsApp
 : `- Formuliere etwa: "Am besten bespricht das ${berater} direkt mit Ihnen in einer kurzen Videokonferenz. Hinterlassen Sie mir dafür bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. "du", wenn Anrede=Du)
 - WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (doppelte eckige Klammern). Der Besucher sieht ihn nicht. Setze ihn nur bei echtem Interesse, höchstens einmal pro Gespräch.`}
 - Erfinde NIEMALS Kontaktdaten.
+- Wenn ein Termin-/Buchungslink angeboten wird und der Interessent zustimmt oder danach fragt: nutze das Werkzeug send_booking_link (der konkrete Link wird automatisch angehängt). Schreibe NIE selbst eine cal.com- oder Termin-URL aus dem Gedächtnis, und kündige den Link nicht nur an, ohne ihn zu liefern.
 - GRUNDREGEL bei Aktionen: Wenn du Unterlagen teilst, einen Link gibst oder eine Aktion auslöst, schreibe IMMER auch einen kurzen begleitenden Satz dazu — rufe nie wortlos ein Werkzeug auf und beende das Gespräch nie abrupt. Sag freundlich, was als Nächstes passiert, und halte das Gespräch offen ("…schauen Sie es sich in Ruhe an, bei Fragen bin ich da").
 
 NACH ERHALT DER KONTAKTDATEN — warm abschließen (NICHT abrupt "Danke" sagen):
@@ -2958,18 +2997,31 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     const botAntwortenWeb = Array.isArray(history) ? history.filter(m => m && m.role === 'assistant').length : 0;
     const systemPrompt = basePrompt + erstHinweis + cvLaengenHinweis(botAntwortenWeb);
 
-    // Werkzeug zum Teilen freigegebener Dokumente (nur wenn welche vorhanden sind)
-    const webTools = docs.length > 0 ? [{
-      name: 'share_document',
-      description: 'Teile ein freigegebenes Dokument (z.B. Datenblatt, Broschüre, Dossier) mit dem Interessenten, indem du ihm den Download-Link gibst. Nutze dies, wenn der Interessent Unterlagen möchte oder die Strategie es vorsieht. Sage kurz, was drin ist. Gib NUR Dokumente aus der Liste der freigegebenen Dokumente heraus.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          document_name: { type: 'string', description: 'Der exakte Dateiname aus der Liste der freigegebenen Dokumente' }
-        },
-        required: ['document_name']
-      }
-    }] : [];
+    // Buchungslink aus der Strategie (falls vorhanden) → eigenes Werkzeug
+    const bookingLink = cvFindBookingLink(article && article.strategie);
+
+    // Verfügbare Werkzeuge zusammenstellen
+    const webTools = [];
+    if (docs.length > 0) {
+      webTools.push({
+        name: 'share_document',
+        description: 'Teile ein freigegebenes Dokument als Download-Link — aber NUR, wenn der Interessent ausdrücklich zugestimmt hat oder es selbst angefordert hat. NICHT verwenden, nur weil ein Thema erwähnt wird oder du gerade eine Rückfrage stellst. Erst anbieten → Zustimmung abwarten → dann teilen. Sage kurz, was drin ist. Gib NUR Dokumente aus der Liste der freigegebenen Dokumente heraus.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            document_name: { type: 'string', description: 'Der exakte Dateiname aus der Liste der freigegebenen Dokumente' }
+          },
+          required: ['document_name']
+        }
+      });
+    }
+    if (bookingLink) {
+      webTools.push({
+        name: 'send_booking_link',
+        description: 'Sende dem Interessenten den Termin-/Buchungslink, damit er selbst einen Termin wählen kann. Nutze dies, SOBALD der Interessent einem Termin/Buchungslink zustimmt ("ja bitte", "schicken Sie den Link") oder danach fragt. Der konkrete Link wird automatisch angehängt — schreibe ihn NIE selbst aus dem Gedächtnis. Wenn du einen Termin anbietest und der Interessent zustimmt, MUSST du in derselben Antwort dieses Werkzeug nutzen.',
+        input_schema: { type: 'object', properties: {} }
+      });
+    }
 
     function normalizeHistory(hist) {
       const out = [];
@@ -3052,6 +3104,11 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
             if (!sharedLinks.some(l => l.url === doc.public_url)) sharedLinks.push(shareLink);
           }
         }
+      } else if (tc.name === 'send_booking_link') {
+        if (bookingLink && histText.indexOf(bookingLink) === -1) {
+          shareLink = { name: 'Termin buchen', url: bookingLink };
+          if (!sharedLinks.some(l => l.url === bookingLink)) sharedLinks.push(shareLink);
+        }
       }
     }
 
@@ -3066,6 +3123,8 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
           tool_use_id: tc.id,
           content: (tc.name === 'share_document')
             ? (shareLink ? `Dokument "${shareLink.name}" wurde dem Nutzer als Download-Link bereitgestellt.` : 'Dokument bereits zuvor geteilt oder nicht gefunden.')
+            : (tc.name === 'send_booking_link')
+            ? 'Der Buchungslink wurde dem Nutzer bereitgestellt (wird automatisch angehängt — wiederhole die URL nicht).'
             : 'Aktion ausgeführt.'
         }));
         const followMessages = messages.concat([
@@ -3188,9 +3247,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
 
       const turn = await cvRunWebTurn(slot, article, history, msg, shareableDocs);
       let replyOut = turn.reply;
-      if (turn.shareLink && turn.shareLink.url) {
-        replyOut = replyOut.replace(/\s*$/, '') + '\n\n📎 ' + turn.shareLink.name + ': ' + turn.shareLink.url;
-      }
+
       history.push({ role: 'assistant', content: replyOut });
 
       await supabase.from('cv_web_sessions')
