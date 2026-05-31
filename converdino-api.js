@@ -1125,6 +1125,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const strategy = analysis.bot_strategy || {};
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
+    const ansprechperson = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : '';
 
     // Session-State initialisieren falls neu
     if (!session.phase) session.phase = 'interest';
@@ -1163,7 +1164,7 @@ ${botName
   ? `Stelle dich in der ersten Nachricht mit "${botName}" vor (z.B. "Hallo, hier ist ${botName}.").`
   : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Verkaufsberater des Teams vor.`}
 Du gibst dich NIE als Mensch aus. Auf die Frage, ob du echt/ein Mensch/eine KI bist, antworte ehrlich: "Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit dem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, Ihre Fragen und Wünsche so vorzubereiten, dass das Verkaufsteam Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
-
+${ansprechperson ? `ANSPRECHPARTNER: Wenn du einen Lead übergibst, einen Rückruf ankündigst oder an den Verkaufsleiter eskalierst, nenne als Ansprechpartner "${ansprechperson}" (z.B. "${ansprechperson} meldet sich bei Ihnen") statt unpersönlich "der Verkäufer".\n` : ''}
 PRODUKT: ${article.title}
 VERKAUFSPREIS: €${salePrice}
 MINDESTPREIS: €${minPrice} (NIEMALS ein Angebot darunter machen!)
@@ -2430,6 +2431,7 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
     const analysis = article.analysis || {};
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
+    const ansprechperson = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : '';
     const salePrice = Number(article.sale_price) || 0;
     const minPrice  = Number(article.min_price) || 0;
     const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
@@ -2457,7 +2459,7 @@ ${botName
   ? `Stelle dich zu Beginn mit "${botName}" vor (z.B. "Hallo, hier ist ${botName}.").`
   : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Verkaufsberater des Teams vor.`}
 Du gibst dich NIE als Mensch aus. Auf die Frage, ob du echt/ein Mensch/eine KI bist, antworte ehrlich: "Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit dem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, Ihre Fragen und Wünsche so vorzubereiten, dass das Verkaufsteam Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
-
+${ansprechperson ? `ANSPRECHPARTNER: Wenn du einen Lead übergibst oder einen Rückruf ankündigst, nenne als Ansprechpartner "${ansprechperson}" (z.B. "${ansprechperson} meldet sich bei Ihnen") statt unpersönlich "der Verkäufer".\n` : ''}
 
 PRODUKT: ${article.title}
 VERKAUFSPREIS: €${salePrice}

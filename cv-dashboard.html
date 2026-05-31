@@ -245,10 +245,10 @@
         <input id="f-botname" type="text" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Verkaufsteam">
         <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Wie der Bot sich vorstellt. Person oder Team — frei wählbar. Leer = neutral.</div>
       </div>
-      <div class="field" id="f-berater-wrap" style="display:none;">
-        <div class="field-label">Berater, der sich meldet</div>
+      <div class="field" id="f-berater-wrap">
+        <div class="field-label">Ansprechpartner (Name, optional)</div>
         <input id="f-berater" type="text" placeholder="z.B. Herr Zajic">
-        <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Name der Person, die den Interessenten kontaktiert (für die Videokonferenz). Leer = "unser Berater".</div>
+        <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Name der Person, die sich beim Interessenten meldet (Rückruf, Übergabe, Beratungstermin). Leer = neutral.</div>
       </div>
       <div class="field" id="f-deposit-wrap">
         <div class="field-label">Anzahlung zur Reservierung (%)</div>
@@ -636,7 +636,7 @@ function onArticleModeChange() {
   const beratung = (mode === 'beratung');
   document.getElementById('f-verkauf-felder').style.display = beratung ? 'none' : 'block';
   document.getElementById('f-deposit-wrap').style.display = beratung ? 'none' : 'block';
-  document.getElementById('f-berater-wrap').style.display = beratung ? 'block' : 'none';
+  // Ansprechpartner-Feld ist in beiden Modi sichtbar (kein Umschalten nötig)
 }
 function closeArticleModal() {
   document.getElementById('articleModal').classList.remove('open');
@@ -1145,6 +1145,7 @@ function renderSettingsView() {
       ${row('Bot-Typ', '🛒 Verkaufs-Bot')}
       ${row('Artikelbezeichnung', esc(a.title || '—'))}
       ${row('Vorstellung des Bots', esc(a.bot_name || '— (neutral)'))}
+      ${row('Ansprechpartner', esc(a.berater_name || '— (neutral)'))}
       ${row('Verkaufspreis', a.sale_price != null ? '€' + fmtPrice(a.sale_price) : '—')}
       ${row('Mindestpreis', a.min_price != null ? '€' + fmtPrice(a.min_price) : '—')}
       ${row('Preis-Anzeige', visLabel + (priceVis === 'on_request' ? (priceStrict ? ' (restriktiv)' : ' (kulant)') : ''))}
@@ -1170,6 +1171,7 @@ function renderSettingsView() {
   } else if (isActive && settingsArticle && istBeratung) {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Berater & Vorstellung</button>';
   } else if (isActive && settingsArticle) {
+    foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Ansprechpartner</button>';
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderMarketingEdit()">📣 Marketing-Texte</button>';
   }
   document.getElementById('settingsFoot').innerHTML = foot;
@@ -1253,20 +1255,25 @@ async function saveMarketing() {
 // nur Bot-Vorstellung + Berater-Name. Status/Analyse bleiben unberührt.
 function renderBeraterEdit() {
   const a = settingsArticle || {};
+  const istBeratung = (settingsSlot && settingsSlot.mode === 'beratung');
+  const beraterLabel = istBeratung ? 'Berater, der sich meldet' : 'Ansprechpartner (Name)';
+  const beraterHint = istBeratung
+    ? 'Name der Person, die den Interessenten für die Videokonferenz kontaktiert. Leer = "unser Berater".'
+    : 'Name der Person, die sich beim Interessenten meldet (Rückruf, Übergabe). Leer = neutral.';
   document.getElementById('settingsBody').innerHTML = `
-    <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">✏️ Berater & Vorstellung</div>
+    <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">✏️ ${istBeratung ? 'Berater & Vorstellung' : 'Ansprechpartner & Vorstellung'}</div>
     <div class="field">
       <div class="field-label">Vorstellung des Bots (optional)</div>
-      <input id="b-botname" type="text" value="${esc(a.bot_name || '')}" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Beratungsteam">
+      <input id="b-botname" type="text" value="${esc(a.bot_name || '')}" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Team">
       <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Wie der Bot sich vorstellt. Leer = neutral.</div>
     </div>
     <div class="field">
-      <div class="field-label">Berater, der sich meldet</div>
+      <div class="field-label">${beraterLabel}</div>
       <input id="b-berater" type="text" value="${esc(a.berater_name || '')}" placeholder="z.B. Herr Zajic">
-      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Name der Person, die den Interessenten für die Videokonferenz kontaktiert. Leer = "unser Berater".</div>
+      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">${beraterHint}</div>
     </div>
     <div style="font-size:.75rem;color:var(--mu);background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;">
-      ✅ Diese beiden Angaben lassen sich jederzeit gefahrlos ändern — der Bot bleibt aktiv, nichts wird neu analysiert.
+      ✅ Diese Angaben lassen sich jederzeit gefahrlos ändern — der Bot bleibt aktiv, nichts wird neu analysiert.
     </div>
     <div class="err" id="bpErr" style="margin-top:8px;"></div>`;
   document.getElementById('settingsFoot').innerHTML =
@@ -1398,12 +1405,11 @@ function renderSettingsEdit() {
       <div class="field-label">Vorstellung des Bots (optional)</div>
       <input id="s-botname" type="text" value="${esc(a.bot_name || '')}" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Verkaufsteam">
     </div>
-    ${s && s.mode === 'beratung' ? `
     <div class="field">
-      <div class="field-label">Berater, der sich meldet</div>
+      <div class="field-label">${s && s.mode === 'beratung' ? 'Berater, der sich meldet' : 'Ansprechpartner (Name)'}</div>
       <input id="s-berater" type="text" value="${esc(a.berater_name || '')}" placeholder="z.B. Herr Zajic">
-      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Name der Person, die den Interessenten für die Videokonferenz kontaktiert. Leer = "unser Berater".</div>
-    </div>` : ''}
+      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">${s && s.mode === 'beratung' ? 'Person, die für die Videokonferenz kontaktiert.' : 'Person, die sich beim Interessenten meldet (Rückruf/Übergabe).'} Leer = neutral.</div>
+    </div>
     <div class="field">
       <div class="field-label">Preis-Anzeige</div>
       <select id="s-pricevis" onchange="toggleStrictField()">
@@ -1499,7 +1505,7 @@ async function saveSettings() {
       ? { title, sale_price: null, min_price: null, location: loc, anrede, mode: 'beratung', bot_name: botName, berater_name: beraterName,
           price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
           wa_starttext: wastart, cta_text: cta, pull_text: pull }
-      : { title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit, mode: 'verkauf', bot_name: botName,
+      : { title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit, mode: 'verkauf', bot_name: botName, berater_name: beraterName,
           price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
           wa_starttext: wastart, cta_text: cta, pull_text: pull };
     const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/article', {
