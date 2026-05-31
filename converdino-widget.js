@@ -27,6 +27,9 @@
   var sessionToken = null;
   var busy = false;
   var contactShown = false;
+  var idleTimer = null;          // Timer für Inaktivitäts-Nachfrage
+  var idleAsked = false;         // Nachfrage nur einmal pro Gespräch
+  var IDLE_MS = 150000;          // ca. 2,5 Min Stille → einmalige sanfte Nachfrage
 
   // --- Styles injizieren ---
   var css = '' +
@@ -41,6 +44,8 @@
   '.cvw-close{background:none;border:none;color:#fff;font-size:22px;cursor:pointer;line-height:1;padding:0 4px}' +
   '.cvw-body{flex:1;overflow-y:auto;padding:16px;background:' + C.paper + ';display:flex;flex-direction:column;gap:10px}' +
   '.cvw-msg{max-width:82%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word}' +
+  '.cvw-list{margin:6px 0 2px;padding-left:18px;white-space:normal}' +
+  '.cvw-list li{margin:3px 0;line-height:1.4}' +
   '.cvw-bot{align-self:flex-start;background:' + C.white + ';border:1px solid ' + C.line + ';color:' + C.ink + ';border-bottom-left-radius:4px}' +
   '.cvw-user{align-self:flex-end;background:' + C.green + ';color:' + C.ink + ';border-bottom-right-radius:4px;font-weight:500}' +
   '.cvw-typing{align-self:flex-start;color:' + C.inkSoft + ';font-size:13px;font-style:italic;padding:4px 6px}' +
@@ -114,7 +119,27 @@
     safe = safe.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
       return '<a href="' + url + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;word-break:break-all;">' + url + '</a>';
     });
-    d.innerHTML = safe.replace(/\n/g, '<br>');
+    // Aufzählungszeilen (-, •, *) in echte Bulletpoints umwandeln; Rest bleibt normaler Text
+    if (who !== 'user') {
+      var lines = safe.split('\n');
+      var html = '';
+      var inList = false;
+      for (var i = 0; i < lines.length; i++) {
+        var ln = lines[i];
+        var m = ln.match(/^\s*[-•*]\s+(.*)$/);
+        if (m) {
+          if (!inList) { html += '<ul class="cvw-list">'; inList = true; }
+          html += '<li>' + m[1] + '</li>';
+        } else {
+          if (inList) { html += '</ul>'; inList = false; }
+          html += (i > 0 ? '<br>' : '') + ln;
+        }
+      }
+      if (inList) html += '</ul>';
+      d.innerHTML = html;
+    } else {
+      d.innerHTML = safe.replace(/\n/g, '<br>');
+    }
     body.appendChild(d);
     scrollDown();
     return d;
@@ -150,6 +175,23 @@
       addMsg(text, 'bot');
       if (typeof cb === 'function') cb();
     }, wait);
+  }
+
+  // --- Inaktivitäts-Nachfrage (einmalig, dezent) ---
+  function clearIdle() {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  }
+  function startIdleTimer() {
+    clearIdle();
+    if (idleAsked || !sessionToken) return;   // nur einmal, nur bei aktivem Chat
+    idleTimer = setTimeout(function () {
+      if (idleAsked || busy) return;
+      idleAsked = true;
+      // Anrede aus bisheriger Tonalität ableiten wäre Overkill — neutrale, höfliche Zeile
+      var msg = 'Falls Sie noch Fragen haben, bin ich gerne da — ansonsten wünsche ich Ihnen einen schönen Tag.';
+      showTyping();
+      botReplyDelayed(msg);
+    }, IDLE_MS);
   }
 
   function showContactForm() {
@@ -202,6 +244,7 @@
       if (d.product) titleEl.textContent = d.product;
       botReplyDelayed(d.reply, function () {
         if (d.show_contact_form) showContactForm();
+        startIdleTimer();
       });
     }).catch(function () {
       hideTyping();
@@ -213,6 +256,7 @@
   function sendMessage() {
     var text = input.value.trim();
     if (!text || busy || !sessionToken) return;
+    clearIdle();                 // Nutzer ist aktiv → Inaktivitäts-Timer stoppen
     busy = true; sendBtn.disabled = true;
     addMsg(text, 'user');
     input.value = '';
@@ -232,6 +276,7 @@
       botReplyDelayed(d.reply, function () {
         busy = false; sendBtn.disabled = false;
         if (d.show_contact_form) showContactForm();
+        startIdleTimer();        // Stille beginnt von vorn
       });
     }).catch(function () {
       hideTyping(); busy = false; sendBtn.disabled = false;
