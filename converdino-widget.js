@@ -128,6 +128,25 @@
     if (t) t.remove();
   }
 
+  // Realistische Tipp-Dauer je nach Antwortlänge: ca. 2 Sek Grundzeit + Zeit pro Zeichen,
+  // gedeckelt bei 7 Sek. So wirkt der Bot, als würde er die Antwort tippen.
+  function typingDelay(text) {
+    var len = (text || '').length;
+    var ms = 1800 + len * 28;          // ~28 ms pro Zeichen
+    if (ms < 2000) ms = 2000;          // mindestens 2 Sek
+    if (ms > 7000) ms = 7000;          // höchstens 7 Sek
+    return ms;
+  }
+  // Zeigt den Tippindikator für die berechnete Dauer, dann erst die Bot-Nachricht
+  function botReplyDelayed(text, cb) {
+    var wait = typingDelay(text);
+    setTimeout(function () {
+      hideTyping();
+      addMsg(text, 'bot');
+      if (typeof cb === 'function') cb();
+    }, wait);
+  }
+
   function showContactForm() {
     if (contactShown) return;
     contactShown = true;
@@ -173,12 +192,12 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bot_code: BOT_CODE })
     }).then(function (r) { return r.json(); }).then(function (d) {
-      hideTyping();
-      if (d.error) { addMsg('Dieser Chat ist derzeit nicht verfügbar.', 'bot'); return; }
+      if (d.error) { hideTyping(); addMsg('Dieser Chat ist derzeit nicht verfügbar.', 'bot'); return; }
       sessionToken = d.session_token;
       if (d.product) titleEl.textContent = d.product;
-      addMsg(d.reply, 'bot');
-      if (d.show_contact_form) showContactForm();
+      botReplyDelayed(d.reply, function () {
+        if (d.show_contact_form) showContactForm();
+      });
     }).catch(function () {
       hideTyping();
       addMsg('Verbindung fehlgeschlagen. Bitte später erneut versuchen.', 'bot');
@@ -198,11 +217,17 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_token: sessionToken, message: text })
     }).then(function (r) { return r.json(); }).then(function (d) {
-      hideTyping();
-      busy = false; sendBtn.disabled = false;
-      if (d.error) { addMsg('Entschuldigung, da ist etwas schiefgelaufen.', 'bot'); return; }
-      addMsg(d.reply, 'bot');
-      if (d.show_contact_form) showContactForm();
+      if (d.error) {
+        hideTyping();
+        busy = false; sendBtn.disabled = false;
+        addMsg('Entschuldigung, da ist etwas schiefgelaufen.', 'bot');
+        return;
+      }
+      // Tippindikator noch kurz stehen lassen, dann erst die Antwort zeigen
+      botReplyDelayed(d.reply, function () {
+        busy = false; sendBtn.disabled = false;
+        if (d.show_contact_form) showContactForm();
+      });
     }).catch(function () {
       hideTyping(); busy = false; sendBtn.disabled = false;
       addMsg('Verbindung unterbrochen. Bitte nochmal versuchen.', 'bot');

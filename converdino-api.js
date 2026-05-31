@@ -1400,6 +1400,7 @@ ABWICKLUNG & SICHERHEIT (so läuft der Kauf ab)
 ═══════════════════════════════════════════════════════
 DEINE WERKZEUGE — wann du sie einsetzt
 ═══════════════════════════════════════════════════════
+GRUNDREGEL: Wenn du ein Werkzeug nutzt, schreibe IMMER auch einen kurzen begleitenden Satz dazu — rufe NIE wortlos ein Werkzeug auf. Beende das Gespräch nicht abrupt: nach einer Aktion (z.B. Link/Unterlagen geteilt) sag freundlich, was als Nächstes passiert, und halte das Gespräch offen ("…bei Fragen bin ich da", "…sonst noch etwas?").
 - flag_hot_lead: Sobald der Käufer ernsthaftes Kaufinteresse zeigt (will kaufen, fragt nach Übergabe/Probefahrt/Verfügbarkeit, oder will mit dem Verkäufer sprechen). Reiche den Lead SOFORT weiter — lieber zu früh als zu spät.
 - collect_contact: Wenn konkretes Interesse da ist, frage natürlich nach dem NAMEN und bestätige die WhatsApp-Nummer als Kontakt. Bei Email optional. Erst bei echtem Interesse, nicht am Anfang.
 - agree_deal: Wenn sich Käufer und du auf einen Preis einigen. Vorher Kontaktdaten sichern.
@@ -1955,6 +1956,10 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     // BERATUNGS-MODUS: warmer Abschluss mit Nachbetreuungs-Versprechen, kein Verkauf
     if (istBeratung) {
       switch (toolName) {
+        case 'share_document':
+          return du
+            ? 'Klar, ich schick dir die Unterlagen — schau sie dir in Ruhe an. Wenn du Fragen hast, bin ich da.'
+            : 'Sehr gerne, ich sende Ihnen die Unterlagen — schauen Sie sie sich in Ruhe an. Bei Fragen bin ich da.';
         case 'collect_contact':
         case 'flag_hot_lead':
         case 'request_callback':
@@ -1966,12 +1971,15 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
             ? `Danke für das Gespräch! ${berater} meldet sich wie besprochen bei dir. Bis dahin alles Gute!`
             : `Vielen Dank für das Gespräch! ${berater} meldet sich wie besprochen bei Ihnen. Bis dahin alles Gute!`;
         default:
-          return du ? 'Danke! Ich leite das weiter, jemand meldet sich bei dir.'
-                    : 'Danke! Ich leite das weiter, jemand meldet sich bei Ihnen.';
+          return du ? 'Mach ich! Gibt es sonst noch etwas, das ich für dich tun kann?'
+                    : 'Mache ich! Gibt es sonst noch etwas, das ich für Sie tun kann?';
       }
     }
 
     switch (toolName) {
+      case 'share_document':
+        return du ? 'Klar, ich schick dir die Unterlagen — schau sie dir in Ruhe an. Wenn du Fragen hast, bin ich da.'
+                  : 'Sehr gerne, ich sende Ihnen die Unterlagen — schauen Sie sie sich in Ruhe an. Bei Fragen bin ich da.';
       case 'collect_contact':
         return du ? 'Super! Wie ist dein Name und unter welcher Nummer erreichen wir dich — und wann passt dir ein Rückruf am besten?'
                   : 'Sehr gerne! Wie ist Ihr Name und unter welcher Nummer erreichen wir Sie — und wann passt Ihnen ein Rückruf am besten?';
@@ -1991,7 +1999,8 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
         return du ? 'Danke für das Gespräch, melde dich jederzeit gern wieder. Schönen Tag noch!'
                   : 'Vielen Dank für das Gespräch, melden Sie sich jederzeit gern wieder. Schönen Tag noch!';
       default:
-        return '';
+        return du ? 'Mach ich! Gibt es sonst noch etwas, das ich für dich tun kann?'
+                  : 'Mache ich! Gibt es sonst noch etwas, das ich für Sie tun kann?';
     }
   }
 
@@ -2670,6 +2679,7 @@ Du chattest mit einem ANONYMEN Webseiten-Besucher. Du hast KEINE Telefonnummer u
 - Formuliere etwa so: "Damit sich unser Verkäufer direkt bei Ihnen meldet, hinterlassen Sie bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. mit "du" wenn Anrede=Du)
 - WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (in doppelten eckigen Klammern). Der Besucher sieht ihn nicht — er löst nur das Formular aus. Setze ihn NUR, wenn wirklich Kontaktdaten gesammelt werden sollen, und höchstens einmal pro Gespräch.
 - Erfinde NIEMALS Kontaktdaten und tu nicht so, als hättest du welche.
+- GRUNDREGEL bei Aktionen: Wenn du Unterlagen teilst oder eine Aktion auslöst, schreibe IMMER auch einen kurzen begleitenden Satz dazu — beende das Gespräch nie abrupt. Sag freundlich, was als Nächstes passiert, und halte das Gespräch offen ("…schauen Sie es sich in Ruhe an, bei Fragen bin ich da").
 
 ═══════════════════════════════════════════════════════
 VERIFIZIERTE FAKTEN ZU DIESEM PRODUKT (aus den Dokumenten)
@@ -2761,6 +2771,7 @@ ${istWhatsApp
 : `- Formuliere etwa: "Am besten bespricht das ${berater} direkt mit Ihnen in einer kurzen Videokonferenz. Hinterlassen Sie mir dafür bitte kurz Ihre Kontaktdaten — Sie sehen gleich ein kurzes Formular." (bzw. "du", wenn Anrede=Du)
 - WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (doppelte eckige Klammern). Der Besucher sieht ihn nicht. Setze ihn nur bei echtem Interesse, höchstens einmal pro Gespräch.`}
 - Erfinde NIEMALS Kontaktdaten.
+- GRUNDREGEL bei Aktionen: Wenn du Unterlagen teilst, einen Link gibst oder eine Aktion auslöst, schreibe IMMER auch einen kurzen begleitenden Satz dazu — rufe nie wortlos ein Werkzeug auf und beende das Gespräch nie abrupt. Sag freundlich, was als Nächstes passiert, und halte das Gespräch offen ("…schauen Sie es sich in Ruhe an, bei Fragen bin ich da").
 
 NACH ERHALT DER KONTAKTDATEN — warm abschließen (NICHT abrupt "Danke" sagen):
 Bedanke dich, bestätige die Weitergabe und gib einen Ausblick, der Vertrauen schafft. Etwa:
@@ -2896,7 +2907,12 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
       }
     }
 
-    if (!reply && toolCalls.length > 0) reply = 'Gern — hier sind die Unterlagen:';
+    if (!reply && toolCalls.length > 0) {
+      const du = (article.anrede || 'Sie') === 'Du';
+      reply = du
+        ? 'Klar, ich schick dir die Unterlagen — schau sie dir in Ruhe an. Wenn du Fragen hast, bin ich da.'
+        : 'Sehr gerne, ich sende Ihnen die Unterlagen — schauen Sie sie sich in Ruhe an. Bei Fragen bin ich da.';
+    }
     if (!reply) reply = 'Einen Moment bitte.';
 
     // Kontaktformular-Marker erkennen und aus dem sichtbaren Text entfernen
