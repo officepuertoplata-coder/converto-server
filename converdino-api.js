@@ -575,6 +575,32 @@ module.exports = function(app, supabase, deps) {
     }
   });
 
+  // ============================================================
+  // 5c. POST /api/cv/article/:id/persona
+  //     Ändert NUR bot_name + berater_name — Status/Analyse bleiben unberührt.
+  //     Sicher auch bei laufenden (aktiven) Bots nutzbar.
+  // ============================================================
+  app.post('/api/cv/article/:id/persona', async (req, res) => {
+    try {
+      const { bot_name, berater_name } = req.body;
+      const update = { updated_at: new Date().toISOString() };
+      update.bot_name = (bot_name && String(bot_name).trim()) || null;
+      update.berater_name = (berater_name && String(berater_name).trim()) || null;
+
+      const { data, error } = await supabase
+        .from('cv_articles')
+        .update(update)
+        .eq('id', req.params.id)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true, article: data });
+    } catch(e) {
+      console.error('[CV persona]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
 
   // ============================================================
   // ============================================================

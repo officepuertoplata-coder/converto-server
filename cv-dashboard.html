@@ -1128,11 +1128,23 @@ function renderSettingsView() {
       </div>`;
   }
 
-  document.getElementById('settingsBody').innerHTML = `
-    ${quickStatus}
-    <div style="margin-bottom:6px;">
+  const istBeratung = (s.mode === 'beratung');
+  const detailRows = istBeratung
+    ? `
       ${row('Slot', 'Nr. ' + esc(s.slot_number))}
+      ${row('Bot-Typ', '🛡️ Beratungs-Bot')}
+      ${row('Thema / Bezeichnung', esc(a.title || '—'))}
+      ${row('Vorstellung des Bots', esc(a.bot_name || '— (neutral)'))}
+      ${row('Berater, der sich meldet', esc(a.berater_name || '— (unser Berater)'))}
+      ${row('Standort', esc(a.location || '—'))}
+      ${row('Anrede im Bot', a.anrede === 'Du' ? 'Du (locker)' : 'Sie (formell)')}
+      ${row('Verfügbarkeit', availLabel)}
+      ${row('Slot-Zustand', pillLabel(s.status))}`
+    : `
+      ${row('Slot', 'Nr. ' + esc(s.slot_number))}
+      ${row('Bot-Typ', '🛒 Verkaufs-Bot')}
       ${row('Artikelbezeichnung', esc(a.title || '—'))}
+      ${row('Vorstellung des Bots', esc(a.bot_name || '— (neutral)'))}
       ${row('Verkaufspreis', a.sale_price != null ? '€' + fmtPrice(a.sale_price) : '—')}
       ${row('Mindestpreis', a.min_price != null ? '€' + fmtPrice(a.min_price) : '—')}
       ${row('Preis-Anzeige', visLabel + (priceVis === 'on_request' ? (priceStrict ? ' (restriktiv)' : ' (kulant)') : ''))}
@@ -1143,13 +1155,20 @@ function renderSettingsView() {
       ${row('Call-to-Action', esc(a.cta_text || '— (Standard)'))}
       ${row('Handlungsaufforderung', esc(a.pull_text || '— (Standard)'))}
       ${row('Verfügbarkeit', availLabel)}
-      ${row('Slot-Zustand', pillLabel(s.status))}
+      ${row('Slot-Zustand', pillLabel(s.status))}`;
+
+  document.getElementById('settingsBody').innerHTML = `
+    ${quickStatus}
+    <div style="margin-bottom:6px;">
+      ${detailRows}
     </div>
     ${renderDocsSection()}`;
 
   let foot = '<button class="btn btn-soft" style="flex:1" onclick="closeSettingsModal()">Schließen</button>';
   if (!isActive && !isBusy && settingsArticle) {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderSettingsEdit()">✏️ Bearbeiten</button>';
+  } else if (isActive && settingsArticle && istBeratung) {
+    foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Berater & Vorstellung</button>';
   } else if (isActive && settingsArticle) {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderMarketingEdit()">📣 Marketing-Texte</button>';
   }
@@ -1222,6 +1241,60 @@ async function saveMarketing() {
     }
     settingsArticle = d.article;
     toast('✓ Marketing-Texte gespeichert');
+    renderSettingsView();
+    loadDashboard();
+  } catch(e) {
+    err.textContent = e.message;
+    btn.disabled = false; btn.textContent = '💾 Speichern';
+  }
+}
+
+// Schlanker Editor für Beratungs-Bots (auch bei aktivem Bot nutzbar):
+// nur Bot-Vorstellung + Berater-Name. Status/Analyse bleiben unberührt.
+function renderBeraterEdit() {
+  const a = settingsArticle || {};
+  document.getElementById('settingsBody').innerHTML = `
+    <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">✏️ Berater & Vorstellung</div>
+    <div class="field">
+      <div class="field-label">Vorstellung des Bots (optional)</div>
+      <input id="b-botname" type="text" value="${esc(a.bot_name || '')}" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Beratungsteam">
+      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Wie der Bot sich vorstellt. Leer = neutral.</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Berater, der sich meldet</div>
+      <input id="b-berater" type="text" value="${esc(a.berater_name || '')}" placeholder="z.B. Herr Zajic">
+      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Name der Person, die den Interessenten für die Videokonferenz kontaktiert. Leer = "unser Berater".</div>
+    </div>
+    <div style="font-size:.75rem;color:var(--mu);background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;">
+      ✅ Diese beiden Angaben lassen sich jederzeit gefahrlos ändern — der Bot bleibt aktiv, nichts wird neu analysiert.
+    </div>
+    <div class="err" id="bpErr" style="margin-top:8px;"></div>`;
+  document.getElementById('settingsFoot').innerHTML =
+    '<button class="btn btn-soft" style="flex:1" onclick="renderSettingsView()">Zurück</button>' +
+    '<button class="btn btn-success" style="flex:1" id="bpSaveBtn" onclick="saveBeraterPersona()">💾 Speichern</button>';
+}
+
+async function saveBeraterPersona() {
+  const botName = document.getElementById('b-botname').value.trim();
+  const berater = document.getElementById('b-berater').value.trim();
+  const err = document.getElementById('bpErr');
+  const btn = document.getElementById('bpSaveBtn');
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
+  try {
+    const r = await fetch(API + '/api/cv/article/' + settingsArticle.id + '/persona', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bot_name: botName, berater_name: berater })
+    });
+    const d = await r.json();
+    if (!d.success) {
+      err.textContent = d.error || 'Fehler beim Speichern';
+      btn.disabled = false; btn.textContent = '💾 Speichern';
+      return;
+    }
+    settingsArticle = d.article;
+    toast('✓ Gespeichert');
     renderSettingsView();
     loadDashboard();
   } catch(e) {
