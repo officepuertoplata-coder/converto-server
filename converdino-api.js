@@ -399,6 +399,7 @@ module.exports = function(app, supabase, deps) {
           public_url: publicUrl,
           content: textContent,
           purpose: pdfPurpose,
+          shareable: (pdfPurpose === 'dossier'),
           sort_order: nextOrder
         })
         .select()
@@ -1132,6 +1133,14 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
       return false;
     }
 
+    // Teilbare Dokumente laden (shareable=true) — der Bot darf sie auf Anfrage als Link geben
+    const { data: shareDocs } = await supabase
+      .from('cv_uploads')
+      .select('file_name, public_url, kind')
+      .eq('article_id', article.id)
+      .eq('shareable', true);
+    const shareableDocs = (shareDocs || []).filter(d => d.public_url);
+
     // DB-Session anlegen (für Logging + Persistenz)
     const { data: dbSession } = await supabase
       .from('cv_bot_sessions')
@@ -1143,6 +1152,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     cvBotSessions.set(phone, {
       dbSessionId: dbSession?.id,
       slot, article,
+      shareableDocs,
       history: [],
       phoneId,
       phone,
@@ -1177,6 +1187,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
 
     const { article, slot } = session;
     const phoneId = session.phoneId;
+    const shareableDocs = Array.isArray(session.shareableDocs) ? session.shareableDocs : [];
     const analysis = article.analysis || {};
     const strategy = analysis.bot_strategy || {};
     const anrede = article.anrede || 'Sie';
@@ -1363,12 +1374,16 @@ STIL: WhatsApp — kurz, natürlich, max. 3-4 Sätze. Aktiv verkaufen, nicht nur
 
 ═══ GESPRÄCHSSTRATEGIE (vom Betreiber vorgegeben — wichtig!) ═══
 Folge dieser Strategie im Gespräch. Es ist eine Reihenfolge von Angeboten: Biete zuerst das Erste an; wenn der Interessent ablehnt oder zögert, gehe zum Nächsten über — Schritt für Schritt, natürlich und nicht aufdringlich. Dränge nie, biete an. Links/Angebote genau so weitergeben wie angegeben:
-${strategieText}` : ''}`;
+${strategieText}` : ''}${shareableDocs.length > 0 ? `
+
+═══ TEILBARE DOKUMENTE ═══
+Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es im Gespräch passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was das Dokument enthält, und teile dann den Link. Gib NUR diese Dokumente heraus:
+${shareableDocs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
 
     // BERATUNGS-MODUS: anderen Prompt verwenden (kein Verkauf/keine Preise/Lead an Berater übergeben)
     const istBeratung = (slot && slot.mode === 'beratung');
     const effectiveSystemPrompt = istBeratung
-      ? cvBuildBeratungPrompt(article, 'whatsapp') + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
+      ? cvBuildBeratungPrompt(article, 'whatsapp', shareableDocs) + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
       : systemPrompt;
 
     // ── Tools definieren ──
@@ -1384,6 +1399,17 @@ ${strategieText}` : ''}`;
             buyer_phone: { type: 'string', description: 'Rückrufnummer falls genannt, sonst leer' }
           },
           required: ['reason']
+        }
+      },
+      {
+        name: 'share_document',
+        description: 'Teile ein freigegebenes Dokument (z.B. Datenblatt, Broschüre, Dossier) mit dem Interessenten, indem du ihm den Download-Link gibst. Nutze dies, wenn der Interessent Unterlagen möchte oder die Strategie es vorsieht. Du erhältst den Link zurück und teilst ihn dann mit einer kurzen Beschreibung, was drin ist. Gib NUR Dokumente aus der Liste der freigegebenen Dokumente heraus.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            document_name: { type: 'string', description: 'Der exakte Dateiname des Dokuments aus der Liste der freigegebenen Dokumente' }
+          },
+          required: ['document_name']
         }
       },
       {
@@ -1503,7 +1529,7 @@ ${strategieText}` : ''}`;
     // API-Call mit automatischem Retry (gegen transiente Fehler)
     let response, lastErr;
     // Bei Beratung: nur Lead-/Kontakt-Tools zulassen (keine Preis-/Deal-/Zahlungs-Tools)
-    const beratungToolNamen = ['flag_hot_lead', 'collect_contact', 'request_callback'];
+    const beratungToolNamen = ['flag_hot_lead', 'collect_contact', 'request_callback', 'share_document'];
     const effectiveTools = istBeratung
       ? tools.filter(t => beratungToolNamen.indexOf(t.name) !== -1)
       : tools;
@@ -1603,6 +1629,7 @@ ${strategieText}` : ''}`;
       }
 
       // Tools verarbeiten
+      session._shareLink = null;
       for (const tc of toolCalls) {
         await cvHandleToolCall(session, phone, tc.name, tc.input || {});
       }
@@ -1612,6 +1639,12 @@ ${strategieText}` : ''}`;
         botReply = cvFallbackTextForTool(toolCalls[0].name, anrede, article, istBeratung);
       }
       if (!botReply) botReply = 'Einen Moment bitte.';
+
+      // Wenn ein Dokument geteilt wurde: Link an die Antwort anhängen
+      if (session._shareLink && session._shareLink.url) {
+        botReply = botReply.replace(/\s*$/, '') + '\n\n📎 ' + session._shareLink.url;
+        session._shareLink = null;
+      }
 
       await sendWAMessage(phoneId, phone, botReply);
 
@@ -1698,6 +1731,21 @@ ${strategieText}` : ''}`;
             }, true);  // silent: nur loggen, nicht nochmal melden
           }
           break;
+
+        case 'share_document': {
+          // Freigegebenes Dokument finden und dessen Link für die Antwort vormerken
+          const docs = Array.isArray(session.shareableDocs) ? session.shareableDocs : [];
+          const wanted = (input.document_name || '').trim().toLowerCase();
+          let doc = docs.find(d => (d.file_name || '').toLowerCase() === wanted)
+                 || docs.find(d => (d.file_name || '').toLowerCase().indexOf(wanted) !== -1 && wanted.length > 2);
+          if (doc && doc.public_url) {
+            session._shareLink = { name: doc.file_name, url: doc.public_url };
+            await cvLogEvent(session, phone, 'document_shared', { document: doc.file_name }, true);
+          } else {
+            session._shareLink = null;
+          }
+          break;
+        }
 
         case 'collect_contact':
           session.phase = 'closing';
@@ -2561,8 +2609,9 @@ ${strategieText}` : ''}`;
   // BERATUNGS-MODUS: Prompt für erklärungsbedürftige Dienstleistungen (z.B. Supplier Risk Management).
   // Kein Verkauf, keine Preise, keine Verhandlung. Ziel: Problembewusstsein schaffen,
   // locker qualifizieren (Rahmenbedingungen), und zur Videokonferenz mit dem Berater führen.
-  function cvBuildBeratungPrompt(article, kanal) {
+  function cvBuildBeratungPrompt(article, kanal, shareableDocs) {
     const istWhatsApp = (kanal === 'whatsapp');
+    const docs = Array.isArray(shareableDocs) ? shareableDocs : [];
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
     const pdfFacts = Array.isArray(article.pdf_facts) ? article.pdf_facts : [];
@@ -2637,14 +2686,18 @@ REGELN:
 
 ═══ GESPRÄCHSSTRATEGIE (vom Betreiber vorgegeben — wichtig!) ═══
 Folge dieser Strategie. Es ist eine Reihenfolge von Angeboten: biete zuerst das Erste an; wenn der Interessent ablehnt oder zögert, gehe ruhig zum Nächsten über — Schritt für Schritt, seriös und nicht drängend. Links/Angebote genau wie angegeben weitergeben:
-${strategieText}` : ''}`;
+${strategieText}` : ''}${docs.length > 0 ? `
+
+═══ TEILBARE DOKUMENTE ═══
+Diese Unterlagen darfst du dem Interessenten auf Wunsch (oder wenn es im Gespräch passt) als Download-Link geben. Nutze dafür das Werkzeug share_document mit dem exakten Dateinamen. Sage kurz, was das Dokument enthält, und teile dann den Link. Gib NUR diese Dokumente heraus:
+${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
   }
 
   // Web-Bot-Turn: ruft Sonnet, gibt die Antwort als String zurück (kein WhatsApp-Versand)
   // Wählt je nach Slot-Modus den passenden Prompt: 'beratung' oder (Standard) 'verkauf'.
   async function cvRunWebTurn(slot, article, history, userMessage) {
     const systemPrompt = (slot && slot.mode === 'beratung')
-      ? cvBuildBeratungPrompt(article, 'web')
+      ? cvBuildBeratungPrompt(article, 'web', [])
       : cvBuildWebPrompt(article);
 
     function normalizeHistory(hist) {
