@@ -1138,6 +1138,9 @@ function renderSettingsView() {
       ${row('Berater, der sich meldet', esc(a.berater_name || '— (unser Berater)'))}
       ${row('Standort', esc(a.location || '—'))}
       ${row('Anrede im Bot', a.anrede === 'Du' ? 'Du (locker)' : 'Sie (formell)')}
+      ${row('WhatsApp-Starttext', esc(a.wa_starttext || '— (Standard)'))}
+      ${row('Call-to-Action', esc(a.cta_text || '— (Standard)'))}
+      ${row('Handlungsaufforderung', esc(a.pull_text || '— (Standard)'))}
       ${row('Verfügbarkeit', availLabel)}
       ${row('Slot-Zustand', pillLabel(s.status))}`
     : `
@@ -1170,6 +1173,7 @@ function renderSettingsView() {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderSettingsEdit()">✏️ Bearbeiten</button>';
   } else if (isActive && settingsArticle && istBeratung) {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Berater & Vorstellung</button>';
+    foot += '<button class="btn btn-success" style="flex:1" onclick="renderMarketingEdit()">📣 Marketing-Texte</button>';
   } else if (isActive && settingsArticle) {
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderBeraterEdit()">✏️ Ansprechpartner</button>';
     foot += '<button class="btn btn-success" style="flex:1" onclick="renderMarketingEdit()">📣 Marketing-Texte</button>';
@@ -1181,13 +1185,21 @@ function renderSettingsView() {
 // Nutzt quicksettings -> Bot bleibt aktiv, Link/QR werden bei Bedarf neu gebaut.
 function renderMarketingEdit() {
   const a = settingsArticle || {};
+  const istBeratung = (settingsSlot && settingsSlot.mode === 'beratung');
+  const phWa = istBeratung
+    ? `Hallo, ich habe eine Frage zum Thema ${esc(a.title || 'Ihrem Angebot')}.`
+    : `Hallo, ich interessiere mich für ${esc(a.title || 'diesen Artikel')}.`;
+  const phCta = istBeratung ? 'Fragen zu diesem Thema?' : 'Fragen zu diesem Artikel?';
+  const phPull = istBeratung
+    ? 'Jetzt scannen — unser Berater meldet sich bei Ihnen.'
+    : 'Jetzt scannen und sofort meldet sich jemand von uns!';
   document.getElementById('settingsBody').innerHTML = `
     <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">📣 Marketing-Texte</div>
     <div class="field">
       <div class="field-label">WhatsApp-Starttext</div>
       <input id="m-wastart" type="text" maxlength="160"
         value="${esc(a.wa_starttext || '')}"
-        placeholder="Hallo, ich interessiere mich für ${esc(a.title || 'diesen Artikel')}.">
+        placeholder="${phWa}">
       <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
         Steht vorausgefüllt im WhatsApp-Feld. Die Anfrage-Nummer wird automatisch angehängt. Leer = Standardtext.
       </div>
@@ -1199,7 +1211,7 @@ function renderMarketingEdit() {
       <div class="field-label">Call-to-Action (für QR-Plakat, Flyer, Overlay)</div>
       <input id="m-cta" type="text" maxlength="120"
         value="${esc(a.cta_text || '')}"
-        placeholder="Fragen zu diesem Artikel?">
+        placeholder="${phCta}">
       <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
         Der Aufhänger (große grüne Überschrift). Beeinflusst den Bot nicht — jederzeit gefahrlos änderbar.
       </div>
@@ -1208,9 +1220,9 @@ function renderMarketingEdit() {
       <div class="field-label">Handlungsaufforderung (grüne Schaltfläche darunter)</div>
       <input id="m-pull" type="text" maxlength="120"
         value="${esc(a.pull_text || '')}"
-        placeholder="Jetzt scannen und sofort meldet sich jemand von uns!">
+        placeholder="${phPull}">
       <div style="font-size:.72rem;color:var(--mu);margin-top:5px;">
-        Konkrete Aufforderung, z.B. „Probefahrt buchen", „Sonderpreise sichern". Leer lassen = Standardtext.
+        Konkrete Aufforderung, z.B. ${istBeratung ? '„Beratungstermin anfragen", „Risiko-Check starten"' : '„Probefahrt buchen", „Sonderpreise sichern"'}. Leer lassen = Standardtext.
       </div>
     </div>
     <div class="err" id="mktErr"></div>`;
