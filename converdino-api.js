@@ -1313,7 +1313,7 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const shareableDocs = Array.isArray(session.shareableDocs) ? session.shareableDocs : [];
     const sharedLinks = Array.isArray(session.sharedLinks) ? session.sharedLinks : [];
     const sharedLinksHinweis = sharedLinks.length > 0
-      ? '\n\nBereits geteilte Dokument-Links (diese am Ende mit aufführen, falls du zusammenfasst):\n' + sharedLinks.map(l => '• ' + l.name + ': ' + l.url).join('\n')
+      ? '\n\n⚠️ Diese Dokumente hast du in diesem Gespräch BEREITS geteilt — schicke sie NICHT erneut über das Werkzeug share_document. Verweise höchstens sprachlich darauf ("wie eben geschickt"). Nur am Gesprächsende darfst du sie in einer Zusammenfassung nochmal auflisten:\n' + sharedLinks.map(l => '• ' + l.name + ': ' + l.url).join('\n')
       : '';
     const analysis = article.analysis || {};
     const strategy = analysis.bot_strategy || {};
@@ -1878,12 +1878,16 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
           let doc = docs.find(d => (d.file_name || '').toLowerCase() === wanted)
                  || docs.find(d => (d.file_name || '').toLowerCase().indexOf(wanted) !== -1 && wanted.length > 2);
           if (doc && doc.public_url) {
-            session._shareLink = { name: doc.file_name, url: doc.public_url };
             if (!Array.isArray(session.sharedLinks)) session.sharedLinks = [];
-            if (!session.sharedLinks.some(x => x.url === doc.public_url)) {
+            const schonGeteilt = session.sharedLinks.some(x => x.url === doc.public_url);
+            if (schonGeteilt) {
+              // Dokument wurde in diesem Gespräch bereits geteilt → Link NICHT erneut anhängen
+              session._shareLink = null;
+            } else {
+              session._shareLink = { name: doc.file_name, url: doc.public_url };
               session.sharedLinks.push({ name: doc.file_name, url: doc.public_url });
+              await cvLogEvent(session, phone, 'document_shared', { document: doc.file_name }, true);
             }
-            await cvLogEvent(session, phone, 'document_shared', { document: doc.file_name }, true);
           } else {
             session._shareLink = null;
           }
@@ -2791,7 +2795,7 @@ ${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
     const docs = Array.isArray(shareableDocs) ? shareableDocs : [];
     const geteilt = Array.isArray(sharedLinks) ? sharedLinks : [];
     const geteiltHinweis = geteilt.length > 0
-      ? '\n\nBereits geteilte Dokument-Links (diese am Ende mit aufführen, falls du zusammenfasst):\n' + geteilt.map(l => '• ' + l.name + ': ' + l.url).join('\n')
+      ? '\n\n⚠️ Diese Dokumente hast du in diesem Gespräch BEREITS geteilt — schicke sie NICHT erneut über das Werkzeug share_document. Verweise höchstens sprachlich darauf ("wie eben geschickt"). Nur am Gesprächsende darfst du sie in einer Zusammenfassung nochmal auflisten:\n' + geteilt.map(l => '• ' + l.name + ': ' + l.url).join('\n')
       : '';
     const anrede = article.anrede || 'Sie';
     const botName = (article.bot_name && article.bot_name.trim()) ? article.bot_name.trim() : '';
@@ -2891,8 +2895,12 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     const erstHinweis = istErsteNachricht
       ? ''
       : '\n\n⚠️ WICHTIG: Dies ist NICHT der Gesprächsbeginn — ihr habt euch bereits unterhalten. Stelle dich NICHT vor, begrüße NICHT erneut, sage nicht nochmal "Hallo, hier ist …". Antworte direkt und natürlich auf die letzte Nachricht, als Fortsetzung des laufenden Gesprächs.';
+    // Welche freigegebenen Dokumente wurden in dieser Session schon geteilt? (URL steht in der Historie)
+    const histTextFull = (Array.isArray(history) ? history : []).map(m => (m && m.content) ? String(m.content) : '').join('\n');
+    const bereitsGeteilt = docs.filter(d => d.public_url && histTextFull.indexOf(d.public_url) !== -1)
+                               .map(d => ({ name: d.file_name, url: d.public_url }));
     const basePrompt = (slot && slot.mode === 'beratung')
-      ? cvBuildBeratungPrompt(article, 'web', docs, [])
+      ? cvBuildBeratungPrompt(article, 'web', docs, bereitsGeteilt)
       : cvBuildWebPrompt(article, docs);
     // In die Unterhaltung "hineinwachsen": früh sehr knapp, später etwas mehr Prosa.
     const botAntwortenWeb = Array.isArray(history) ? history.filter(m => m && m.role === 'assistant').length : 0;
@@ -2978,14 +2986,19 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     // share_document-Aufrufe verarbeiten → passenden Link suchen
     const toolCalls = blocks.filter(b => b.type === 'tool_use');
     let shareLink = null;
+    // Welche Links wurden in dieser Session schon geteilt? (stehen in der bisherigen Historie)
+    const histText = (Array.isArray(history) ? history : []).map(m => (m && m.content) ? String(m.content) : '').join('\n');
     for (const tc of toolCalls) {
       if (tc.name === 'share_document') {
         const wanted = ((tc.input && tc.input.document_name) || '').trim().toLowerCase();
         let doc = docs.find(x => (x.file_name || '').toLowerCase() === wanted)
                || docs.find(x => (x.file_name || '').toLowerCase().indexOf(wanted) !== -1 && wanted.length > 2);
         if (doc && doc.public_url) {
-          shareLink = { name: doc.file_name, url: doc.public_url };
-          if (!sharedLinks.some(l => l.url === doc.public_url)) sharedLinks.push(shareLink);
+          // Nur anhängen, wenn dieser Link nicht bereits im Gesprächsverlauf geteilt wurde
+          if (histText.indexOf(doc.public_url) === -1) {
+            shareLink = { name: doc.file_name, url: doc.public_url };
+            if (!sharedLinks.some(l => l.url === doc.public_url)) sharedLinks.push(shareLink);
+          }
         }
       }
     }
