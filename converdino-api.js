@@ -255,7 +255,7 @@ module.exports = function(app, supabase, deps) {
       if (existing) {
         const { data: updated, error: updErr } = await supabase
           .from('cv_articles')
-          .update({
+          .update(Object.assign({
             title: title.trim(),
             sale_price: sale_price || null,
             min_price: min_price || null,
@@ -263,11 +263,10 @@ module.exports = function(app, supabase, deps) {
             anrede: anrede || 'Sie',
             bot_name: (bot_name && bot_name.trim()) || null,
             berater_name: (berater_name && berater_name.trim()) || null,
-            strategie: (strategie && strategie.trim()) || null,
             notes: notes || null,
             status: 'draft',
             updated_at: new Date().toISOString()
-          })
+          }, (strategie !== undefined ? { strategie: (strategie && strategie.trim()) || null } : {})))
           .eq('id', existing.id)
           .select()
           .single();
@@ -586,11 +585,9 @@ module.exports = function(app, supabase, deps) {
     try {
       const { bot_name, berater_name, strategie } = req.body;
       const update = { updated_at: new Date().toISOString() };
-      update.bot_name = (bot_name && String(bot_name).trim()) || null;
-      update.berater_name = (berater_name && String(berater_name).trim()) || null;
-      if (strategie !== undefined) {
-        update.strategie = (strategie && String(strategie).trim()) || null;
-      }
+      if (bot_name !== undefined) update.bot_name = (bot_name && String(bot_name).trim()) || null;
+      if (berater_name !== undefined) update.berater_name = (berater_name && String(berater_name).trim()) || null;
+      if (strategie !== undefined) update.strategie = (strategie && String(strategie).trim()) || null;
 
       const { data, error } = await supabase
         .from('cv_articles')

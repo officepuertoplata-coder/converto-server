@@ -250,11 +250,6 @@
         <input id="f-berater" type="text" placeholder="z.B. Herr Zajic">
         <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Name der Person, die sich beim Interessenten meldet (Rückruf, Übergabe, Beratungstermin). Leer = neutral.</div>
       </div>
-      <div class="field">
-        <div class="field-label">Gesprächsstrategie / Eskalationsleiter (optional)</div>
-        <textarea id="f-strategie" rows="5" placeholder="z.B.&#10;1. Termin mit dem Berater anbieten.&#10;2. Bei Zögern: Selbsttest ynhald.com/risk empfehlen (5 Min, zeigt die eigene Risikolage).&#10;3. 50% Gutschein fürs Webinar [Link] anbieten.&#10;4. Rückruf anbieten.&#10;5. Um Newsletter-Erlaubnis bitten.&#10;6. Warm verabschieden: 'Wir sind im Bedarfsfall für Sie da.'" style="width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:.88rem;font-family:inherit;resize:vertical;"></textarea>
-        <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Der Bot arbeitet diese Angebote der Reihe nach ab — bietet das Nächste an, wenn der Interessent zögert. Leer = normales Verhalten.</div>
-      </div>
       <div class="field" id="f-deposit-wrap">
         <div class="field-label">Anzahlung zur Reservierung (%)</div>
         <input id="f-deposit" type="number" min="1" max="100" step="1" placeholder="10" value="10">
@@ -625,7 +620,6 @@ function openArticleModal(slotId) {
   document.getElementById('f-anrede').value = 'Sie';
   document.getElementById('f-botname').value = '';
   document.getElementById('f-berater').value = '';
-  document.getElementById('f-strategie').value = '';
   document.getElementById('articleErr').textContent = '';
   // Modus-Auswahl nur zeigen, wenn der Kunde für Beratung freigeschaltet ist
   const modeWrap = document.getElementById('f-mode-wrap');
@@ -656,7 +650,6 @@ async function saveArticle() {
   const anrede   = document.getElementById('f-anrede').value;
   const botName  = document.getElementById('f-botname').value.trim();
   const beraterName = document.getElementById('f-berater').value.trim();
-  const strategie = document.getElementById('f-strategie').value.trim();
   const deposit  = parseInt(document.getElementById('f-deposit').value) || 10;
   const mode     = (document.getElementById('f-mode-wrap').style.display !== 'none')
                      ? document.getElementById('f-mode').value : 'verkauf';
@@ -666,7 +659,7 @@ async function saveArticle() {
   if (!title) { err.textContent = 'Artikelbezeichnung fehlt'; return; }
 
   // Preis-Pflicht NUR im Verkaufs-Modus
-  const payload = { title, location: articleLocation, anrede, mode, bot_name: botName, berater_name: beraterName, strategie: strategie };
+  const payload = { title, location: articleLocation, anrede, mode, bot_name: botName, berater_name: beraterName };
   if (mode === 'beratung') {
     payload.sale_price = null;
     payload.min_price = null;
@@ -1293,11 +1286,6 @@ function renderBeraterEdit() {
       <input id="b-berater" type="text" value="${esc(a.berater_name || '')}" placeholder="z.B. Herr Zajic">
       <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">${beraterHint}</div>
     </div>
-    <div class="field">
-      <div class="field-label">Gesprächsstrategie / Eskalationsleiter</div>
-      <textarea id="b-strategie" rows="6" style="width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:.88rem;font-family:inherit;resize:vertical;" placeholder="z.B.&#10;1. Termin anbieten.&#10;2. Bei Zögern: Selbsttest ynhald.com/risk.&#10;3. 50% Webinar-Gutschein.&#10;4. Rückruf.&#10;5. Newsletter-Erlaubnis.&#10;6. Warm verabschieden.">${esc(a.strategie || '')}</textarea>
-      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Der Bot bietet diese Schritte der Reihe nach an — das Nächste, wenn der Interessent zögert. Leer = normales Verhalten.</div>
-    </div>
     <div style="font-size:.75rem;color:var(--mu);background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;">
       ✅ Diese Angaben lassen sich jederzeit gefahrlos ändern — der Bot bleibt aktiv, nichts wird neu analysiert.
     </div>
@@ -1310,8 +1298,6 @@ function renderBeraterEdit() {
 async function saveBeraterPersona() {
   const botName = document.getElementById('b-botname').value.trim();
   const berater = document.getElementById('b-berater').value.trim();
-  const stratEl = document.getElementById('b-strategie');
-  const strategie = stratEl ? stratEl.value.trim() : '';
   const err = document.getElementById('bpErr');
   const btn = document.getElementById('bpSaveBtn');
   err.textContent = '';
@@ -1320,7 +1306,7 @@ async function saveBeraterPersona() {
     const r = await fetch(API + '/api/cv/article/' + settingsArticle.id + '/persona', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bot_name: botName, berater_name: berater, strategie: strategie })
+      body: JSON.stringify({ bot_name: botName, berater_name: berater })
     });
     const d = await r.json();
     if (!d.success) {
@@ -1439,11 +1425,6 @@ function renderSettingsEdit() {
       <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">${s && s.mode === 'beratung' ? 'Person, die für die Videokonferenz kontaktiert.' : 'Person, die sich beim Interessenten meldet (Rückruf/Übergabe).'} Leer = neutral.</div>
     </div>
     <div class="field">
-      <div class="field-label">Gesprächsstrategie / Eskalationsleiter</div>
-      <textarea id="s-strategie" rows="6" style="width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:.88rem;font-family:inherit;resize:vertical;" placeholder="z.B. 1. Termin anbieten. 2. Bei Zögern Selbsttest ynhald.com/risk. 3. Webinar-Gutschein. 4. Rückruf. 5. Newsletter. 6. Verabschieden.">${esc(a.strategie || '')}</textarea>
-      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Der Bot bietet diese Schritte der Reihe nach an. Leer = normales Verhalten.</div>
-    </div>
-    <div class="field">
       <div class="field-label">Preis-Anzeige</div>
       <select id="s-pricevis" onchange="toggleStrictField()">
         <option value="public" ${(a.price_visibility || 'public') !== 'on_request' ? 'selected' : ''}>Öffentlich – Bot nennt Preis sofort</option>
@@ -1512,8 +1493,6 @@ async function saveSettings() {
   const botName  = document.getElementById('s-botname').value.trim();
   const beraterEl = document.getElementById('s-berater');
   const beraterName = beraterEl ? beraterEl.value.trim() : '';
-  const stratEl2 = document.getElementById('s-strategie');
-  const strategie = stratEl2 ? stratEl2.value.trim() : '';
   const pricevis = document.getElementById('s-pricevis').value;
   const strict   = document.getElementById('s-strict').value === 'true';
   const deposit  = parseInt(document.getElementById('s-deposit').value) || 10;
@@ -1537,10 +1516,10 @@ async function saveSettings() {
 
   try {
     const bodyObj = isBeratung
-      ? { title, sale_price: null, min_price: null, location: loc, anrede, mode: 'beratung', bot_name: botName, berater_name: beraterName, strategie: strategie,
+      ? { title, sale_price: null, min_price: null, location: loc, anrede, mode: 'beratung', bot_name: botName, berater_name: beraterName,
           price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
           wa_starttext: wastart, cta_text: cta, pull_text: pull }
-      : { title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit, mode: 'verkauf', bot_name: botName, berater_name: beraterName, strategie: strategie,
+      : { title, sale_price: price, min_price: minprice, location: loc, anrede, deposit_percent: deposit, mode: 'verkauf', bot_name: botName, berater_name: beraterName,
           price_visibility: pricevis, price_strict: strict, availability: (settingsArticle && settingsArticle.availability) || 'available',
           wa_starttext: wastart, cta_text: cta, pull_text: pull };
     const r = await fetch(API + '/api/cv/slot/' + settingsSlot.id + '/article', {

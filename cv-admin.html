@@ -970,6 +970,7 @@ async function toggleSlotView(subId, userLogin) {
         slotBtns =
           '<button type="button" class="btn btn-g btn-sm" onclick="openKnowledgeModal(\'' + s.id + '\')">🧠 Wissen</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="openSettingsModal(\'' + s.id + '\')">⚙️ Einstellungen</button>' +
+          '<button type="button" class="btn btn-g btn-sm" onclick="openStrategieModal(\'' + s.id + '\')">🎯 Strategie</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="toggleSlotConvs(\'' + s.id + '\')">💬 Gespräche</button>';
       }
       // Modus-Anzeige + Umschalter (Beratung nur wenn Kunde freigeschaltet)
@@ -1185,6 +1186,48 @@ function kvBlock(label, content) {
 }
 function settRow(label, value) {
   return '<div class="sett-row"><div class="sett-label">' + label + '</div><div class="sett-val">' + value + '</div></div>';
+}
+
+// ── Gesprächsstrategie / Eskalationsleiter bearbeiten (NUR Admin) ──
+let strategieArticleId = null;
+async function openStrategieModal(slotId) {
+  document.getElementById('convModalTitle').innerHTML = '🎯 Gesprächsstrategie';
+  document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Lade …</div>';
+  document.getElementById('convModal').classList.add('open');
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    const a = (d && d.article) || {};
+    if (!a.id) { document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Erst einen Artikel anlegen.</div>'; return; }
+    strategieArticleId = a.id;
+    const val = a.strategie || '';
+    document.getElementById('convModalBody').innerHTML =
+      '<div style="font-size:13px;color:#555;margin-bottom:10px;line-height:1.5;">' +
+        'Die Eskalationsleiter dieses Bots. Der Bot bietet die Schritte der Reihe nach an — das Nächste, wenn der Interessent zögert. ' +
+        '<b>Nur für dich bearbeitbar</b> — der Kunde sieht sie nur als Anzeige.</div>' +
+      '<textarea id="strategieText" rows="12" style="width:100%;padding:12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;" ' +
+        'placeholder="z.B.&#10;1. Termin mit dem Berater anbieten.&#10;2. Bei Zögern: Selbsttest ynhald.com/risk empfehlen.&#10;3. 50% Gutschein fürs Webinar [Link].&#10;4. Rückruf anbieten.&#10;5. Um Newsletter-Erlaubnis bitten.&#10;6. Warm verabschieden.">' + esc(val) + '</textarea>' +
+      '<div id="strategieMsg" style="font-size:13px;margin-top:8px;"></div>' +
+      '<button type="button" class="btn btn-g" style="margin-top:10px;" onclick="saveStrategie()">💾 Strategie speichern</button>';
+  } catch(e) {
+    document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function saveStrategie() {
+  const txt = document.getElementById('strategieText').value;
+  const msg = document.getElementById('strategieMsg');
+  msg.style.color = '#555'; msg.textContent = 'Speichere …';
+  try {
+    const r = await fetch(API + '/api/cv/article/' + strategieArticleId + '/persona', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategie: txt })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) { msg.style.color = 'var(--red)'; msg.textContent = d.error || 'Fehler beim Speichern.'; return; }
+    msg.style.color = 'var(--g2)'; msg.textContent = '✅ Gespeichert. Wirkt ab dem nächsten Gespräch.';
+  } catch(e) { msg.style.color = 'var(--red)'; msg.textContent = 'Verbindungsfehler: ' + e.message; }
 }
 
 // ── Slots zuweisen ──
