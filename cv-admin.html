@@ -1133,6 +1133,16 @@ async function openKnowledgeModal(slotId) {
       return '<li><b>' + esc2(o.objection || '') + '</b><br>→ ' + esc2(o.response || '') + '</li>';
     }));
     html += kvBlock('Verhandlungs-Schritte', list(strat.negotiation_steps, function(s){ return '<li>' + esc2(s) + '</li>'; }));
+
+    // Rohe Fakten aus Dokumenten + Kundennotizen (getrennt dargestellt)
+    var facts = Array.isArray(a.pdf_facts) ? a.pdf_facts : [];
+    var kiFacts = facts.filter(function(f){ return !(f && f.src === 'kunde'); });
+    var kundeFacts = facts.filter(function(f){ return f && f.src === 'kunde'; });
+    html += kvBlock('Aus Dokumenten extrahiert (' + kiFacts.length + ')',
+      list(kiFacts, function(f){ return '<li><b>' + esc2(f.k || '') + ':</b> ' + esc2(f.v || '') + '</li>'; }));
+    html += kvBlock('🟢 Vom Kunden ergänzt (' + kundeFacts.length + ')',
+      list(kundeFacts, function(f){ return '<li>' + esc2(f.v || '') + '</li>'; }));
+
     document.getElementById('convModalBody').innerHTML = html || '<div class="sc-empty">Noch kein Wissen vorhanden.</div>';
   } catch(e) {
     document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';

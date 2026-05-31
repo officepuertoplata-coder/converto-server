@@ -121,6 +121,7 @@ let originalAnalysis = null;
 let currentAnalysis = null;
 let currentPdfFacts = [];
 let currentArticle = null;
+let currentUploads = [];
 
 if (!slotId) {
   document.getElementById('content').innerHTML =
@@ -143,50 +144,144 @@ async function loadKnowledge() {
     articleId = d.article.id;
     currentArticle = d.article;
     currentPdfFacts = Array.isArray(d.article.pdf_facts) ? JSON.parse(JSON.stringify(d.article.pdf_facts)) : [];
-    const a = d.article.analysis;
-
-    if (!a || a.error) {
-      // Auch bei fehlgeschlagener Analyse: PDF-Fakten zeigen falls vorhanden
-      let html = renderHeader(d.article);
-      html += `
-        <div class="empty-state">
-          <div class="empty-state-icon">🤔</div>
-          <div style="font-weight:800;margin-bottom:8px;">${currentPdfFacts.length > 0 ? 'Analyse unvollständig' : 'Noch keine Wissensdatenbank'}</div>
-          <div style="font-size:.85rem;margin-bottom:16px;">
-            ${a?.error ? 'Die letzte Analyse ist fehlgeschlagen: ' + esc(a.error) : 'Es wurde noch keine Analyse durchgeführt.'}
-            ${currentPdfFacts.length > 0 ? '<br><br>Die PDF-Fakten unten wurden trotzdem extrahiert. Du kannst „Neu analysieren" drücken um die volle Verkaufs-DNA zu erstellen.' : ''}
-          </div>
-          <button class="reanalyze-btn" onclick="reanalyze()">🔄 Jetzt analysieren</button>
-        </div>`;
-
-      // PDF-Fakten-Sektion auch hier zeigen
-      if (currentPdfFacts.length > 0) {
-        html += `
-          <div class="section" style="border-left: 4px solid var(--blue);">
-            <div class="section-head">
-              <div class="section-title">📑 Aus Dokumenten extrahierte Fakten <span style="background:var(--blue);color:#fff;font-size:.65rem;padding:2px 8px;border-radius:6px;font-weight:900;margin-left:6px;">${currentPdfFacts.length}</span></div>
-              <div class="section-sub">Von Haiku aus deinen PDFs extrahiert. Hier kannst du Werte korrigieren.</div>
-            </div>
-            <div class="list-editor" id="list-pdf_facts">
-              ${renderPdfFacts(currentPdfFacts)}
-            </div>
-            <button class="list-add" onclick="addPdfFact()">+ Fakt manuell hinzufügen</button>
-          </div>`;
-      }
-
-      document.getElementById('content').innerHTML = html;
-      return;
-    }
-
-    originalAnalysis = JSON.parse(JSON.stringify(a)); // deep copy
-    currentAnalysis = JSON.parse(JSON.stringify(a));
-    render(d.article);
-    document.getElementById('bottomBar').style.display = 'flex';
+    currentUploads = Array.isArray(d.uploads) ? d.uploads : [];
+    renderKundensicht(d.article);
   } catch(e) {
     document.getElementById('content').innerHTML =
       '<div class="empty-state" style="color:var(--red);">Verbindungsfehler: ' + esc(e.message) + '</div>';
   }
 }
+
+// Trennt die Wissens-Bausteine: vom Kunden ergänzte Notizen (src:'kunde') vs. KI-extrahiert
+function splitFacts(facts) {
+  const kunde = [], ki = [];
+  (facts || []).forEach(f => {
+    if (f && f.src === 'kunde') kunde.push(f); else ki.push(f);
+  });
+  return { kunde, ki };
+}
+
+// VEREINFACHTE KUNDENSICHT: keine technischen Fakten, nur Uploads + eigene Notizen
+function renderKundensicht(article) {
+  const { kunde, ki } = splitFacts(currentPdfFacts);
+  const erkannt = ki.length; // Anzahl KI-extrahierter Infos (ohne Kundennotizen)
+  const ups = currentUploads || [];
+
+  let html = `
+    <div class="article-header">
+      <div class="ah-label">Wissen deines Bots · Slot</div>
+      <div class="ah-title">${esc(article.title || 'Artikel')}</div>
+    </div>`;
+
+  // Beruhigende Bestätigung — Zahl, ohne die Fakten selbst zu zeigen
+  if (erkannt > 0) {
+    html += `
+      <div class="info-banner" style="background:#f0fdf4;border-color:#bbf7d0;">
+        <div class="info-banner-icon">✓</div>
+        <div><strong>${erkannt} Information${erkannt === 1 ? '' : 'en'} aus deinen Unterlagen erkannt.</strong><br>
+        Dein Bot hat deine Dokumente und Bilder ausgewertet und kann damit Fragen beantworten.</div>
+      </div>`;
+  } else {
+    html += `
+      <div class="info-banner">
+        <div class="info-banner-icon">💡</div>
+        <div>Lade Dokumente oder Bilder hoch, damit dein Bot etwas über das Angebot lernt — oder ergänze unten direkt Infos als Notiz.</div>
+      </div>`;
+  }
+
+  // Hochgeladene Unterlagen
+  html += `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">📂 Deine hochgeladenen Unterlagen</div>
+        <div class="section-sub">Das hast du beigesteuert. Zum Ändern gehe zurück zum Upload.</div>
+      </div>`;
+  if (ups.length > 0) {
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">' +
+      ups.map(u => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8faf9;border:1px solid var(--border);border-radius:10px;font-size:.85rem;">
+          <span>${(u.kind === 'photo' || (u.mime_type||'').indexOf('image') === 0) ? '🖼️' : '📄'}</span>
+          <span style="flex:1;word-break:break-all;">${esc(u.filename || u.original_name || 'Datei')}</span>
+        </div>`).join('') +
+      '</div>';
+  } else {
+    html += '<div style="font-size:.85rem;color:var(--mu);padding:8px 0;">Noch keine Unterlagen hochgeladen.</div>';
+  }
+  html += '</div>';
+
+  // Eigene Ergänzungen (Notizen)
+  html += `
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">✏️ Etwas ergänzen?</div>
+        <div class="section-sub">Zusätzliche Infos, die dein Bot wissen soll (z.B. „Noch 2 Jahre Garantie", „Lieferung möglich"). Wirkt sofort.</div>
+      </div>
+      <div id="kundeNotizen">${renderKundenNotizen(kunde)}</div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <input id="neueNotiz" type="text" placeholder="Neue Info eingeben…" style="flex:1;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:.9rem;" onkeydown="if(event.key==='Enter')addKundenNotiz()">
+        <button class="list-add" style="white-space:nowrap;" onclick="addKundenNotiz()">+ Hinzufügen</button>
+      </div>
+      <div class="err" id="notizErr" style="margin-top:8px;"></div>
+    </div>`;
+
+  document.getElementById('content').innerHTML = html;
+}
+
+function renderKundenNotizen(notizen) {
+  if (!notizen || notizen.length === 0) {
+    return '<div style="font-size:.85rem;color:var(--mu);padding:4px 0;">Noch keine eigenen Ergänzungen.</div>';
+  }
+  return '<div style="display:flex;flex-direction:column;gap:8px;">' +
+    notizen.map((f, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:.85rem;">
+        <span style="flex:1;">${esc(f.v || '')}</span>
+        <button onclick="removeKundenNotiz(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem;" title="Entfernen">✕</button>
+      </div>`).join('') +
+    '</div>';
+}
+
+// Kundennotiz hinzufügen → als Fakt mit src:'kunde' speichern (sofort wirksam, keine Analyse)
+async function addKundenNotiz() {
+  const input = document.getElementById('neueNotiz');
+  const text = input.value.trim();
+  const err = document.getElementById('notizErr');
+  err.textContent = '';
+  if (!text) return;
+  // an bestehende Fakten anhängen
+  const neu = JSON.parse(JSON.stringify(currentPdfFacts));
+  neu.push({ k: 'Ergänzung', v: text, src: 'kunde' });
+  try {
+    const r = await fetch(API + '/api/cv/article/' + articleId + '/customer-note', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: text })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) { err.textContent = d.error || 'Konnte nicht gespeichert werden.'; return; }
+    currentPdfFacts = Array.isArray(d.pdf_facts) ? d.pdf_facts : neu;
+    input.value = '';
+    document.getElementById('kundeNotizen').innerHTML = renderKundenNotizen(splitFacts(currentPdfFacts).kunde);
+  } catch(e) { err.textContent = 'Verbindungsfehler: ' + e.message; }
+}
+
+async function removeKundenNotiz(idx) {
+  const { kunde } = splitFacts(currentPdfFacts);
+  const target = kunde[idx];
+  if (!target) return;
+  if (!confirm('Diese Ergänzung entfernen?')) return;
+  try {
+    const r = await fetch(API + '/api/cv/article/' + articleId + '/customer-note', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: target.v })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) { alert(d.error || 'Konnte nicht entfernt werden.'); return; }
+    currentPdfFacts = Array.isArray(d.pdf_facts) ? d.pdf_facts : currentPdfFacts;
+    document.getElementById('kundeNotizen').innerHTML = renderKundenNotizen(splitFacts(currentPdfFacts).kunde);
+  } catch(e) { alert('Verbindungsfehler: ' + e.message); }
+}
+
 
 function renderHeader(article) {
   return `

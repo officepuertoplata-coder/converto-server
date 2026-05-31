@@ -601,6 +601,60 @@ module.exports = function(app, supabase, deps) {
     }
   });
 
+  // ============================================================
+  // 5d. Kundennotizen: als Fakt mit src:'kunde' in pdf_facts — sofort wirksam, KEINE Analyse
+  //     POST   /api/cv/article/:id/customer-note  { note }   → hinzufügen
+  //     DELETE /api/cv/article/:id/customer-note  { note }   → entfernen
+  // ============================================================
+  app.post('/api/cv/article/:id/customer-note', async (req, res) => {
+    try {
+      const note = (req.body.note || '').trim();
+      if (!note) return res.status(400).json({ error: 'Leere Notiz' });
+
+      const { data: art } = await supabase
+        .from('cv_articles').select('pdf_facts').eq('id', req.params.id).maybeSingle();
+      if (!art) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+      const facts = Array.isArray(art.pdf_facts) ? art.pdf_facts : [];
+      facts.push({ k: 'Ergänzung', v: note, src: 'kunde' });
+
+      const { error } = await supabase
+        .from('cv_articles').update({ pdf_facts: facts, updated_at: new Date().toISOString() })
+        .eq('id', req.params.id);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true, pdf_facts: facts });
+    } catch(e) {
+      console.error('[CV customer-note POST]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/cv/article/:id/customer-note', async (req, res) => {
+    try {
+      const note = (req.body.note || '').trim();
+      const { data: art } = await supabase
+        .from('cv_articles').select('pdf_facts').eq('id', req.params.id).maybeSingle();
+      if (!art) return res.status(404).json({ error: 'Artikel nicht gefunden' });
+
+      const facts = Array.isArray(art.pdf_facts) ? art.pdf_facts : [];
+      // nur die erste passende Kundennotiz entfernen
+      let removed = false;
+      const neu = facts.filter(f => {
+        if (!removed && f && f.src === 'kunde' && (f.v || '') === note) { removed = true; return false; }
+        return true;
+      });
+
+      const { error } = await supabase
+        .from('cv_articles').update({ pdf_facts: neu, updated_at: new Date().toISOString() })
+        .eq('id', req.params.id);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true, pdf_facts: neu });
+    } catch(e) {
+      console.error('[CV customer-note DELETE]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
 
   // ============================================================
   // ============================================================
