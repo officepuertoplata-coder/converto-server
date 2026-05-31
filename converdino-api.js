@@ -1456,9 +1456,14 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
 
     // BERATUNGS-MODUS: anderen Prompt verwenden (kein Verkauf/keine Preise/Lead an Berater übergeben)
     const istBeratung = (slot && slot.mode === 'beratung');
-    const effectiveSystemPrompt = istBeratung
+    // Hat der Bot in dieser Session schon geantwortet? Dann nicht erneut vorstellen.
+    const schonGeantwortet = Array.isArray(session.history) && session.history.some(m => m && m.role === 'assistant');
+    const erstHinweisWA = schonGeantwortet
+      ? '\n\n⚠️ WICHTIG: Dies ist NICHT der Gesprächsbeginn — ihr habt euch bereits unterhalten. Stelle dich NICHT vor, begrüße NICHT erneut, sage nicht nochmal "Hallo, hier ist …". Antworte direkt und natürlich auf die letzte Nachricht, als Fortsetzung des laufenden Gesprächs.'
+      : '';
+    const effectiveSystemPrompt = (istBeratung
       ? cvBuildBeratungPrompt(article, 'whatsapp', shareableDocs, sharedLinks) + '\n\nSTIL: WhatsApp — kurz und natürlich, max. 3-4 Sätze pro Nachricht.'
-      : systemPrompt;
+      : systemPrompt) + erstHinweisWA;
 
     // ── Tools definieren ──
     const tools = [
@@ -2788,9 +2793,16 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
   async function cvRunWebTurn(slot, article, history, userMessage, shareableDocs) {
     const docs = Array.isArray(shareableDocs) ? shareableDocs : [];
     const sharedLinks = [];
-    const systemPrompt = (slot && slot.mode === 'beratung')
+    // Ist das die allererste Bot-Nachricht? (userMessage===null = Begrüßung, sonst Historie prüfen)
+    const istErsteNachricht = (userMessage === null) ||
+      !(Array.isArray(history) && history.some(m => m && m.role === 'assistant'));
+    const erstHinweis = istErsteNachricht
+      ? ''
+      : '\n\n⚠️ WICHTIG: Dies ist NICHT der Gesprächsbeginn — ihr habt euch bereits unterhalten. Stelle dich NICHT vor, begrüße NICHT erneut, sage nicht nochmal "Hallo, hier ist …". Antworte direkt und natürlich auf die letzte Nachricht, als Fortsetzung des laufenden Gesprächs.';
+    const basePrompt = (slot && slot.mode === 'beratung')
       ? cvBuildBeratungPrompt(article, 'web', docs, [])
       : cvBuildWebPrompt(article, docs);
+    const systemPrompt = basePrompt + erstHinweis;
 
     // Werkzeug zum Teilen freigegebener Dokumente (nur wenn welche vorhanden sind)
     const webTools = docs.length > 0 ? [{
