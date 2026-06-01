@@ -322,7 +322,27 @@ module.exports = function(app, supabase, deps) {
   app.patch('/api/cv/slot/:id/quicksettings', async (req, res) => {
     try {
       const slotId = req.params.id;
-      const { wa_starttext, cta_text, pull_text, availability } = req.body || {};
+      const { wa_starttext, cta_text, pull_text, availability, payment_mode } = req.body || {};
+
+      // Zahlungsmodus liegt auf cv_slots (nicht cv_articles) → separat speichern.
+      if (payment_mode !== undefined) {
+        const erlaubt = ['deposit', 'full', 'lead'];
+        if (!erlaubt.includes(payment_mode)) {
+          return res.status(400).json({ success: false, error: 'Ungültiger Zahlungsmodus' });
+        }
+        const { error: slotErr } = await supabase
+          .from('cv_slots')
+          .update({ payment_mode, updated_at: new Date().toISOString() })
+          .eq('id', slotId);
+        if (slotErr) {
+          console.error('[CV quicksettings] Slot-UPDATE-Fehler:', slotErr.message);
+          return res.status(500).json({ success: false, error: 'Speicherfehler (Modus): ' + slotErr.message });
+        }
+        // Wenn AUSSCHLIESSLICH der Modus gesendet wurde, sind wir fertig (kein Artikel nötig).
+        const nurModus = wa_starttext === undefined && cta_text === undefined
+          && pull_text === undefined && availability === undefined;
+        if (nurModus) return res.json({ success: true, payment_mode });
+      }
 
       // Artikel des Slots holen
       const { data: article, error: artErr } = await supabase
@@ -347,6 +367,10 @@ module.exports = function(app, supabase, deps) {
       }
 
       if (Object.keys(upd).length === 0) {
+        // Wenn nur der Zahlungsmodus gesendet wurde, ist das in Ordnung — bereits oben gespeichert.
+        if (payment_mode !== undefined) {
+          return res.json({ success: true, payment_mode });
+        }
         return res.status(400).json({ success: false, error: 'Keine Felder zum Speichern übergeben' });
       }
 
@@ -1354,6 +1378,36 @@ WICHTIG: Beginne deine Antwort direkt mit { und ende mit }. Gib AUSSCHLIESSLICH 
     const salePrice = Number(article.sale_price) || 0;
     const minPrice  = Number(article.min_price) || 0;
 
+    // Zahlungsmodus dieses Bots: 'deposit' (Anzahlung), 'full' (Vollzahlung), 'lead' (keine Online-Zahlung)
+    const zahlungsModus = slot.payment_mode || 'deposit';
+    const zahlungsBlock =
+      zahlungsModus === 'lead'
+        ? `\n═══════════════════════════════════════════════════════
+ZAHLUNGSMODUS: NUR LEAD (KEINE Online-Zahlung!)
+═══════════════════════════════════════════════════════
+- Dieser Bot wickelt KEINE Zahlung online ab. Es gibt KEINEN Zahlungslink, KEINE Anzahlung, KEINE Reservierung über die Plattform.
+- Wenn der Käufer kaufen will: sichere den Lead (Name + Kontakt über collect_contact) und sage zu, dass sich der Verkäufer persönlich für die Abwicklung meldet. NIEMALS einen Zahlungslink ankündigen oder von Anzahlung/Treuhand sprechen.\n`
+      : zahlungsModus === 'full'
+        ? `\n═══════════════════════════════════════════════════════
+ZAHLUNGSMODUS: VOLLZAHLUNG (gesamter Kaufpreis online)
+═══════════════════════════════════════════════════════
+- PFLICHT-ABLAUF BEI KAUF (genau diese Reihenfolge):
+  1. Käufer will kaufen → versuche zunächst, den vollen Preis zu erzielen (siehe Verhandlung/Strategie). Erkläre die sichere Zahlung über die Treuhand.
+  2. Frage nach dem NAMEN (WhatsApp-Nummer liegt vor: +${phone}).
+  3. SOBALD du den Namen hast → rufe SOFORT create_payment_link auf. Es wird der GESAMTE Kaufpreis fällig (keine Anzahlung).
+  4. Danach verabschieden (confirm_commitment).
+- Sprich von "Gesamtbetrag" / "Kaufpreis", NICHT von "Anzahlung" oder "Restbetrag".
+- NIEMALS bei "Perfekt, danke" stehenbleiben, wenn noch kein Zahlungslink verschickt wurde.\n`
+      : `\n═══════════════════════════════════════════════════════
+ZAHLUNGSMODUS: ANZAHLUNG / RESERVIERUNG
+═══════════════════════════════════════════════════════
+- PFLICHT-ABLAUF BEI RESERVIERUNG/KAUF (genau diese Reihenfolge, KEINEN Schritt auslassen):
+  1. Käufer will kaufen/reservieren → erkläre kurz die Anzahlung + Treuhand-Sicherheit.
+  2. Frage nach dem NAMEN (WhatsApp-Nummer liegt vor: +${phone}).
+  3. SOBALD du den Namen hast → rufe SOFORT create_payment_link auf. Das ist zwingend.
+  4. Das Tool verschickt den Link automatisch. Danach verabschieden (confirm_commitment).
+- NIEMALS bei "Perfekt, danke" stehenbleiben, wenn noch kein Zahlungslink verschickt wurde.\n`;
+
     const systemPrompt = `Du bist ein professioneller WhatsApp-Verkaufsberater für einen echten Verkäufer. Dein Ziel: aktiv verkaufen UND qualifizierte Leads an den Verkäufer weiterreichen. Je mehr ernsthafte Interessenten du an den Verkäufer übergibst, desto besser.
 
 ═══════════════════════════════════════════════════════
@@ -1454,14 +1508,7 @@ WICHTIG — Schwelle für Abschluss vs. Eskalation (NIEMALS verwechseln):
 ABWICKLUNG & SICHERHEIT (so läuft der Kauf ab)
 ═══════════════════════════════════════════════════════
 - Die Kaufabwicklung läuft IMMER sicher und treuhänderisch über die Plattform ab. Es gibt KEINEN Privatverkauf, keine private Übergabe von Bargeld, kein direkter Geldtausch zwischen Käufer und Verkäufer.
-- PFLICHT-ABLAUF BEI RESERVIERUNG/KAUF (genau diese Reihenfolge, KEINEN Schritt auslassen):
-  1. Käufer will kaufen/reservieren → erkläre kurz die Anzahlung + Treuhand-Sicherheit.
-  2. Frage nach dem NAMEN. Bestätige zugleich dass du die WhatsApp-Nummer verwenden darfst (du brauchst sie NICHT separat zu erfragen, sie liegt bereits vor: +${phone}).
-  3. SOBALD du den Namen hast (und die WA-Nummer als Kontakt akzeptiert wurde) → rufe SOFORT create_payment_link auf. Das ist zwingend. Sage NICHT nur "danke" und höre auf — der Käufer wartet auf den Zahlungslink!
-  4. Das Tool create_payment_link verschickt den Link automatisch. Danach kannst du dich verabschieden (confirm_commitment).
-- NIEMALS bei "Perfekt, danke" stehenbleiben wenn noch kein Zahlungslink verschickt wurde. Wenn der Name da ist und der Käufer reservieren will, ist create_payment_link IMMER dein nächster Schritt.
-- Erkläre dem Käufer: "Mit der Anzahlung reservieren Sie verbindlich, das Geld ist sicher über unsere Treuhand geschützt. Der Restbetrag wird bei Übergabe fällig." Das ist ein echtes Sicherheits-Argument.
-- Erkläre bei Kaufinteresse sinngemäß: "Die Zahlung läuft sicher ab — Ihr Geld ist geschützt, und der Verkäufer versendet Artikel und Rechnung erst danach an Sie." Das ist ein echtes Vertrauens- und Sicherheits-Argument, nutze es aktiv besonders bei höherpreisigen Artikeln.
+${zahlungsBlock}- Nutze die Treuhand-Sicherheit aktiv als Verkaufsargument ("Ihre Zahlung läuft sicher ab — Ihr Geld ist geschützt, der Verkäufer liefert erst danach"), besonders bei höherpreisigen Artikeln.
 - NENNE NIEMALS eine Provision, Gebühr oder einen Vermittlungsanteil. Der Käufer zahlt den verhandelten Preis — Punkt. Über interne Abläufe sprichst du nicht.
 - Stelle dich nicht als Verkäufer dar ("ich verkaufe Ihnen..."). Du bist der Verkaufsberater der die sichere Abwicklung vermittelt. Der eigentliche Verkäufer stellt Rechnung und versendet die Ware.
 - Erfinde keine Abwicklungs-Details die du nicht kennst (keine konkreten Versandzeiten/Zahlungsmethoden zusagen, die nicht in den Fakten stehen). Im Zweifel: "die genauen Details der Abwicklung bekommen Sie verbindlich von uns, sobald wir Ihre Daten haben."
@@ -1873,7 +1920,9 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
       const calledContact = toolCalls.some(t => t.name === 'collect_contact' || t.name === 'agree_deal');
       const calledLink = toolCalls.some(t => t.name === 'create_payment_link');
       const closingNow = toolCalls.some(t => t.name === 'confirm_commitment');
-      if (!istBeratung && calledContact && !calledLink && !session.paymentLinkSent && !closingNow
+      const zahlungsModus = (session.slot && session.slot.payment_mode) || 'deposit';
+      // Im 'lead'-Modus gibt es KEINE Online-Zahlung → niemals einen Zahlungslink erzwingen.
+      if (zahlungsModus !== 'lead' && !istBeratung && calledContact && !calledLink && !session.paymentLinkSent && !closingNow
           && cvStripe && session.buyerName && session.buyerPhone
           && !session._autoLinkTried) {
         session._autoLinkTried = true;  // nur einmal versuchen
@@ -1999,9 +2048,16 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
           const result = await cvCreateDepositLink(session);
           if (result) {
             const du = (session.article.anrede || 'Sie') === 'Du';
-            const linkMsg = du
-              ? `Um „${session.article.title}" verbindlich für dich zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* (${result.depositPct}%) an — sicher über unsere Treuhand. 🔒\n\nDen Restbetrag von €${result.restbetrag.toFixed(2)} klärst du direkt bei der Übergabe mit dem Verkäufer.\n\nHier dein sicherer Zahlungslink:\n${result.url}`
-              : `Um „${session.article.title}" verbindlich für Sie zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* (${result.depositPct}%) an — sicher über unsere Treuhand. 🔒\n\nDen Restbetrag von €${result.restbetrag.toFixed(2)} klären Sie direkt bei der Übergabe mit dem Verkäufer.\n\nHier Ihr sicherer Zahlungslink:\n${result.url}`;
+            let linkMsg;
+            if (result.mode === 'full') {
+              linkMsg = du
+                ? `Um „${session.article.title}" verbindlich zu kaufen, zahlst du den Gesamtbetrag von *€${result.deposit.toFixed(2)}* — sicher über unsere Treuhand. 🔒\n\nDeine Zahlung ist geschützt; der Verkäufer übergibt bzw. versendet die Ware erst danach.\n\nHier dein sicherer Zahlungslink:\n${result.url}`
+                : `Um „${session.article.title}" verbindlich zu kaufen, zahlen Sie den Gesamtbetrag von *€${result.deposit.toFixed(2)}* — sicher über unsere Treuhand. 🔒\n\nIhre Zahlung ist geschützt; der Verkäufer übergibt bzw. versendet die Ware erst danach.\n\nHier Ihr sicherer Zahlungslink:\n${result.url}`;
+            } else {
+              linkMsg = du
+                ? `Um „${session.article.title}" verbindlich für dich zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* (${result.depositPct}%) an — sicher über unsere Treuhand. 🔒\n\nDen Restbetrag von €${result.restbetrag.toFixed(2)} klärst du direkt bei der Übergabe mit dem Verkäufer.\n\nHier dein sicherer Zahlungslink:\n${result.url}`
+                : `Um „${session.article.title}" verbindlich für Sie zu reservieren, fällt eine Anzahlung von *€${result.deposit.toFixed(2)}* (${result.depositPct}%) an — sicher über unsere Treuhand. 🔒\n\nDen Restbetrag von €${result.restbetrag.toFixed(2)} klären Sie direkt bei der Übergabe mit dem Verkäufer.\n\nHier Ihr sicherer Zahlungslink:\n${result.url}`;
+            }
             await sendWAMessage(session.phoneId, phone, linkMsg);
             session.history.push({ role: 'assistant', content: linkMsg });
             // Event: Link verschickt
@@ -2462,14 +2518,25 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
       const article = session.article;
       const slot = session.slot;
       const agreed = Number(session.agreedPrice) || Number(article.sale_price);
-      const depositPct = Number(slot.deposit_percent) || 10;
-      const deposit = Math.round(agreed * depositPct) / 100; // z.B. 10% von 23990 = 2399
+
+      // Zahlungsmodus: 'full' = ganzer Betrag, sonst (deposit) = Anzahlungsprozent
+      // ⚠️ RECHTLICH: 'full' (voller Kaufpreis über die Plattform-Treuhand) erst nach
+      //    anwaltlicher Freigabe mit ECHTEM Geld live schalten — siehe Hinweis im Backoffice.
+      const mode = slot.payment_mode || 'deposit';
+      const istVoll = (mode === 'full');
+      const depositPct = istVoll ? 100 : (Number(slot.deposit_percent) || 10);
+      const deposit = istVoll ? agreed : (Math.round(agreed * depositPct) / 100);
       const depositCents = Math.round(deposit * 100);
 
       if (depositCents < 50) {
-        console.error('[CV Stripe] Anzahlung zu klein:', deposit);
+        console.error('[CV Stripe] Betrag zu klein:', deposit);
         return null;
       }
+
+      const produktName = istVoll ? `Kauf: ${article.title}` : `Reservierung: ${article.title}`;
+      const produktBeschreibung = istVoll
+        ? `Vollständige Zahlung über die Plattform-Treuhand`
+        : `Anzahlung ${depositPct}% — Restbetrag €${(agreed - deposit).toFixed(2)} bei Übergabe`;
 
       // Produkt + Preis dynamisch anlegen, Payment Link erstellen
       const paymentLink = await cvStripe.paymentLinks.create({
@@ -2478,8 +2545,8 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
             currency: 'eur',
             unit_amount: depositCents,
             product_data: {
-              name: `Reservierung: ${article.title}`,
-              description: `Anzahlung ${depositPct}% — Restbetrag €${(agreed - deposit).toFixed(2)} bei Übergabe`
+              name: produktName,
+              description: produktBeschreibung
             }
           },
           quantity: 1
@@ -2491,6 +2558,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
           buyer_name: String(session.buyerName || ''),
           agreed_price: String(agreed),
           deposit_amount: String(deposit),
+          payment_mode: mode,
           bot_code: String(slot.bot_code || '')
         },
         after_completion: {
@@ -2512,8 +2580,8 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
         }).eq('id', session.dbSessionId);
       }
 
-      console.log(`[CV Stripe] Link erstellt: €${deposit} Anzahlung für Slot ${slot.id}`);
-      return { url: paymentLink.url, deposit, agreed, restbetrag: agreed - deposit, depositPct };
+      console.log(`[CV Stripe] Link erstellt: €${deposit} (${mode}) für Slot ${slot.id}`);
+      return { url: paymentLink.url, deposit, agreed, restbetrag: agreed - deposit, depositPct, mode };
     } catch(e) {
       console.error('[CV Stripe] Link-Erstellung fehlgeschlagen:', e.message);
       return null;
