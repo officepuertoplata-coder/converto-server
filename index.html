@@ -563,13 +563,16 @@ document.querySelectorAll('.faq-q').forEach(q=>{
 <style>
   #cvw-launcher{position:fixed;right:24px;bottom:24px;z-index:9999;font-family:'Outfit',sans-serif}
   #cvw-launcher button{
-    display:inline-flex;align-items:center;gap:10px;border:none;cursor:pointer;
-    background:#25D366;color:#fff;font-family:'Outfit',sans-serif;font-weight:700;font-size:1rem;
-    padding:14px 22px;border-radius:30px;box-shadow:0 8px 26px -8px rgba(37,211,102,.6);
-    transition:transform .18s ease,box-shadow .2s ease;white-space:nowrap;
+    display:inline-flex;align-items:center;gap:11px;border:none;cursor:pointer;
+    background:#25D366;color:#fff;font-family:'Outfit',sans-serif;
+    padding:12px 22px;border-radius:22px;box-shadow:0 8px 26px -8px rgba(37,211,102,.6);
+    transition:transform .18s ease,box-shadow .2s ease;white-space:nowrap;text-align:left;
   }
   #cvw-launcher button:hover{transform:translateY(-3px);box-shadow:0 16px 40px -10px rgba(37,211,102,.7)}
   #cvw-launcher .cvw-ic{width:24px;height:24px;flex-shrink:0;animation:cvw-pulse 2.4s ease-in-out infinite}
+  #cvw-launcher .cvw-launch-txt{display:flex;flex-direction:column;line-height:1.15}
+  #cvw-launcher .cvw-launch-main{font-weight:700;font-size:1rem}
+  #cvw-launcher .cvw-launch-sub{font-weight:500;font-size:.78rem;opacity:.92;letter-spacing:.01em}
   @keyframes cvw-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}
 
   #cvw-panel{
@@ -611,7 +614,10 @@ document.querySelectorAll('.faq-q').forEach(q=>{
   /* Kanal-Auswahl */
   .cvw-choose{flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px 20px;background:#f6f9f5}
   .cvw-choose-t{font-family:'Fraunces',serif;font-weight:800;font-size:1.15rem;color:#0d1b12;
-    text-align:center;margin-bottom:20px;line-height:1.25}
+    text-align:center;margin-bottom:10px;line-height:1.25}
+  .cvw-benefits{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;
+    margin-bottom:20px;font-family:'Outfit',sans-serif;font-weight:600;font-size:.9rem;color:#0f6b34}
+  .cvw-benefits .cvw-dot{color:#9ec9ad;font-weight:700}
   .cvw-opts{display:flex;flex-direction:column;gap:14px}
   .cvw-opt{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-decoration:none;
     border-radius:16px;padding:16px 18px;cursor:pointer;border:1.5px solid #d3ebda;background:#fff;
@@ -638,7 +644,10 @@ document.querySelectorAll('.faq-q').forEach(q=>{
     <svg class="cvw-ic" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
       <path d="M16 3C9.4 3 4 8.4 4 15c0 2.1.6 4.1 1.6 5.9L4 29l8.3-1.6c1.7.9 3.6 1.4 5.7 1.4 6.6 0 12-5.4 12-12S22.6 3 16 3zm0 21.8c-1.8 0-3.5-.5-5-1.4l-.4-.2-4.9.9.9-4.8-.2-.4c-1-1.6-1.5-3.4-1.5-5.3 0-5.6 4.6-10.1 10.2-10.1S26.2 9.4 26.2 15 21.6 24.8 16 24.8zm5.6-7.4c-.3-.2-1.8-.9-2.1-1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.5-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.7.1-.1.3-.4.5-.6.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6-.1-.2-.7-1.7-1-2.3-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.2 3.3 5.3 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.8-.7 2-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.2-.6-.4z"/>
     </svg>
-    Mit Berater chatten
+    <span class="cvw-launch-txt">
+      <span class="cvw-launch-main">Mit Berater chatten</span>
+      <span class="cvw-launch-sub">Information · Beratung · Livetest</span>
+    </span>
   </button>
 </div>
 
@@ -656,6 +665,9 @@ document.querySelectorAll('.faq-q').forEach(q=>{
   <!-- Kanal-Auswahl: WhatsApp neben Web-Chat -->
   <div class="cvw-choose" id="cvw-choose">
     <p class="cvw-choose-t">Wie möchten Sie mit unserem Berater sprechen?</p>
+    <div class="cvw-benefits">
+      <span>Information</span><span class="cvw-dot">·</span><span>Beratung</span><span class="cvw-dot">·</span><span>Livetest</span>
+    </div>
     <div class="cvw-opts">
       <a class="cvw-opt cvw-opt-wa" id="cvw-opt-wa" target="_blank" rel="noopener">
         <span class="cvw-opt-ic">
@@ -739,20 +751,18 @@ document.querySelectorAll('.faq-q').forEach(q=>{
 
   window.cvwStartWeb=function(){
     loadRealWidget();
-    // Mein Auswahl-Fenster schließen, damit sich beide nicht überlagern
+    // Mein Auswahl-Fenster schließen, damit sich nichts überlagert
     el('cvw-panel').classList.remove('open');
-    el('cvw-launcher').style.display='block';
-    // Echtes Widget öffnen — ggf. kurz warten, bis das Script geladen ist
+    el('cvw-launcher').style.display='none'; // mein Button bleibt aus — dein Widget hat einen eigenen
+    // Dein Widget öffnet sich i.d.R. selbst beim Laden. Zur Sicherheit
+    // stupsen wir es ein paar Mal sanft an, falls es eine open-API hat.
     var tries=0;
     (function attempt(){
-      if(tryOpenRealWidget()) return;
-      if(++tries<20){ setTimeout(attempt,250); return; }
-      // Konnte nicht automatisch öffnen → Nutzer freundlich hinweisen
-      el('cvw-panel').classList.add('open');
-      el('cvw-launcher').style.display='none';
-      var n=el('cvw-note');
-      n.textContent="Ihr Chat-Fenster öffnet sich unten rechts. Tippen Sie dort auf den grünen Button.";
-      n.style.display='block';
+      if(tryOpenRealWidget()) return;          // geöffnet → fertig
+      if(++tries<12){ setTimeout(attempt,250); return; }
+      // Nach ~3s nichts Programmatisches gefunden: nichts weiter tun.
+      // Dein Widget ist geladen und zeigt seinen eigenen Chat/Button —
+      // KEINE störende Hinweis-Einblendung mehr.
     })();
   };
 

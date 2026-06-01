@@ -2104,8 +2104,16 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
         case 'send_booking_link': {
           const link = cvFindBookingLink(session.article);
           if (link) {
-            session._shareLink = { name: 'Termin buchen', url: link };
-            await cvLogEvent(session, phone, 'booking_link_sent', { url: link });
+            // Schleifen-Schutz: Link NICHT erneut anhängen, wenn er in diesem
+            // Gespräch schon einmal gesendet wurde. Sonst wirft der Bot bei jeder
+            // Folgenachricht denselben Link hin.
+            const histText = Array.isArray(session.history)
+              ? session.history.map(m => (m && m.content) ? String(m.content) : '').join('\n')
+              : '';
+            if (histText.indexOf(link) === -1) {
+              session._shareLink = { name: 'Termin buchen', url: link };
+              await cvLogEvent(session, phone, 'booking_link_sent', { url: link });
+            }
           }
           break;
         }
@@ -3119,7 +3127,9 @@ ${istWhatsApp
 - WICHTIG: Genau dann, wenn das Kontaktformular erscheinen soll, setze GANZ ANS ENDE deiner Nachricht den unsichtbaren Marker [[KONTAKT]] (doppelte eckige Klammern). Der Besucher sieht ihn nicht. Setze ihn nur bei echtem Interesse, höchstens einmal pro Gespräch.`}
 - Erfinde NIEMALS Kontaktdaten.
 - Wenn ein Termin-/Buchungslink angeboten wird und der Interessent zustimmt oder danach fragt: nutze das Werkzeug send_booking_link (der konkrete Link wird automatisch angehängt). Schreibe NIE selbst eine cal.com- oder Termin-URL aus dem Gedächtnis, und kündige den Link nicht nur an, ohne ihn zu liefern.
-- GRUNDREGEL bei Aktionen: Wenn du mitten im Gespräch Unterlagen teilst oder einen Link/Termin-Link gibst, schreibe IMMER einen kurzen begleitenden Satz dazu — rufe nie wortlos ein Werkzeug auf. Und beende das Gespräch NACH einer solchen Aktion NICHT sofort. Frage stattdessen freundlich nach, ob noch etwas offen ist — z.B. "Soll ich sonst noch etwas für Sie klären?" oder "Haben Sie noch Fragen, bevor ich Sie an ${berater} übergebe?". Erst die Antwort darauf entscheidet, wie es weitergeht.
+- WICHTIG — Link NICHT wiederholen: Wenn du den Buchungslink in diesem Gespräch bereits einmal geschickt hast, schicke ihn NICHT bei jeder weiteren Nachricht erneut. Verweise höchstens sprachlich darauf ("über den Link oben können Sie ein Zeitfenster wählen"). Stures Wiederholen desselben Links wirkt wie eine kaputte Schleife — vermeide das.
+- WICHTIG — du kannst KEINE Termine fix zusagen: Du hast keinen Kalenderzugriff und kennst keine freien Zeiten. Wenn der Interessent einen KONKRETEN Termin nennt oder fix bestätigt haben will (z.B. "Geht morgen 13:00?", "Ist das fix?", "schick mir den Termin direkt"), dann tu NICHT so, als könntest du buchen, und wirf auch nicht nochmal den Link hin. Stattdessen: nimm die Wunschzeit ehrlich auf und übergib sie an ${berater}. Sage sinngemäß: "Einen festen Termin kann ${berater} am besten direkt mit Ihnen bestätigen. Ich notiere Ihren Wunsch — morgen um 13:00 — und gebe ihn zusammen mit Ihrem Kontakt an ${berater} weiter; er bestätigt Ihnen das dann verbindlich. Unter welchem Namen und welcher Nummer erreicht er Sie am besten?" Sobald du Wunschzeit + Name + Kontakt hast, sichere den Lead mit collect_contact (bzw. request_callback) — DAS ist hier der richtige Weg, nicht der Link.
+- GRUNDREGEL bei Aktionen: Wenn du mitten im Gespräch Unterlagen teilst oder einen Link/Termin-Link gibst, schreibe IMMER einen kurzen begleitenden Satz dazu — rufe nie wortlos ein Werkzeug auf. Und beende das Gespräch NACH einer solchen Aktion NICHT sofort. Frage stattdessen freundlich nach, ob noch etwas offen ist — z.B. "Soll ich sonst noch etwas für Sie klären?" oder "Haben Sie noch Fragen, bevor ich Sie an ${berater} übergebe?". Erst die Antwort darauf entscheidet, wie es weitergeht. Beantworte dabei IMMER zuerst die konkrete Frage des Interessenten, bevor du nachfragst oder abschließt — gehe nie über eine echte Frage hinweg.
 
 GESPRÄCHSENDE — erst nachfragen, dann je nach Antwort:
 Verabschiede dich NIEMALS direkt nach dem Verschicken eines Links oder Dokuments. Der richtige Ablauf:
