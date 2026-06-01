@@ -844,7 +844,9 @@ async function loadCustomers() {
         '<div class="kc-head">' +
           '<div>' +
             '<div class="kc-company">' + esc(company) + '</div>' +
-            '<div class="kc-login"><span class="login-name">' + esc(c.user_login) + '</span> ' + statusTag + '</div>' +
+            '<div class="kc-login"><span class="login-name">' + esc(c.user_login) + '</span> ' + statusTag +
+              (c.internal_account ? ' <span style="background:#eef;border:1px solid #ccd;color:#445;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">🏢 intern</span>' : '') +
+            '</div>' +
           '</div>' +
           '<div class="kc-head-btns">' +
             '<button type="button" class="btn btn-g btn-sm" onclick="toggleSlotView(\'' + c.id + '\',\'' + esc(c.user_login) + '\')">Slots ansehen</button>' +
@@ -875,6 +877,26 @@ async function loadCustomers() {
             '<div><label>Telefon</label><input id="e-phone-' + c.id + '" value="' + esc(c.contact_phone || '') + '"></div>' +
             '<div><label>E-Mail</label><input id="e-email-' + c.id + '" value="' + esc(c.seller_email || '') + '"></div>' +
             '<div><label>Provision %</label><input id="e-comm-' + c.id + '" value="' + esc(c.commission_pct != null ? c.commission_pct : '') + '"></div>' +
+          '</div>' +
+          // Rabatt / verrechneter Preis
+          '<div style="margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:10px;background:#f8faf9;">' +
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">💶 Rabatt / verrechneter Preis</div>' +
+            '<div style="font-size:12px;color:var(--mu);margin-bottom:8px;">Listenpreis (netto/Monat): <strong>' + fmtEuro(c.listen_netto || 0) + '</strong></div>' +
+            '<div class="edit-grid">' +
+              '<div><label>Rabatt-Art</label><select id="e-dtype-' + c.id + '" onchange="onDiscountTypeChange(\'' + c.id + '\')" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:#fff;">' +
+                '<option value="none"' + (c.discount_type==='none'||!c.discount_type?' selected':'') + '>Kein Rabatt</option>' +
+                '<option value="percent"' + (c.discount_type==='percent'?' selected':'') + '>Prozent (%)</option>' +
+                '<option value="amount"' + (c.discount_type==='amount'?' selected':'') + '>Festbetrag (€ netto/Monat)</option>' +
+              '</select></div>' +
+              '<div id="e-dpct-wrap-' + c.id + '" style="' + (c.discount_type==='percent'?'':'display:none;') + '"><label>Rabatt %</label><input type="number" min="0" max="100" step="0.1" id="e-dpct-' + c.id + '" value="' + esc(c.discount_pct != null ? c.discount_pct : '') + '" oninput="recalcVerrechnet(\'' + c.id + '\')"></div>' +
+              '<div id="e-damt-wrap-' + c.id + '" style="' + (c.discount_type==='amount'?'':'display:none;') + '"><label>Verrechnet € netto/Mon.</label><input type="number" min="0" step="0.01" id="e-damt-' + c.id + '" value="' + esc(c.discount_amount != null ? c.discount_amount : '') + '" oninput="recalcVerrechnet(\'' + c.id + '\')"></div>' +
+            '</div>' +
+            '<div style="margin-top:8px;font-size:13px;">Tatsächlich verrechnet: <strong id="e-verr-' + c.id + '" style="color:var(--g2);">' + fmtEuro(c.verrechnet_netto || 0) + '</strong> netto <span style="color:var(--mu);">(= ' + fmtEuro(brutto(c.verrechnet_netto || 0)) + ' brutto)</span></div>' +
+            '<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer;">' +
+              '<input type="checkbox" id="e-internal-' + c.id + '"' + (c.internal_account?' checked':'') + ' style="width:auto;">' +
+              '<span>🏢 Interne Firma — <strong>nicht im Umsatz zählen</strong> (eigene Test-/Konzernkonten)</span>' +
+            '</label>' +
+            '<div data-listen="' + (c.listen_netto || 0) + '" id="e-listen-' + c.id + '" style="display:none;"></div>' +
           '</div>' +
           '<div class="edit-actions">' +
             '<button type="button" class="btn btn-g btn-sm" onclick="saveCustomer(\'' + c.id + '\')">Speichern</button>' +
@@ -1430,16 +1452,49 @@ function toggleEdit(subId) {
   row.style.display = (row.style.display === 'none') ? 'block' : 'none';
 }
 
+// ── Rabatt-UI: Felder ein/ausblenden je nach Art ──
+function onDiscountTypeChange(subId) {
+  const type = document.getElementById('e-dtype-' + subId).value;
+  const pctWrap = document.getElementById('e-dpct-wrap-' + subId);
+  const amtWrap = document.getElementById('e-damt-wrap-' + subId);
+  if (pctWrap) pctWrap.style.display = (type === 'percent') ? '' : 'none';
+  if (amtWrap) amtWrap.style.display = (type === 'amount') ? '' : 'none';
+  recalcVerrechnet(subId);
+}
+
+// ── Verrechneten Preis live vorrechnen (gleiche Logik wie Backend) ──
+function recalcVerrechnet(subId) {
+  const listenEl = document.getElementById('e-listen-' + subId);
+  const listen = listenEl ? parseFloat(listenEl.getAttribute('data-listen')) || 0 : 0;
+  const type = document.getElementById('e-dtype-' + subId).value;
+  let verr = listen;
+  if (type === 'percent') {
+    const pct = parseFloat(document.getElementById('e-dpct-' + subId).value) || 0;
+    verr = Math.round((listen - listen * pct / 100) * 100) / 100;
+  } else if (type === 'amount') {
+    const amt = parseFloat(document.getElementById('e-damt-' + subId).value);
+    verr = isNaN(amt) ? listen : Math.round(amt * 100) / 100;
+  }
+  if (verr < 0) verr = 0;
+  const out = document.getElementById('e-verr-' + subId);
+  if (out) out.textContent = fmtEuro(verr);
+}
+
 // ── Stammdaten speichern ──
 async function saveCustomer(subId) {
   const localMsg = document.getElementById('saveMsg-' + subId);
   if (localMsg) { localMsg.style.color = '#555'; localMsg.textContent = 'Speichere …'; }
+  const dtype = document.getElementById('e-dtype-' + subId).value;
   const body = {
     company_name: document.getElementById('e-company-' + subId).value.trim(),
     contact_name: document.getElementById('e-contact-' + subId).value.trim(),
     contact_phone: document.getElementById('e-phone-' + subId).value.trim(),
     seller_email: document.getElementById('e-email-' + subId).value.trim(),
-    commission_pct: document.getElementById('e-comm-' + subId).value.trim()
+    commission_pct: document.getElementById('e-comm-' + subId).value.trim(),
+    discount_type: dtype,
+    discount_pct: (dtype === 'percent') ? document.getElementById('e-dpct-' + subId).value.trim() : '',
+    discount_amount: (dtype === 'amount') ? document.getElementById('e-damt-' + subId).value.trim() : '',
+    internal_account: document.getElementById('e-internal-' + subId).checked
   };
   try {
     const r = await fetch(API + '/api/cv/admin/customers/' + subId, {

@@ -2783,6 +2783,26 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     return { verkauf, beratung };
   }
 
+  // Verrechneten Netto-Preis aus Listenpreis + Rabatt des Kunden bestimmen.
+  // sub: cv_subscriptions-Datensatz (discount_type/discount_pct/discount_amount).
+  // listenNetto: regulärer Netto-Monatspreis (vor Rabatt).
+  // Rückgabe: { listenNetto, rabattType, abzug, verrechnetNetto }
+  function cvVerrechneterPreis(sub, listenNetto) {
+    const type = (sub && sub.discount_type) || 'none';
+    let verrechnet = Number(listenNetto) || 0;
+    let abzug = 0;
+    if (type === 'percent' && sub.discount_pct != null) {
+      abzug = Math.round((verrechnet * Number(sub.discount_pct) / 100) * 100) / 100;
+      verrechnet = Math.round((verrechnet - abzug) * 100) / 100;
+    } else if (type === 'amount' && sub.discount_amount != null) {
+      // Festbetrag = das, was tatsächlich verrechnet wird (nicht Abzug, sondern Endpreis)
+      verrechnet = Math.round(Number(sub.discount_amount) * 100) / 100;
+      abzug = Math.round((Number(listenNetto) - verrechnet) * 100) / 100;
+    }
+    if (verrechnet < 0) verrechnet = 0;
+    return { listenNetto: Number(listenNetto) || 0, rabattType: type, abzug, verrechnetNetto: verrechnet };
+  }
+
   // GET — Preis für eine Slot-Anzahl berechnen (Verkauf = Staffel, Beratung = Festpreis)
   app.get('/api/cv/admin/price-calc', async (req, res) => {
     try {
@@ -3927,33 +3947,62 @@ Ihr Converdino-Team`;
         .order('created_at', { ascending: false });
       if (error) return res.status(500).json({ error: error.message });
 
-      // Slot-Anzahl pro Subscription ermitteln
+      // Slot-Anzahl pro Subscription ermitteln (inkl. Typ verkauf/beratung)
       const subIds = (subs || []).map(s => s.id);
       let slotCounts = {};
+      let slotTypes = {};
       if (subIds.length > 0) {
         const { data: slots } = await supabase
           .from('cv_slots')
-          .select('id, subscription_id')
+          .select('id, subscription_id, mode')
           .in('subscription_id', subIds);
         for (const s of (slots || [])) {
           slotCounts[s.subscription_id] = (slotCounts[s.subscription_id] || 0) + 1;
+          if (!slotTypes[s.subscription_id]) slotTypes[s.subscription_id] = { verkauf: 0, beratung: 0 };
+          if (s.mode === 'beratung') slotTypes[s.subscription_id].beratung++;
+          else slotTypes[s.subscription_id].verkauf++;
         }
       }
 
-      const customers = (subs || []).map(s => ({
-        id: s.id,
-        user_login: s.user_login,
-        company_name: s.company_name || null,
-        contact_name: s.contact_name || null,
-        contact_phone: s.contact_phone || null,
-        seller_email: s.seller_email || null,
-        commission_pct: s.commission_pct != null ? s.commission_pct : null,
-        status: s.status,
-        beratung_enabled: s.beratung_enabled === true,
-        slots_total: s.slots_total || 0,
-        slots_created: slotCounts[s.id] || 0,
-        created_at: s.created_at
-      }));
+      // Preisstufen + Beratungspreis einmal laden (für Listenpreis-Berechnung)
+      const { data: tiersAll } = await supabase
+        .from('cv_price_tiers').select('bots, price_per_bot').eq('active', true).gt('bots', 0)
+        .order('bots', { ascending: true });
+      const beratungPreis = await cvGetBeratungPreis();
+
+      const customers = [];
+      for (const s of (subs || [])) {
+        const typ = slotTypes[s.id] || { verkauf: 0, beratung: 0 };
+        const vRes = cvBerechneProgressiv(typ.verkauf, tiersAll || []);
+        const beratungNetto = Math.round(typ.beratung * beratungPreis * 100) / 100;
+        const listenNetto = Math.round((vRes.total + beratungNetto) * 100) / 100;
+        const verr = cvVerrechneterPreis(s, listenNetto);
+        customers.push({
+          id: s.id,
+          user_login: s.user_login,
+          company_name: s.company_name || null,
+          contact_name: s.contact_name || null,
+          contact_phone: s.contact_phone || null,
+          seller_email: s.seller_email || null,
+          commission_pct: s.commission_pct != null ? s.commission_pct : null,
+          status: s.status,
+          beratung_enabled: s.beratung_enabled === true,
+          slots_total: s.slots_total || 0,
+          slots_created: slotCounts[s.id] || 0,
+          slots_verkauf: typ.verkauf,
+          slots_beratung: typ.beratung,
+          // Rabatt + interne Markierung
+          discount_type: s.discount_type || 'none',
+          discount_pct: s.discount_pct != null ? s.discount_pct : null,
+          discount_amount: s.discount_amount != null ? s.discount_amount : null,
+          internal_account: s.internal_account === true,
+          // Preise (netto)
+          listen_netto: listenNetto,
+          verrechnet_netto: verr.verrechnetNetto,
+          rabatt_abzug: verr.abzug,
+          created_at: s.created_at
+        });
+      }
       res.json({ customers });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
@@ -4155,7 +4204,8 @@ Ihr Converdino-Team`;
   app.put('/api/cv/admin/customers/:subId', async (req, res) => {
     try {
       const subId = req.params.subId;
-      const { company_name, contact_name, contact_phone, seller_email, commission_pct } = req.body;
+      const { company_name, contact_name, contact_phone, seller_email, commission_pct,
+              discount_type, discount_pct, discount_amount, internal_account } = req.body;
 
       const { data: sub, error: subErr } = await supabase
         .from('cv_subscriptions').select('user_login').eq('id', subId).maybeSingle();
@@ -4169,6 +4219,20 @@ Ihr Converdino-Team`;
       if (seller_email !== undefined)  updates.seller_email  = seller_email || null;
       if (commission_pct !== undefined) {
         updates.commission_pct = (commission_pct !== '' && commission_pct != null) ? parseFloat(commission_pct) : null;
+      }
+      // Rabatt-Logik
+      if (discount_type !== undefined) {
+        const t = ['none','percent','amount'].includes(discount_type) ? discount_type : 'none';
+        updates.discount_type = t;
+      }
+      if (discount_pct !== undefined) {
+        updates.discount_pct = (discount_pct !== '' && discount_pct != null) ? parseFloat(discount_pct) : null;
+      }
+      if (discount_amount !== undefined) {
+        updates.discount_amount = (discount_amount !== '' && discount_amount != null) ? parseFloat(discount_amount) : null;
+      }
+      if (internal_account !== undefined) {
+        updates.internal_account = !!internal_account;
       }
 
       const { error: upErr } = await supabase
