@@ -14,6 +14,8 @@
   var BOT_CODE = (thisScript && thisScript.getAttribute('data-bot')) || '';
   var API = (thisScript && thisScript.getAttribute('data-api')) ||
             'https://converto-server-production.up.railway.app';
+  // WhatsApp-Nummer (zentrale Converdino-Bot-Nummer; per data-wa überschreibbar)
+  var WA_NUMBER = (thisScript && thisScript.getAttribute('data-wa')) || '4367764118066';
 
   if (!BOT_CODE) { console.error('[Converdino] data-bot fehlt im Script-Tag.'); return; }
 
@@ -65,7 +67,24 @@
   '.cvw-form button{background:' + C.greenDark + ';color:#fff;border:none;border-radius:8px;padding:11px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}' +
   '.cvw-form button:disabled{opacity:.5;cursor:default}' +
   '.cvw-form-ok{font-size:13px;color:' + C.greenDark + ';font-weight:600;text-align:center;padding:6px}' +
-  '.cvw-credit{font-size:10px;color:' + C.inkSoft + ';text-align:center;padding:4px 0;opacity:.7}';
+  '.cvw-credit{font-size:10px;color:' + C.inkSoft + ';text-align:center;padding:4px 0;opacity:.7}' +
+  /* Auswahl-Fenster (WhatsApp oder Web) */
+  '.cvw-choose{position:fixed;bottom:96px;right:24px;z-index:2147483000;width:340px;max-width:calc(100vw - 32px);background:' + C.white + ';border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
+  '.cvw-choose.cvw-open{display:flex}' +
+  '.cvw-choose .cvw-head{background:' + C.greenDark + ';color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}' +
+  '.cvw-choose-body{padding:20px 18px;background:' + C.paper + '}' +
+  '.cvw-choose-t{font-weight:800;font-size:15px;color:' + C.ink + ';text-align:center;margin-bottom:8px;line-height:1.3}' +
+  '.cvw-benefits{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:7px;margin-bottom:18px;font-weight:600;font-size:12.5px;color:' + C.greenDark + '}' +
+  '.cvw-benefits .cvw-dot{color:#9ec9ad;font-weight:700}' +
+  '.cvw-opts{display:flex;flex-direction:column;gap:11px}' +
+  '.cvw-opt{display:flex;align-items:center;gap:12px;text-decoration:none;border-radius:13px;padding:14px 15px;cursor:pointer;border:1.5px solid ' + C.line + ';background:' + C.white + ';width:100%;text-align:left;font-family:inherit;transition:transform .15s,box-shadow .2s}' +
+  '.cvw-opt:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(15,107,52,.45)}' +
+  '.cvw-opt-ic{width:38px;height:38px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px}' +
+  '.cvw-opt-wa .cvw-opt-ic{background:#25d366}' +
+  '.cvw-opt-web .cvw-opt-ic{background:' + C.card + ';border:1px solid ' + C.line + '}' +
+  '.cvw-opt-tx{display:flex;flex-direction:column;line-height:1.25}' +
+  '.cvw-opt-l{font-weight:700;font-size:14.5px;color:' + C.ink + '}' +
+  '.cvw-opt-d{font-size:12px;color:' + C.inkSoft + '}';
 
   var styleEl = document.createElement('style');
   styleEl.textContent = css;
@@ -92,7 +111,32 @@
     '</div>' +
     '<div class="cvw-credit">powered by Converdino</div>';
 
+  // Auswahl-Fenster: WhatsApp oder Web
+  var waLink = 'https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(BOT_CODE);
+  var choose = document.createElement('div');
+  choose.className = 'cvw-choose';
+  choose.innerHTML =
+    '<div class="cvw-head">' +
+      '<div><div class="cvw-head-t">Mit unserem Berater sprechen</div><div class="cvw-head-s">Antwortet in Sekunden</div></div>' +
+      '<button class="cvw-close" id="cvw-choose-x" aria-label="Schließen">&times;</button>' +
+    '</div>' +
+    '<div class="cvw-choose-body">' +
+      '<div class="cvw-choose-t">Wie möchten Sie sprechen?</div>' +
+      '<div class="cvw-benefits"><span>Information</span><span class="cvw-dot">·</span><span>Beratung</span><span class="cvw-dot">·</span><span>Livetest</span></div>' +
+      '<div class="cvw-opts">' +
+        '<a class="cvw-opt cvw-opt-wa" id="cvw-go-wa" href="' + waLink + '" target="_blank" rel="noopener">' +
+          '<span class="cvw-opt-ic"><svg viewBox="0 0 32 32" fill="#fff" width="22" height="22" aria-hidden="true"><path d="M16 3C9.4 3 4 8.4 4 15c0 2.1.6 4.1 1.6 5.9L4 29l8.3-1.6c1.7.9 3.6 1.4 5.7 1.4 6.6 0 12-5.4 12-12S22.6 3 16 3zm0 21.8c-1.8 0-3.5-.5-5-1.4l-.4-.2-4.9.9.9-4.8-.2-.4c-1-1.6-1.5-3.4-1.5-5.3 0-5.6 4.6-10.1 10.2-10.1S26.2 9.4 26.2 15 21.6 24.8 16 24.8zm5.6-7.4c-.3-.2-1.8-.9-2.1-1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.5-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.7.1-.1.3-.4.5-.6.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6-.1-.2-.7-1.7-1-2.3-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.2 3.3 5.3 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.8-.7 2-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.2-.6-.4z"/></svg></span>' +
+          '<span class="cvw-opt-tx"><span class="cvw-opt-l">Per WhatsApp</span><span class="cvw-opt-d">Im gewohnten Chat, Verlauf bleibt erhalten</span></span>' +
+        '</a>' +
+        '<button type="button" class="cvw-opt cvw-opt-web" id="cvw-go-web">' +
+          '<span class="cvw-opt-ic">🌐</span>' +
+          '<span class="cvw-opt-tx"><span class="cvw-opt-l">Hier im Browser</span><span class="cvw-opt-d">Sofort chatten, ohne App zu öffnen</span></span>' +
+        '</button>' +
+      '</div>' +
+    '</div>';
+
   document.body.appendChild(btn);
+  document.body.appendChild(choose);
   document.body.appendChild(panel);
 
   var body   = panel.querySelector('#cvw-body');
@@ -294,15 +338,45 @@
 
   // --- Events ---
   var started = false;
-  btn.addEventListener('click', function () {
-    panel.classList.add('cvw-open');
+
+  function showLauncher() {
+    btn.style.display = 'inline-flex';
+  }
+  function hideLauncher() {
     btn.style.display = 'none';
+  }
+
+  // Button → Auswahl-Fenster öffnen
+  btn.addEventListener('click', function () {
+    choose.classList.add('cvw-open');
+    hideLauncher();
+  });
+
+  // Auswahl: „Hier im Browser" → Web-Chat öffnen
+  choose.querySelector('#cvw-go-web').addEventListener('click', function () {
+    choose.classList.remove('cvw-open');
+    panel.classList.add('cvw-open');
     if (!started) { started = true; startChat(); }
     input.focus();
   });
+
+  // Auswahl: „Per WhatsApp“ → öffnet WhatsApp (normaler Link). Danach Launcher zurück.
+  choose.querySelector('#cvw-go-wa').addEventListener('click', function () {
+    choose.classList.remove('cvw-open');
+    showLauncher();
+    // der Link selbst öffnet WhatsApp (target="_blank") — kein preventDefault nötig
+  });
+
+  // Auswahl-Fenster schließen → Launcher zurück
+  choose.querySelector('#cvw-choose-x').addEventListener('click', function () {
+    choose.classList.remove('cvw-open');
+    showLauncher();
+  });
+
+  // Web-Chat schließen → Launcher zurück
   closeBtn.addEventListener('click', function () {
     panel.classList.remove('cvw-open');
-    btn.style.display = 'inline-flex';
+    showLauncher();
   });
   sendBtn.addEventListener('click', sendMessage);
   input.addEventListener('keydown', function (e) {
