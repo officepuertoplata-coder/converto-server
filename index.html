@@ -623,6 +623,7 @@ document.querySelectorAll('.faq-q').forEach(q=>{
   .cvw-opt-web .cvw-opt-ic{background:linear-gradient(135deg,#25d366,#0f6b34);color:#fff}
   .cvw-opt-l{font-weight:700;font-size:1.05rem;color:#0d1b12}
   .cvw-opt-d{font-size:.85rem;color:#33473b;font-weight:300}
+  .cvw-note{margin-top:16px;font-size:.88rem;color:#0f6b34;text-align:center;line-height:1.4}
 
   @media(max-width:600px){
     #cvw-launcher{right:16px;bottom:16px}
@@ -671,126 +672,93 @@ document.querySelectorAll('.faq-q').forEach(q=>{
         <span class="cvw-opt-d">Sofort chatten, ohne App zu öffnen</span>
       </button>
     </div>
-  </div>
-
-  <div class="cvw-body" id="cvw-body" style="display:none"></div>
-  <div class="cvw-foot" id="cvw-foot" style="display:none">
-    <input id="cvw-input" type="text" placeholder="Ihre Nachricht …" autocomplete="off"
-           onkeydown="if(event.key==='Enter')cvwSend()">
-    <button type="button" onclick="cvwSend()" aria-label="Senden">➤</button>
+    <p class="cvw-note" id="cvw-note" style="display:none"></p>
   </div>
 </div>
 
 <script>
 (function(){
   // ===================================================================
-  //  EINSTELLUNGEN — bei Bedarf hier anpassen
+  //  EINSTELLUNGEN
   // ===================================================================
   var CVW = {
     botCode: "Anfrage-LO6J",
     waNumber: "4367764118066",
-    // Endpoint des On-Site-Web-Chats (eigener Server). Wenn dieser nicht
-    // erreichbar ist, fällt der Chat automatisch auf WhatsApp zurück.
-    webEndpoint: "https://converto-server-production.up.railway.app/api/cv/web/message",
-    // Falls euer Endpoint andere Feldnamen erwartet, hier anpassen:
-    buildRequest: function(text, sessionId){
-      return { code: CVW.botCode, message: text, sessionId: sessionId };
-    },
-    // Wie wird die Bot-Antwort aus der JSON-Antwort gelesen? Mehrere
-    // gängige Felder werden geprüft.
-    readReply: function(data){
-      return data.reply || data.message || data.text || data.answer ||
-             (data.data && (data.data.reply || data.data.message)) || null;
-    }
+    // Offizielles Converdino-Web-Widget (vom eigenen Server)
+    widgetSrc: "https://converto-server-production.up.railway.app/converdino-widget.js"
   };
   // ===================================================================
 
-  var sessionId = "web-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-  var started = false;
-  var webOk = true; // wird false, wenn der Endpoint nicht antwortet
-
   function el(id){ return document.getElementById(id); }
-  function scrollBottom(){ var b=el('cvw-body'); b.scrollTop=b.scrollHeight; }
-
-  function addMsg(text, who){
-    var d=document.createElement('div');
-    d.className='cvw-msg '+(who==='me'?'me':'bot');
-    d.textContent=text;
-    el('cvw-body').appendChild(d); scrollBottom();
-  }
-  function showTyping(){
-    var t=document.createElement('div'); t.className='cvw-typing'; t.id='cvw-typing';
-    t.textContent='Berater tippt …'; el('cvw-body').appendChild(t); scrollBottom();
-  }
-  function hideTyping(){ var t=el('cvw-typing'); if(t)t.remove(); }
-
   function waLink(){
     return "https://wa.me/"+CVW.waNumber+"?text="+encodeURIComponent(CVW.botCode);
   }
-  function addWaFallback(intro){
-    var box=document.createElement('div'); box.className='cvw-wa-hint';
-    box.innerHTML=(intro||"Sie können das Gespräch auch direkt über WhatsApp führen — dort bleibt der Kontakt erhalten.")+
-      '<br><a href="'+waLink()+'" target="_blank" rel="noopener">💬 In WhatsApp fortsetzen</a>';
-    el('cvw-body').appendChild(box); scrollBottom();
+
+  // Echtes Converdino-Widget einmalig laden (lädt sich + eigenen Chat-Button)
+  var widgetLoaded=false;
+  function loadRealWidget(){
+    if(widgetLoaded) return;
+    widgetLoaded=true;
+    var s=document.createElement('script');
+    s.src=CVW.widgetSrc;
+    s.setAttribute('data-bot', CVW.botCode);
+    s.async=true;
+    document.body.appendChild(s);
+  }
+
+  // Versucht, das echte Widget programmatisch zu öffnen — deckt mehrere
+  // gängige Namens-Konventionen ab. Gibt true zurück, wenn ein Öffnen
+  // ausgelöst werden konnte.
+  function tryOpenRealWidget(){
+    try{
+      var w=window;
+      if(w.ConverdinoWidget && typeof w.ConverdinoWidget.open==='function'){ w.ConverdinoWidget.open(); return true; }
+      if(w.Converdino && typeof w.Converdino.open==='function'){ w.Converdino.open(); return true; }
+      if(typeof w.cvOpenWidget==='function'){ w.cvOpenWidget(); return true; }
+      if(typeof w.openConverdino==='function'){ w.openConverdino(); return true; }
+      // Häufiges Muster: das Widget rendert einen eigenen Button — diesen klicken
+      var sel=['#converdino-widget-button','.converdino-launcher','[id*="converdino"] button',
+               '[class*="converdino"] [role="button"]','[class*="cv-widget"] button'];
+      for(var i=0;i<sel.length;i++){
+        var b=document.querySelector(sel[i]);
+        if(b){ b.click(); return true; }
+      }
+    }catch(e){}
+    return false;
   }
 
   window.cvwOpen=function(){
     el('cvw-panel').classList.add('open');
     el('cvw-launcher').style.display='none';
-    // WhatsApp-Option mit dem Bot-Link versehen
     el('cvw-opt-wa').setAttribute('href', waLink());
-    // Auswahl zeigen, Chat-Eingabe noch verbergen
     el('cvw-choose').style.display='flex';
-    el('cvw-body').style.display='none';
-    el('cvw-foot').style.display='none';
+    el('cvw-note').style.display='none';
+    // Widget im Hintergrund schon laden, damit es bereit ist
+    loadRealWidget();
   };
+
   window.cvwStartWeb=function(){
-    el('cvw-choose').style.display='none';
-    el('cvw-body').style.display='flex';
-    el('cvw-foot').style.display='flex';
-    if(!started){
-      started=true;
-      addMsg("Hallo! Ich bin Ihr digitaler Converdino-Berater. Stellen Sie mir gern Ihre Frage — ich antworte sofort.", 'bot');
-    }
-    setTimeout(function(){ el('cvw-input').focus(); }, 100);
+    loadRealWidget();
+    // Mein Auswahl-Fenster schließen, damit sich beide nicht überlagern
+    el('cvw-panel').classList.remove('open');
+    el('cvw-launcher').style.display='block';
+    // Echtes Widget öffnen — ggf. kurz warten, bis das Script geladen ist
+    var tries=0;
+    (function attempt(){
+      if(tryOpenRealWidget()) return;
+      if(++tries<20){ setTimeout(attempt,250); return; }
+      // Konnte nicht automatisch öffnen → Nutzer freundlich hinweisen
+      el('cvw-panel').classList.add('open');
+      el('cvw-launcher').style.display='none';
+      var n=el('cvw-note');
+      n.textContent="Ihr Chat-Fenster öffnet sich unten rechts. Tippen Sie dort auf den grünen Button.";
+      n.style.display='block';
+    })();
   };
+
   window.cvwClose=function(){
     el('cvw-panel').classList.remove('open');
     el('cvw-launcher').style.display='block';
-  };
-
-  window.cvwSend=function(){
-    var inp=el('cvw-input'); var text=(inp.value||'').trim();
-    if(!text) return;
-    addMsg(text,'me'); inp.value='';
-
-    if(!webOk){ // Endpoint vorher schon ausgefallen → direkt auf WhatsApp lenken
-      addWaFallback("Bitte führen Sie das Gespräch über WhatsApp weiter:");
-      return;
-    }
-
-    showTyping();
-    var ctrl = new AbortController();
-    var timer = setTimeout(function(){ ctrl.abort(); }, 12000);
-
-    fetch(CVW.webEndpoint, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(CVW.buildRequest(text, sessionId)),
-      signal: ctrl.signal
-    })
-    .then(function(r){ clearTimeout(timer); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-    .then(function(data){
-      hideTyping();
-      var reply = CVW.readReply(data);
-      if(reply){ addMsg(reply,'bot'); }
-      else { throw new Error('Keine verwertbare Antwort'); }
-    })
-    .catch(function(err){
-      clearTimeout(timer); hideTyping(); webOk=false;
-      addMsg("Der Web-Chat ist gerade nicht erreichbar.", 'bot');
-      addWaFallback("Am schnellsten erreichen Sie unseren Berater jetzt über WhatsApp:");
-    });
   };
 })();
 </script>
