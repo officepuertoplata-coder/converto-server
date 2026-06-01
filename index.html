@@ -559,6 +559,243 @@ document.querySelectorAll('.faq-q').forEach(q=>{
   if(ob){ ob.addEventListener('click',function(){ track('angebot_klick'); }); }
 })();
 </script>
+<!-- ===== Converdino Bot-Widget (Bot LO6J) — WhatsApp + On-Site-Web-Chat ===== -->
+<style>
+  #cvw-launcher{position:fixed;right:24px;bottom:24px;z-index:9999;font-family:'Outfit',sans-serif}
+  #cvw-launcher button{
+    display:inline-flex;align-items:center;gap:10px;border:none;cursor:pointer;
+    background:#25D366;color:#fff;font-family:'Outfit',sans-serif;font-weight:700;font-size:1rem;
+    padding:14px 22px;border-radius:30px;box-shadow:0 8px 26px -8px rgba(37,211,102,.6);
+    transition:transform .18s ease,box-shadow .2s ease;white-space:nowrap;
+  }
+  #cvw-launcher button:hover{transform:translateY(-3px);box-shadow:0 16px 40px -10px rgba(37,211,102,.7)}
+  #cvw-launcher .cvw-ic{width:24px;height:24px;flex-shrink:0;animation:cvw-pulse 2.4s ease-in-out infinite}
+  @keyframes cvw-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}
+
+  #cvw-panel{
+    position:fixed;right:24px;bottom:24px;z-index:10000;width:370px;max-width:calc(100vw - 32px);
+    height:560px;max-height:calc(100vh - 48px);background:#fff;border-radius:20px;overflow:hidden;
+    display:none;flex-direction:column;font-family:'Outfit',sans-serif;
+    box-shadow:0 24px 70px -20px rgba(15,107,52,.5);border:1px solid #d3ebda;
+  }
+  #cvw-panel.open{display:flex}
+  .cvw-head{background:linear-gradient(135deg,#25d366,#0f6b34);color:#fff;padding:16px 18px;
+    display:flex;align-items:center;gap:12px}
+  .cvw-head .cvw-av{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.2);
+    display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+  .cvw-head .cvw-t{font-family:'Fraunces',serif;font-weight:800;font-size:1.1rem;line-height:1.1}
+  .cvw-head .cvw-s{font-size:.8rem;opacity:.9;margin-top:2px}
+  .cvw-head .cvw-x{margin-left:auto;background:none;border:none;color:#fff;font-size:1.5rem;
+    cursor:pointer;line-height:1;padding:0 4px;opacity:.85}
+  .cvw-head .cvw-x:hover{opacity:1}
+
+  .cvw-body{flex:1;overflow-y:auto;padding:18px;background:#f6f9f5;display:flex;flex-direction:column;gap:10px}
+  .cvw-msg{max-width:82%;padding:10px 14px;border-radius:16px;font-size:.95rem;line-height:1.45;white-space:pre-wrap}
+  .cvw-msg.bot{background:#fff;border:1px solid #e3efe8;color:#0d1b12;align-self:flex-start;border-bottom-left-radius:5px}
+  .cvw-msg.me{background:#1faa52;color:#fff;align-self:flex-end;border-bottom-right-radius:5px}
+  .cvw-typing{align-self:flex-start;color:#33473b;font-size:.85rem;font-style:italic;padding:4px 6px}
+
+  .cvw-wa-hint{background:#eef9f1;border:1px solid #d3ebda;border-radius:14px;padding:12px 14px;
+    font-size:.9rem;color:#33473b}
+  .cvw-wa-hint a{display:inline-flex;align-items:center;gap:8px;margin-top:8px;background:#25D366;color:#fff;
+    text-decoration:none;font-weight:700;padding:9px 16px;border-radius:22px;font-size:.9rem}
+
+  .cvw-foot{display:flex;gap:8px;padding:12px;background:#fff;border-top:1px solid #eef2ee}
+  .cvw-foot input{flex:1;border:1.5px solid #cfe9d8;border-radius:22px;padding:11px 16px;
+    font-family:'Outfit',sans-serif;font-size:.95rem;outline:none;color:#0d1b12}
+  .cvw-foot input:focus{border-color:#1faa52}
+  .cvw-foot button{background:#1faa52;border:none;color:#fff;width:44px;height:44px;border-radius:50%;
+    cursor:pointer;font-size:1.1rem;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .cvw-foot button:hover{background:#0f6b34}
+
+  /* Kanal-Auswahl */
+  .cvw-choose{flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px 20px;background:#f6f9f5}
+  .cvw-choose-t{font-family:'Fraunces',serif;font-weight:800;font-size:1.15rem;color:#0d1b12;
+    text-align:center;margin-bottom:20px;line-height:1.25}
+  .cvw-opts{display:flex;flex-direction:column;gap:14px}
+  .cvw-opt{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-decoration:none;
+    border-radius:16px;padding:16px 18px;cursor:pointer;border:1.5px solid #d3ebda;background:#fff;
+    text-align:left;font-family:'Outfit',sans-serif;transition:transform .15s ease,box-shadow .2s ease;width:100%}
+  .cvw-opt:hover{transform:translateY(-2px);box-shadow:0 12px 30px -14px rgba(15,107,52,.45)}
+  .cvw-opt-ic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;
+    font-size:1.4rem;margin-bottom:6px}
+  .cvw-opt-wa .cvw-opt-ic{background:#25D366;color:#fff}
+  .cvw-opt-web .cvw-opt-ic{background:linear-gradient(135deg,#25d366,#0f6b34);color:#fff}
+  .cvw-opt-l{font-weight:700;font-size:1.05rem;color:#0d1b12}
+  .cvw-opt-d{font-size:.85rem;color:#33473b;font-weight:300}
+
+  @media(max-width:600px){
+    #cvw-launcher{right:16px;bottom:16px}
+    #cvw-launcher button{padding:13px 18px;font-size:.95rem}
+    #cvw-panel{right:8px;bottom:8px;width:calc(100vw - 16px);height:calc(100vh - 16px);max-height:none}
+  }
+</style>
+
+<!-- Start-Button -->
+<div id="cvw-launcher">
+  <button type="button" onclick="cvwOpen()" aria-label="Chat mit unserem Berater öffnen">
+    <svg class="cvw-ic" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+      <path d="M16 3C9.4 3 4 8.4 4 15c0 2.1.6 4.1 1.6 5.9L4 29l8.3-1.6c1.7.9 3.6 1.4 5.7 1.4 6.6 0 12-5.4 12-12S22.6 3 16 3zm0 21.8c-1.8 0-3.5-.5-5-1.4l-.4-.2-4.9.9.9-4.8-.2-.4c-1-1.6-1.5-3.4-1.5-5.3 0-5.6 4.6-10.1 10.2-10.1S26.2 9.4 26.2 15 21.6 24.8 16 24.8zm5.6-7.4c-.3-.2-1.8-.9-2.1-1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.5-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.7.1-.1.3-.4.5-.6.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6-.1-.2-.7-1.7-1-2.3-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.2 3.3 5.3 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.8-.7 2-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.2-.6-.4z"/>
+    </svg>
+    Mit Berater chatten
+  </button>
+</div>
+
+<!-- Chat-Fenster -->
+<div id="cvw-panel" role="dialog" aria-label="Converdino Berater-Chat">
+  <div class="cvw-head">
+    <div class="cvw-av">🦖</div>
+    <div>
+      <div class="cvw-t">Converdino Berater</div>
+      <div class="cvw-s">Antwortet in Sekunden</div>
+    </div>
+    <button class="cvw-x" type="button" onclick="cvwClose()" aria-label="Chat schließen">×</button>
+  </div>
+
+  <!-- Kanal-Auswahl: WhatsApp neben Web-Chat -->
+  <div class="cvw-choose" id="cvw-choose">
+    <p class="cvw-choose-t">Wie möchten Sie mit unserem Berater sprechen?</p>
+    <div class="cvw-opts">
+      <a class="cvw-opt cvw-opt-wa" id="cvw-opt-wa" target="_blank" rel="noopener">
+        <span class="cvw-opt-ic">
+          <svg viewBox="0 0 32 32" fill="currentColor" width="26" height="26" aria-hidden="true">
+            <path d="M16 3C9.4 3 4 8.4 4 15c0 2.1.6 4.1 1.6 5.9L4 29l8.3-1.6c1.7.9 3.6 1.4 5.7 1.4 6.6 0 12-5.4 12-12S22.6 3 16 3zm0 21.8c-1.8 0-3.5-.5-5-1.4l-.4-.2-4.9.9.9-4.8-.2-.4c-1-1.6-1.5-3.4-1.5-5.3 0-5.6 4.6-10.1 10.2-10.1S26.2 9.4 26.2 15 21.6 24.8 16 24.8zm5.6-7.4c-.3-.2-1.8-.9-2.1-1-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.5-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.7.1-.1.3-.4.5-.6.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6-.1-.2-.7-1.7-1-2.3-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.2 3.3 5.3 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.8-.7 2-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.2-.6-.4z"/>
+          </svg>
+        </span>
+        <span class="cvw-opt-l">Per WhatsApp</span>
+        <span class="cvw-opt-d">Im Chat fortsetzen, Kontakt bleibt erhalten</span>
+      </a>
+      <button type="button" class="cvw-opt cvw-opt-web" onclick="cvwStartWeb()">
+        <span class="cvw-opt-ic">🌐</span>
+        <span class="cvw-opt-l">Hier im Browser</span>
+        <span class="cvw-opt-d">Sofort chatten, ohne App zu öffnen</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="cvw-body" id="cvw-body" style="display:none"></div>
+  <div class="cvw-foot" id="cvw-foot" style="display:none">
+    <input id="cvw-input" type="text" placeholder="Ihre Nachricht …" autocomplete="off"
+           onkeydown="if(event.key==='Enter')cvwSend()">
+    <button type="button" onclick="cvwSend()" aria-label="Senden">➤</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ===================================================================
+  //  EINSTELLUNGEN — bei Bedarf hier anpassen
+  // ===================================================================
+  var CVW = {
+    botCode: "Anfrage-LO6J",
+    waNumber: "4367764118066",
+    // Endpoint des On-Site-Web-Chats (eigener Server). Wenn dieser nicht
+    // erreichbar ist, fällt der Chat automatisch auf WhatsApp zurück.
+    webEndpoint: "https://converto-server-production.up.railway.app/api/cv/web/message",
+    // Falls euer Endpoint andere Feldnamen erwartet, hier anpassen:
+    buildRequest: function(text, sessionId){
+      return { code: CVW.botCode, message: text, sessionId: sessionId };
+    },
+    // Wie wird die Bot-Antwort aus der JSON-Antwort gelesen? Mehrere
+    // gängige Felder werden geprüft.
+    readReply: function(data){
+      return data.reply || data.message || data.text || data.answer ||
+             (data.data && (data.data.reply || data.data.message)) || null;
+    }
+  };
+  // ===================================================================
+
+  var sessionId = "web-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  var started = false;
+  var webOk = true; // wird false, wenn der Endpoint nicht antwortet
+
+  function el(id){ return document.getElementById(id); }
+  function scrollBottom(){ var b=el('cvw-body'); b.scrollTop=b.scrollHeight; }
+
+  function addMsg(text, who){
+    var d=document.createElement('div');
+    d.className='cvw-msg '+(who==='me'?'me':'bot');
+    d.textContent=text;
+    el('cvw-body').appendChild(d); scrollBottom();
+  }
+  function showTyping(){
+    var t=document.createElement('div'); t.className='cvw-typing'; t.id='cvw-typing';
+    t.textContent='Berater tippt …'; el('cvw-body').appendChild(t); scrollBottom();
+  }
+  function hideTyping(){ var t=el('cvw-typing'); if(t)t.remove(); }
+
+  function waLink(){
+    return "https://wa.me/"+CVW.waNumber+"?text="+encodeURIComponent(CVW.botCode);
+  }
+  function addWaFallback(intro){
+    var box=document.createElement('div'); box.className='cvw-wa-hint';
+    box.innerHTML=(intro||"Sie können das Gespräch auch direkt über WhatsApp führen — dort bleibt der Kontakt erhalten.")+
+      '<br><a href="'+waLink()+'" target="_blank" rel="noopener">💬 In WhatsApp fortsetzen</a>';
+    el('cvw-body').appendChild(box); scrollBottom();
+  }
+
+  window.cvwOpen=function(){
+    el('cvw-panel').classList.add('open');
+    el('cvw-launcher').style.display='none';
+    // WhatsApp-Option mit dem Bot-Link versehen
+    el('cvw-opt-wa').setAttribute('href', waLink());
+    // Auswahl zeigen, Chat-Eingabe noch verbergen
+    el('cvw-choose').style.display='flex';
+    el('cvw-body').style.display='none';
+    el('cvw-foot').style.display='none';
+  };
+  window.cvwStartWeb=function(){
+    el('cvw-choose').style.display='none';
+    el('cvw-body').style.display='flex';
+    el('cvw-foot').style.display='flex';
+    if(!started){
+      started=true;
+      addMsg("Hallo! Ich bin Ihr digitaler Converdino-Berater. Stellen Sie mir gern Ihre Frage — ich antworte sofort.", 'bot');
+    }
+    setTimeout(function(){ el('cvw-input').focus(); }, 100);
+  };
+  window.cvwClose=function(){
+    el('cvw-panel').classList.remove('open');
+    el('cvw-launcher').style.display='block';
+  };
+
+  window.cvwSend=function(){
+    var inp=el('cvw-input'); var text=(inp.value||'').trim();
+    if(!text) return;
+    addMsg(text,'me'); inp.value='';
+
+    if(!webOk){ // Endpoint vorher schon ausgefallen → direkt auf WhatsApp lenken
+      addWaFallback("Bitte führen Sie das Gespräch über WhatsApp weiter:");
+      return;
+    }
+
+    showTyping();
+    var ctrl = new AbortController();
+    var timer = setTimeout(function(){ ctrl.abort(); }, 12000);
+
+    fetch(CVW.webEndpoint, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(CVW.buildRequest(text, sessionId)),
+      signal: ctrl.signal
+    })
+    .then(function(r){ clearTimeout(timer); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(data){
+      hideTyping();
+      var reply = CVW.readReply(data);
+      if(reply){ addMsg(reply,'bot'); }
+      else { throw new Error('Keine verwertbare Antwort'); }
+    })
+    .catch(function(err){
+      clearTimeout(timer); hideTyping(); webOk=false;
+      addMsg("Der Web-Chat ist gerade nicht erreichbar.", 'bot');
+      addWaFallback("Am schnellsten erreichen Sie unseren Berater jetzt über WhatsApp:");
+    });
+  };
+})();
+</script>
+<!-- ===== Ende Converdino Bot-Widget ===== -->
+
 <!-- Cloudflare Web Analytics (cookielos, datensparsam) -->
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js"
         data-cf-beacon='{"token": "2e947a8aac9a4278badcd2e47f29a789"}'></script>
