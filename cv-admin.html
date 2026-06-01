@@ -1203,14 +1203,20 @@ async function openStrategieModal(slotId) {
     if (!a.id) { document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Erst einen Artikel anlegen.</div>'; return; }
     strategieArticleId = a.id;
     const val = a.strategie || '';
+    const bookingVal = a.booking_url || '';
     document.getElementById('convModalBody').innerHTML =
       '<div style="font-size:13px;color:#555;margin-bottom:10px;line-height:1.5;">' +
         'Die Eskalationsleiter dieses Bots. Der Bot bietet die Schritte der Reihe nach an — das Nächste, wenn der Interessent zögert. ' +
         '<b>Nur für dich bearbeitbar</b> — der Kunde sieht sie nur als Anzeige.</div>' +
+      '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">📅 Termin-/Buchungslink (optional)</label>' +
+      '<input id="bookingUrl" type="url" value="' + esc(bookingVal) + '" placeholder="https://cal.com/dein-name/termin" ' +
+        'style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:4px;">' +
+      '<div style="font-size:12px;color:#777;margin-bottom:14px;line-height:1.4;">Wenn hinterlegt, schickt der Bot diesen Link automatisch, sobald der Interessent einem Termin zustimmt. Leer = der Bot sucht ersatzweise einen Link in der Strategie.</div>' +
+      '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">🎯 Gesprächsstrategie</label>' +
       '<textarea id="strategieText" rows="12" style="width:100%;padding:12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;" ' +
         'placeholder="z.B.&#10;1. Termin mit dem Berater anbieten.&#10;2. Bei Zögern: Selbsttest ynhald.com/risk empfehlen.&#10;3. 50% Gutschein fürs Webinar [Link].&#10;4. Rückruf anbieten.&#10;5. Um Newsletter-Erlaubnis bitten.&#10;6. Warm verabschieden.">' + esc(val) + '</textarea>' +
       '<div id="strategieMsg" style="font-size:13px;margin-top:8px;"></div>' +
-      '<button type="button" class="btn btn-g" style="margin-top:10px;" onclick="saveStrategie()">💾 Strategie speichern</button>';
+      '<button type="button" class="btn btn-g" style="margin-top:10px;" onclick="saveStrategie()">💾 Speichern</button>';
   } catch(e) {
     document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
   }
@@ -1218,13 +1224,14 @@ async function openStrategieModal(slotId) {
 
 async function saveStrategie() {
   const txt = document.getElementById('strategieText').value;
+  const booking = document.getElementById('bookingUrl').value;
   const msg = document.getElementById('strategieMsg');
   msg.style.color = '#555'; msg.textContent = 'Speichere …';
   try {
     const r = await fetch(API + '/api/cv/article/' + strategieArticleId + '/persona', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategie: txt })
+      body: JSON.stringify({ strategie: txt, booking_url: booking })
     });
     const d = await r.json();
     if (!r.ok || !d.success) { msg.style.color = 'var(--red)'; msg.textContent = d.error || 'Fehler beim Speichern.'; return; }

@@ -719,11 +719,12 @@ module.exports = function(app, supabase, deps) {
   // ============================================================
   app.post('/api/cv/article/:id/persona', async (req, res) => {
     try {
-      const { bot_name, berater_name, strategie } = req.body;
+      const { bot_name, berater_name, strategie, booking_url } = req.body;
       const update = { updated_at: new Date().toISOString() };
       if (bot_name !== undefined) update.bot_name = (bot_name && String(bot_name).trim()) || null;
       if (berater_name !== undefined) update.berater_name = (berater_name && String(berater_name).trim()) || null;
       if (strategie !== undefined) update.strategie = (strategie && String(strategie).trim()) || null;
+      if (booking_url !== undefined) update.booking_url = (booking_url && String(booking_url).trim()) || null;
 
       const { data, error } = await supabase
         .from('cv_articles')
@@ -2045,7 +2046,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
           break;
 
         case 'send_booking_link': {
-          const link = cvFindBookingLink(session.article && session.article.strategie);
+          const link = cvFindBookingLink(session.article);
           if (link) {
             session._shareLink = { name: 'Termin buchen', url: link };
             await cvLogEvent(session, phone, 'booking_link_sent', { url: link });
@@ -2089,12 +2090,20 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     }
   }
 
-  // ── Buchungslink (z.B. cal.com) aus dem Strategie-Text ziehen ───
-  // So muss der Link nur EINMAL in der Strategie gepflegt werden und wird
-  // beim Werkzeug send_booking_link automatisch zuverlässig angehängt.
-  function cvFindBookingLink(strategieText) {
+  // ── Buchungslink (z.B. cal.com) ermitteln ───
+  // Reihenfolge: 1) eigenes Feld article.booking_url  2) Fallback: Link im Strategie-Text.
+  // So funktioniert es für alle Bots sauber, ohne bestehende (Link in Strategie) zu brechen.
+  function cvFindBookingLink(article) {
+    if (!article) return null;
+    // 1) Eigenes Feld bevorzugen
+    const field = (article.booking_url && String(article.booking_url).trim()) || '';
+    if (field) {
+      const m = field.match(/https?:\/\/[^\s)]+/i);
+      return m ? m[0].replace(/[.,;]+$/, '') : null;
+    }
+    // 2) Fallback: aus dem Strategie-Text ziehen (bevorzugt cal.com)
+    const strategieText = article.strategie || '';
     if (!strategieText) return null;
-    // Bevorzugt cal.com, sonst irgendein https-Link in der Strategie
     const cal = strategieText.match(/https?:\/\/(?:www\.)?cal\.com\/[^\s)]+/i);
     if (cal) return cal[0].replace(/[.,;]+$/, '');
     const any = strategieText.match(/https?:\/\/[^\s)]+/i);
@@ -2998,7 +3007,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     const systemPrompt = basePrompt + erstHinweis + cvLaengenHinweis(botAntwortenWeb);
 
     // Buchungslink aus der Strategie (falls vorhanden) → eigenes Werkzeug
-    const bookingLink = cvFindBookingLink(article && article.strategie);
+    const bookingLink = cvFindBookingLink(article);
 
     // Verfügbare Werkzeuge zusammenstellen
     const webTools = [];
