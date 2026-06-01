@@ -3854,6 +3854,88 @@ Ihr Converdino-Team`;
     }
   });
 
+  // PUT /api/cv/admin/offers/:id — bestehendes Angebot ändern und neu versenden.
+  // Body: company_name, address, contact_name, contact_email, salutation,
+  //       verkauf, beratung, new_number (true = neue Angebotsnummer vergeben)
+  app.put('/api/cv/admin/offers/:id', async (req, res) => {
+    try {
+      const { data: cur, error: curErr } = await supabase
+        .from('cv_offers').select('*').eq('id', req.params.id).maybeSingle();
+      if (curErr) return res.status(500).json({ error: 'Angebot laden: ' + curErr.message });
+      if (!cur) return res.status(404).json({ error: 'Angebot nicht gefunden.' });
+
+      const company_name = (req.body.company_name != null ? req.body.company_name : cur.company_name) || '';
+      const address      = (req.body.address      != null ? req.body.address      : cur.address) || null;
+      const contact_name = (req.body.contact_name != null ? req.body.contact_name : cur.contact_name) || null;
+      const contact_email= (req.body.contact_email!= null ? req.body.contact_email: cur.contact_email) || '';
+      const salutation   = req.body.salutation || '';
+      const verkauf  = parseInt(req.body.verkauf, 10);
+      const beratung = parseInt(req.body.beratung, 10);
+      // Fallback auf bisherige Werte aus dem breakdown, falls nicht mitgesendet
+      const bd = cur.breakdown || {};
+      const vFinal = !isNaN(verkauf)  ? verkauf  : ((bd.verkauf && bd.verkauf.slots) || cur.slots || 0);
+      const bFinal = !isNaN(beratung) ? beratung : ((bd.beratung && bd.beratung.slots) || 0);
+
+      if (!company_name || !contact_email) return res.status(400).json({ error: 'Firma und E-Mail sind Pflicht.' });
+      if ((vFinal + bFinal) < 1) return res.status(400).json({ error: 'Mindestens ein Slot nötig.' });
+      if (!/.+@.+\..+/.test(contact_email)) return res.status(400).json({ error: 'E-Mail-Adresse ungültig.' });
+
+      const p = await cvOfferBerechne({ verkauf: vFinal, beratung: bFinal });
+
+      // Angebotsnummer: behalten oder neu vergeben
+      let offerNumber = cur.offer_number;
+      if (req.body.new_number === true || req.body.new_number === 'true') {
+        const year = new Date().getFullYear();
+        const prefix = `ANG-${year}-`;
+        const { data: existing } = await supabase
+          .from('cv_offers').select('offer_number')
+          .like('offer_number', prefix + '%')
+          .order('offer_number', { ascending: false }).limit(1);
+        let next = 1;
+        if (existing && existing.length > 0) {
+          const lastNum = parseInt(String(existing[0].offer_number).replace(prefix, ''), 10);
+          if (!isNaN(lastNum)) next = lastNum + 1;
+        }
+        offerNumber = prefix + String(next).padStart(4, '0');
+      }
+
+      // Gültigkeit neu setzen (ab heute)
+      const validUntil = new Date();
+      validUntil.setDate(validUntil.getDate() + CV_OFFER_VALID_DAYS);
+      const validUntilStr = validUntil.toISOString().slice(0, 10);
+
+      const updateRow = {
+        offer_number: offerNumber,
+        company_name, address, contact_name, contact_email,
+        slots: vFinal + bFinal, price_net: p.net, vat_rate: p.vatRate, price_vat: p.vat, price_gross: p.gross,
+        breakdown: { detail: p.detail, verkauf: p.verkauf, beratung: p.beratung },
+        valid_until: validUntilStr, status: 'erstellt'
+      };
+      const { data: saved, error: upErr } = await supabase
+        .from('cv_offers').update(updateRow).eq('id', cur.id).select().single();
+      if (upErr) return res.status(500).json({ error: 'Speichern fehlgeschlagen: ' + upErr.message });
+
+      // Neu versenden
+      const { html, text } = cvBuildOfferEmail({ ...saved, salutation }, p);
+      const subject = `Ihr Converdino-Angebot ${offerNumber} für ${company_name}`;
+      const sent = await cvSendOfferEmail(contact_email, subject, html, text);
+      if (sent) {
+        await supabase.from('cv_offers')
+          .update({ status: 'versendet', sent_at: new Date().toISOString() })
+          .eq('id', cur.id);
+      }
+
+      res.json({
+        success: true, sent, offer_number: offerNumber,
+        net: p.net, vat: p.vat, gross: p.gross, vatRate: p.vatRate, valid_until: validUntilStr,
+        message: sent ? 'Angebot aktualisiert und neu versendet.' : 'Angebot aktualisiert, aber Mailversand fehlgeschlagen (siehe Log).'
+      });
+    } catch(e) {
+      console.error('[CV offers PUT]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
   // POST /api/cv/admin/offers/:id/convert — Angebot als Kunde übernehmen
   // Legt automatisch Login + Passwort an (users + cv_subscriptions, ohne Slots),
   // markiert das Angebot als "übernommen" und gibt die Zugangsdaten zurück.

@@ -286,6 +286,7 @@
     <h2 class="card-toggle collapsed" onclick="toggleCard(this)">📄 Angebot erstellen <span class="card-arrow">▾</span></h2>
     <div class="card-body collapsed">
     <div class="sub" style="margin-bottom:14px;">Angebot für einen Interessenten erstellen und per E-Mail senden. Preis = Monatspreis (progressiv), zzgl. gesetzlicher USt. Anbieter: Platin-Sport Marketing &amp; Event GmbH.</div>
+    <div id="offerEditBanner" onclick="cancelEditOffer()" title="Klicken zum Abbrechen der Bearbeitung" style="display:none;cursor:pointer;background:#fff7ed;border:1px solid #fed7aa;color:#8a4b00;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:13px;line-height:1.45;"></div>
     <div id="offerMsg" class="msg"></div>
     <div class="grid">
       <div class="field">
@@ -573,6 +574,50 @@ function offerPreview() {
   }, 300);
 }
 
+// ── Bestehendes Angebot bearbeiten ──
+let editingOfferId = null;  // null = neues Angebot, sonst = ID des bearbeiteten
+
+function editOffer(offerId) {
+  const o = offerCache.find(function(x){ return x.id === offerId; });
+  if (!o) { alert('Angebot nicht gefunden (Liste neu laden).'); return; }
+  editingOfferId = offerId;
+  // Felder befüllen
+  document.getElementById('o-company').value = o.company_name || '';
+  document.getElementById('o-contact').value = o.contact_name || '';
+  document.getElementById('o-email').value   = o.contact_email || '';
+  document.getElementById('o-address').value = o.address || '';
+  // Verkauf/Beratung aus breakdown holen (Fallback: alles als Verkauf)
+  const bd = o.breakdown || {};
+  const vk = (bd.verkauf && bd.verkauf.slots != null) ? bd.verkauf.slots : (o.slots || 0);
+  const be = (bd.beratung && bd.beratung.slots != null) ? bd.beratung.slots : 0;
+  document.getElementById('o-slots').value = vk || '';
+  document.getElementById('o-beratung').value = be || '';
+  // Sichtbar machen: Banner + Button-Text
+  const banner = document.getElementById('offerEditBanner');
+  if (banner) { banner.style.display = 'block'; banner.textContent = '✏️ Du bearbeitest Angebot ' + (o.offer_number || '') + ' — Änderungen werden beim Senden übernommen. (Abbrechen lädt die Seite neu.)'; }
+  const btn = document.getElementById('offerSendBtn');
+  if (btn) btn.textContent = 'Geändertes Angebot senden';
+  // Karte aufklappen falls zugeklappt + hinscrollen
+  const card = document.getElementById('o-company').closest('.card');
+  if (card) {
+    const body = card.querySelector('.card-body');
+    const head = card.querySelector('.card-toggle');
+    if (body && body.classList.contains('collapsed')) { body.classList.remove('collapsed'); if (head) head.classList.remove('collapsed'); }
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  offerPreview();
+}
+
+function cancelEditOffer() {
+  editingOfferId = null;
+  ['o-company','o-contact','o-email','o-address','o-slots','o-beratung'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+  const banner = document.getElementById('offerEditBanner');
+  if (banner) banner.style.display = 'none';
+  const btn = document.getElementById('offerSendBtn');
+  if (btn) btn.textContent = 'Angebot per E-Mail senden';
+  offerPreview();
+}
+
 async function sendOffer() {
   const company = document.getElementById('o-company').value.trim();
   const contact = document.getElementById('o-contact').value.trim();
@@ -589,36 +634,55 @@ async function sendOffer() {
   if (!email || !/.+@.+\..+/.test(email)) { msgEl.className = 'msg err'; msgEl.textContent = 'Gültige E-Mail fehlt.'; return; }
   if (slots < 1 && beratung < 1) { msgEl.className = 'msg err'; msgEl.textContent = 'Mindestens ein Verkaufs-Slot oder Beratungsbot nötig.'; return; }
 
-  if (!confirm('Angebot an ' + email + ' senden?')) return;
+  const istEdit = !!editingOfferId;
+  let url, method, payload;
+  if (istEdit) {
+    if (!confirm('Geändertes Angebot an ' + email + ' senden?')) return;
+    // Nummer behalten oder neu vergeben?
+    const neueNummer = confirm('Neue Angebotsnummer vergeben?\n\nOK = neue Nummer (z.B. ANG-2026-0042)\nAbbrechen = gleiche Nummer behalten (Neufassung)');
+    url = API + '/api/cv/admin/offers/' + editingOfferId;
+    method = 'PUT';
+    payload = { company_name: company, contact_name: contact, salutation: salutation, contact_email: email, address: address, verkauf: slots, beratung: beratung, new_number: neueNummer };
+  } else {
+    if (!confirm('Angebot an ' + email + ' senden?')) return;
+    url = API + '/api/cv/admin/offers';
+    method = 'POST';
+    payload = { company_name: company, contact_name: contact, salutation: salutation, contact_email: email, address: address, verkauf: slots, beratung: beratung };
+  }
 
   btn.disabled = true;
   const oldTxt = btn.textContent;
   btn.textContent = 'Sende …';
   try {
-    const r = await fetch(API + '/api/cv/admin/offers', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company_name: company, contact_name: contact, salutation: salutation, contact_email: email, address: address, verkauf: slots, beratung: beratung })
+    const r = await fetch(url, {
+      method: method, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
     const d = await r.json();
     if (!r.ok) { msgEl.className = 'msg err'; msgEl.textContent = d.error || 'Fehler beim Senden.'; }
     else {
       msgEl.className = d.sent ? 'msg ok' : 'msg err';
-      msgEl.textContent = (d.sent ? '✓ Angebot ' + d.offer_number + ' versendet an ' + email : '⚠ Angebot ' + d.offer_number + ' erstellt, aber Mailversand fehlgeschlagen') +
+      const verb = istEdit ? 'aktualisiert & versendet' : 'versendet';
+      msgEl.textContent = (d.sent ? '✓ Angebot ' + d.offer_number + ' ' + verb + ' an ' + email : '⚠ Angebot ' + d.offer_number + ' gespeichert, aber Mailversand fehlgeschlagen') +
         ' · ' + fmtEuro(d.net) + ' netto / Monat';
       if (d.sent) {
+        editingOfferId = null;
+        const banner = document.getElementById('offerEditBanner');
+        if (banner) banner.style.display = 'none';
         document.getElementById('o-company').value = '';
         document.getElementById('o-contact').value = '';
         document.getElementById('o-salutation').value = '';
         document.getElementById('o-email').value = '';
         document.getElementById('o-address').value = '';
         document.getElementById('o-slots').value = '';
+        document.getElementById('o-beratung').value = '';
         offerPreview();
       }
       loadOffers();
     }
   } catch(e) { msgEl.className = 'msg err'; msgEl.textContent = 'Fehler: ' + e.message; }
   btn.disabled = false;
-  btn.textContent = oldTxt;
+  btn.textContent = istEdit ? 'Geändertes Angebot senden' : 'Angebot per E-Mail senden';
 }
 
 // ── Angebotsliste mit Aktiv/Archiv + Suche ──
@@ -678,7 +742,8 @@ function renderOffers() {
       aktion = '<span style="font-size:12px;color:var(--mu);">Kunde angelegt</span>';
     } else {
       statusTxt = o.status === 'versendet' ? '✓ versendet' : 'erstellt';
-      aktion = '<button type="button" class="btn btn-sm btn-g" onclick="convertOffer(\'' + o.id + '\', this)">Als Kunde übernehmen</button>';
+      aktion = '<button type="button" class="btn btn-sm btn-dark" onclick="editOffer(\'' + o.id + '\')" style="margin-right:6px;">Ändern</button>' +
+               '<button type="button" class="btn btn-sm btn-g" onclick="convertOffer(\'' + o.id + '\', this)">Als Kunde übernehmen</button>';
     }
     html += '<tr>' +
       '<td><strong>' + (o.offer_number || '') + '</strong></td>' +
