@@ -3374,7 +3374,13 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
 
       const token = 'web_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
       const turn = await cvRunWebTurn(loaded.slot, loaded.article, [], null);
-      const reply = turn.reply;
+      let reply = turn.reply;
+      // Falls der Bot bereits in der Begrüßung einen Link anbietet: anhängen.
+      if (turn.shareLink && turn.shareLink.url && reply.indexOf(turn.shareLink.url) === -1) {
+        const icon  = (turn.shareLink.name === 'Termin buchen') ? '📅' : '📎';
+        const label = (turn.shareLink.name === 'Termin buchen') ? 'Termin buchen: ' : '';
+        reply = reply.replace(/\s*$/, '') + '\n\n' + icon + ' ' + label + turn.shareLink.url;
+      }
       const history = [{ role: 'assistant', content: reply }];
 
       const { error: insErr } = await supabase.from('cv_web_sessions').insert({
@@ -3419,6 +3425,14 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
 
       const turn = await cvRunWebTurn(slot, article, history, msg, shareableDocs);
       let replyOut = turn.reply;
+
+      // Geteilten Link / Buchungslink an die Antwort anhängen (analog WhatsApp-Turn).
+      // cvRunWebTurn liefert turn.shareLink {name,url}, hängt ihn aber selbst nicht an.
+      if (turn.shareLink && turn.shareLink.url && replyOut.indexOf(turn.shareLink.url) === -1) {
+        const icon  = (turn.shareLink.name === 'Termin buchen') ? '📅' : '📎';
+        const label = (turn.shareLink.name === 'Termin buchen') ? 'Termin buchen: ' : '';
+        replyOut = replyOut.replace(/\s*$/, '') + '\n\n' + icon + ' ' + label + turn.shareLink.url;
+      }
 
       history.push({ role: 'assistant', content: replyOut });
 
