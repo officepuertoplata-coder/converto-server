@@ -33,9 +33,12 @@
 
   // --- Styles injizieren ---
   var css = '' +
-  '.cvw-btn{position:fixed;bottom:24px;right:24px;z-index:2147483000;width:60px;height:60px;border-radius:50%;background:' + C.green + ';box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer;display:flex;align-items:center;justify-content:center;border:none;transition:transform .15s}' +
-  '.cvw-btn:hover{transform:scale(1.06)}' +
-  '.cvw-btn svg{width:30px;height:30px}' +
+  '.cvw-btn{position:fixed;bottom:24px;right:24px;z-index:2147483000;background:' + C.green + ';box-shadow:0 8px 26px -8px rgba(37,211,102,.6);cursor:pointer;display:inline-flex;align-items:center;gap:11px;border:none;padding:12px 22px;border-radius:22px;transition:transform .15s,box-shadow .2s;text-align:left;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:calc(100vw - 32px)}' +
+  '.cvw-btn:hover{transform:translateY(-3px);box-shadow:0 16px 40px -10px rgba(37,211,102,.7)}' +
+  '.cvw-btn svg{width:24px;height:24px;flex-shrink:0}' +
+  '.cvw-btn .cvw-btn-txt{display:flex;flex-direction:column;line-height:1.15}' +
+  '.cvw-btn .cvw-btn-main{font-weight:700;font-size:15px;color:' + C.ink + '}' +
+  '.cvw-btn .cvw-btn-sub{font-weight:500;font-size:11.5px;color:' + C.ink + ';opacity:.82;letter-spacing:.01em;white-space:nowrap}' +
   '.cvw-panel{position:fixed;bottom:96px;right:24px;z-index:2147483000;width:370px;max-width:calc(100vw - 32px);height:540px;max-height:calc(100vh - 130px);background:' + C.white + ';border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
   '.cvw-panel.cvw-open{display:flex}' +
   '.cvw-head{background:' + C.greenDark + ';color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}' +
@@ -72,7 +75,8 @@
   var btn = document.createElement('button');
   btn.className = 'cvw-btn';
   btn.setAttribute('aria-label', 'Chat öffnen');
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#0d1b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>';
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#0d1b12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>' +
+    '<span class="cvw-btn-txt"><span class="cvw-btn-main">Mit Berater chatten</span><span class="cvw-btn-sub">Information · Beratung · Livetest</span></span>';
 
   var panel = document.createElement('div');
   panel.className = 'cvw-panel';
@@ -298,7 +302,7 @@
   });
   closeBtn.addEventListener('click', function () {
     panel.classList.remove('cvw-open');
-    btn.style.display = 'flex';
+    btn.style.display = 'inline-flex';
   });
   sendBtn.addEventListener('click', sendMessage);
   input.addEventListener('keydown', function (e) {
