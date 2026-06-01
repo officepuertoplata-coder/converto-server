@@ -2867,13 +2867,14 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
       if (vorhanden && vorhanden.id) {
         const { error } = await supabase
           .from('cv_price_tiers')
-          .update({ price_per_bot: preis, active: true })
+          .update({ price_per_bot: preis, active: true, monthly_total: preis })
           .eq('id', vorhanden.id);
         if (error) return res.status(500).json({ error: 'Speichern: ' + error.message });
       } else {
+        // monthly_total ist NOT-NULL; für den Beratungs-Sondereintrag inhaltlich = Festpreis pro Bot.
         const { error } = await supabase
           .from('cv_price_tiers')
-          .insert({ bots: 0, price_per_bot: preis, active: true, sort_order: 999 });
+          .insert({ bots: 0, price_per_bot: preis, active: true, sort_order: 999, monthly_total: preis });
         if (error) return res.status(500).json({ error: 'Anlegen: ' + error.message });
       }
       res.json({ success: true, beratung_preis: preis });
