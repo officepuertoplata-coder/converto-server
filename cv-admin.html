@@ -1192,6 +1192,7 @@ function settRow(label, value) {
 
 // ── Gesprächsstrategie / Eskalationsleiter bearbeiten (NUR Admin) ──
 let strategieArticleId = null;
+let strategieSlotId = null;
 async function openStrategieModal(slotId) {
   document.getElementById('convModalTitle').innerHTML = '🎯 Gesprächsstrategie';
   document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Lade …</div>';
@@ -1202,12 +1203,29 @@ async function openStrategieModal(slotId) {
     const a = (d && d.article) || {};
     if (!a.id) { document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Erst einen Artikel anlegen.</div>'; return; }
     strategieArticleId = a.id;
+    strategieSlotId = slotId;
+    const slot = (d && d.slot) || {};
+    const istVerkauf = (slot.mode !== 'beratung');
+    const payMode = slot.payment_mode || 'deposit';
     const val = a.strategie || '';
     const bookingVal = a.booking_url || '';
+    const modusBlock = istVerkauf
+      ? '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">💳 Zahlungsmodus</label>' +
+        '<select id="paymentMode" onchange="onPaymentModeChange()" ' +
+          'style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:4px;background:#fff;">' +
+          '<option value="deposit"' + (payMode==='deposit'?' selected':'') + '>Anzahlung / Reservierung (Teilbetrag online, Rest bei Übergabe)</option>' +
+          '<option value="full"' + (payMode==='full'?' selected':'') + '>Vollzahlung (gesamter Kaufpreis sofort online)</option>' +
+          '<option value="lead"' + (payMode==='lead'?' selected':'') + '>Nur Lead (keine Online-Zahlung, Verkäufer übernimmt)</option>' +
+        '</select>' +
+        '<div id="payModeWarn" style="display:none;font-size:12px;color:#8a4b00;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:9px 11px;margin-bottom:6px;line-height:1.45;">' +
+          '⚠️ <b>Vollzahlung:</b> Hier hält die Plattform kurzzeitig den <b>gesamten</b> Kaufpreis treuhänderisch. Das hat erhebliche rechtliche und steuerliche Tragweite (Treuhandhaftung, Geldwäsche, Gewährleistung, Widerruf). <b>Vor dem ersten echten Euro</b> unbedingt anwaltlich/steuerlich freigeben lassen — im Stripe-Testmodus ist das Ausprobieren risikofrei.</div>' +
+        '<div style="font-size:12px;color:#777;margin-bottom:14px;line-height:1.4;">Steuert, was der Bot beim Kaufabschluss tut. „Nur Lead" verschickt nie einen Zahlungslink.</div>'
+      : '';
     document.getElementById('convModalBody').innerHTML =
       '<div style="font-size:13px;color:#555;margin-bottom:10px;line-height:1.5;">' +
         'Die Eskalationsleiter dieses Bots. Der Bot bietet die Schritte der Reihe nach an — das Nächste, wenn der Interessent zögert. ' +
         '<b>Nur für dich bearbeitbar</b> — der Kunde sieht sie nur als Anzeige.</div>' +
+      modusBlock +
       '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">📅 Termin-/Buchungslink (optional)</label>' +
       '<input id="bookingUrl" type="url" value="' + esc(bookingVal) + '" placeholder="https://cal.com/dein-name/termin" ' +
         'style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:4px;">' +
@@ -1217,14 +1235,23 @@ async function openStrategieModal(slotId) {
         'placeholder="z.B.&#10;1. Termin mit dem Berater anbieten.&#10;2. Bei Zögern: Selbsttest ynhald.com/risk empfehlen.&#10;3. 50% Gutschein fürs Webinar [Link].&#10;4. Rückruf anbieten.&#10;5. Um Newsletter-Erlaubnis bitten.&#10;6. Warm verabschieden.">' + esc(val) + '</textarea>' +
       '<div id="strategieMsg" style="font-size:13px;margin-top:8px;"></div>' +
       '<button type="button" class="btn btn-g" style="margin-top:10px;" onclick="saveStrategie()">💾 Speichern</button>';
+    onPaymentModeChange();
   } catch(e) {
     document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
   }
 }
 
+function onPaymentModeChange() {
+  var sel = document.getElementById('paymentMode');
+  var warn = document.getElementById('payModeWarn');
+  if (!sel || !warn) return;
+  warn.style.display = (sel.value === 'full') ? 'block' : 'none';
+}
+
 async function saveStrategie() {
   const txt = document.getElementById('strategieText').value;
   const booking = document.getElementById('bookingUrl').value;
+  const modeSel = document.getElementById('paymentMode');
   const msg = document.getElementById('strategieMsg');
   msg.style.color = '#555'; msg.textContent = 'Speichere …';
   try {
@@ -1235,6 +1262,16 @@ async function saveStrategie() {
     });
     const d = await r.json();
     if (!r.ok || !d.success) { msg.style.color = 'var(--red)'; msg.textContent = d.error || 'Fehler beim Speichern.'; return; }
+    // Zahlungsmodus separat speichern (liegt auf dem Slot)
+    if (modeSel && strategieSlotId) {
+      const r2 = await fetch(API + '/api/cv/slot/' + strategieSlotId + '/quicksettings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_mode: modeSel.value })
+      });
+      const d2 = await r2.json();
+      if (!r2.ok || !d2.success) { msg.style.color = 'var(--red)'; msg.textContent = (d2 && d2.error) || 'Fehler beim Speichern des Zahlungsmodus.'; return; }
+    }
     msg.style.color = 'var(--g2)'; msg.textContent = '✅ Gespeichert. Wirkt ab dem nächsten Gespräch.';
   } catch(e) { msg.style.color = 'var(--red)'; msg.textContent = 'Verbindungsfehler: ' + e.message; }
 }
