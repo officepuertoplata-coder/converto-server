@@ -2757,17 +2757,58 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     return { total: Math.round(summe * 100) / 100, detail };
   }
 
-  // GET — progressiven Preis für eine Slot-Anzahl berechnen
+  // ── Beratungsbot-Festpreis ───────────────────────────────────
+  // Beratungsbots haben KEINE Mengenstaffel: linearer Festpreis pro Bot (Standard 190 € netto).
+  // Gespeichert als Sonder-Eintrag in cv_price_tiers mit bots = 0 (reservierter Marker),
+  // damit keine neue Tabelle/SQL nötig ist. Dieser Eintrag wird in der normalen
+  // Verkaufs-Staffel-Anzeige ausgeblendet (bots > 0 filtern).
+  const CV_BERATUNG_DEFAULT = 190;
+  async function cvGetBeratungPreis() {
+    try {
+      const { data } = await supabase
+        .from('cv_price_tiers').select('price_per_bot').eq('bots', 0).maybeSingle();
+      if (data && data.price_per_bot != null) return Number(data.price_per_bot);
+    } catch (e) { /* Fallback unten */ }
+    return CV_BERATUNG_DEFAULT;
+  }
+
+  // Slots eines Kunden nach Typ zählen (verkauf vs. beratung)
+  async function cvZaehleSlotsNachTyp(subId) {
+    const { data: slots } = await supabase
+      .from('cv_slots').select('mode').eq('subscription_id', subId);
+    let verkauf = 0, beratung = 0;
+    for (const s of (slots || [])) {
+      if (s.mode === 'beratung') beratung++; else verkauf++;
+    }
+    return { verkauf, beratung };
+  }
+
+  // GET — Preis für eine Slot-Anzahl berechnen (Verkauf = Staffel, Beratung = Festpreis)
   app.get('/api/cv/admin/price-calc', async (req, res) => {
     try {
-      const slots = parseInt(req.query.slots, 10);
-      if (!slots || slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
+      const verkaufSlots  = parseInt(req.query.slots, 10) || parseInt(req.query.verkauf, 10) || 0;
+      const beratungSlots = parseInt(req.query.beratung, 10) || 0;
+      if (verkaufSlots < 1 && beratungSlots < 1) {
+        return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
+      }
       const { data: tiers, error } = await supabase
         .from('cv_price_tiers').select('bots, price_per_bot')
-        .eq('active', true).order('bots', { ascending: true });
+        .eq('active', true).gt('bots', 0).order('bots', { ascending: true });
       if (error) return res.status(500).json({ error: 'Stufen laden: ' + error.message });
-      const result = cvBerechneProgressiv(slots, tiers || []);
-      res.json({ slots, total: result.total, detail: result.detail });
+
+      const vResult = cvBerechneProgressiv(verkaufSlots, tiers || []);
+      const beratungPreis = await cvGetBeratungPreis();
+      const beratungTotal = Math.round(beratungSlots * beratungPreis * 100) / 100;
+      const total = Math.round((vResult.total + beratungTotal) * 100) / 100;
+
+      res.json({
+        slots: verkaufSlots + beratungSlots,
+        verkauf:  { slots: verkaufSlots, total: vResult.total, detail: vResult.detail },
+        beratung: { slots: beratungSlots, preis_pro_bot: beratungPreis, total: beratungTotal },
+        total,
+        // Rückwärtskompatibel: bei reiner Verkaufsabfrage bleiben diese Felder gültig
+        detail: vResult.detail
+      });
     } catch(e) {
       console.error('[CV price-calc]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
@@ -2782,9 +2823,42 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
         .select('*')
         .order('sort_order', { ascending: true });
       if (error) return res.status(500).json({ error: 'Laden: ' + error.message });
-      res.json({ tiers: data || [] });
+      const alle = data || [];
+      // Verkaufs-Staffel = normale Stufen (bots > 0). Der bots=0-Eintrag ist der Beratungs-Festpreis.
+      const tiers = alle.filter(t => Number(t.bots) > 0);
+      const beratung = alle.find(t => Number(t.bots) === 0);
+      const beratungPreis = beratung && beratung.price_per_bot != null
+        ? Number(beratung.price_per_bot) : CV_BERATUNG_DEFAULT;
+      res.json({ tiers, beratung_preis: beratungPreis });
     } catch(e) {
       console.error('[CV price-tiers GET]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // PUT — Beratungs-Festpreis setzen (eigener, klarer Endpoint)
+  app.put('/api/cv/admin/beratung-preis', async (req, res) => {
+    try {
+      const preis = parseFloat((req.body || {}).price_per_bot);
+      if (isNaN(preis) || preis < 0) return res.status(400).json({ error: 'Preis fehlt/ungültig.' });
+      // Sonder-Eintrag bots=0 anlegen oder aktualisieren (upsert von Hand)
+      const { data: vorhanden } = await supabase
+        .from('cv_price_tiers').select('id').eq('bots', 0).maybeSingle();
+      if (vorhanden && vorhanden.id) {
+        const { error } = await supabase
+          .from('cv_price_tiers')
+          .update({ price_per_bot: preis, active: true })
+          .eq('id', vorhanden.id);
+        if (error) return res.status(500).json({ error: 'Speichern: ' + error.message });
+      } else {
+        const { error } = await supabase
+          .from('cv_price_tiers')
+          .insert({ bots: 0, price_per_bot: preis, active: true, sort_order: 999 });
+        if (error) return res.status(500).json({ error: 'Anlegen: ' + error.message });
+      }
+      res.json({ success: true, beratung_preis: preis });
+    } catch(e) {
+      console.error('[CV beratung-preis PUT]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
     }
   });
@@ -3432,17 +3506,32 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
   const CV_OFFER_CAL_URL  = process.env.CV_OFFER_CAL_URL || 'https://cal.com/alexander-zajic/digitaler-verkaufsberater-24-7';
   const CV_OFFER_TEST_TO  = process.env.CV_OFFER_TEST_TO || 'office@ynhald.com';
 
-  // Hilfsfunktion: aktuelle Preisstufen laden + progressiv rechnen
-  async function cvOfferBerechne(slots) {
+  // Hilfsfunktion: Preis berechnen — Verkauf (Staffel) + Beratung (Festpreis × n).
+  // Akzeptiert wahlweise eine Zahl (= nur Verkaufsslots, rückwärtskompatibel)
+  // oder ein Objekt { verkauf, beratung }.
+  async function cvOfferBerechne(arg) {
+    const verkaufSlots  = (typeof arg === 'object' && arg) ? (parseInt(arg.verkauf, 10) || 0)  : (parseInt(arg, 10) || 0);
+    const beratungSlots = (typeof arg === 'object' && arg) ? (parseInt(arg.beratung, 10) || 0) : 0;
+
     const { data: tiers, error } = await supabase
       .from('cv_price_tiers').select('bots, price_per_bot')
-      .eq('active', true).order('bots', { ascending: true });
+      .eq('active', true).gt('bots', 0).order('bots', { ascending: true });
     if (error) throw new Error('Preisstufen laden: ' + error.message);
-    const result = cvBerechneProgressiv(slots, tiers || []);
-    const net   = result.total;
-    const vat   = Math.round(net * CV_OFFER_VAT) / 100;     // = net * (CV_OFFER_VAT/100)
+
+    const vResult = cvBerechneProgressiv(verkaufSlots, tiers || []);
+    const beratungPreis = await cvGetBeratungPreis();
+    const beratungTotal = Math.round(beratungSlots * beratungPreis * 100) / 100;
+
+    const net   = Math.round((vResult.total + beratungTotal) * 100) / 100;
+    const vat   = Math.round(net * CV_OFFER_VAT) / 100;
     const gross = Math.round((net + vat) * 100) / 100;
-    return { net, vat, gross, vatRate: CV_OFFER_VAT, detail: result.detail };
+    return {
+      net, vat, gross, vatRate: CV_OFFER_VAT,
+      detail: vResult.detail,
+      verkauf:  { slots: verkaufSlots, net: vResult.total, detail: vResult.detail },
+      beratung: { slots: beratungSlots, preis_pro_bot: beratungPreis, net: beratungTotal },
+      slots: verkaufSlots + beratungSlots
+    };
   }
 
   // Euro-Formatierung (de-AT)
@@ -3453,10 +3542,13 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
   // POST /api/cv/admin/offers/preview — NUR rechnen, nichts speichern/senden
   app.post('/api/cv/admin/offers/preview', async (req, res) => {
     try {
-      const slots = parseInt(req.body.slots, 10);
-      if (!slots || slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
-      const p = await cvOfferBerechne(slots);
-      res.json({ slots, ...p });
+      const b = req.body || {};
+      // Rückwärtskompatibel: 'slots' allein = Verkaufsslots
+      const verkauf  = parseInt(b.verkauf, 10) || parseInt(b.slots, 10) || 0;
+      const beratung = parseInt(b.beratung, 10) || 0;
+      if (verkauf < 1 && beratung < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
+      const p = await cvOfferBerechne({ verkauf, beratung });
+      res.json({ ...p });
     } catch(e) {
       console.error('[CV offers/preview]', e);
       res.status(500).json({ error: 'Unerwartet: ' + e.message });
@@ -3543,10 +3635,14 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
   <div style="background:#fff;border:1px solid #dde7df;border-radius:12px;padding:24px;margin-bottom:16px">
     <div style="font-size:16px;font-weight:800;color:#0d1b12;margin-bottom:12px">Ihr Angebot</div>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
-      <tr style="border-bottom:1px solid #eee">
-        <td style="padding:8px 0">Converdino — digitaler Verkaufsberater</td>
-        <td style="padding:8px 0;text-align:right">${o.slots} ${o.slots === 1 ? 'Slot' : 'Slots'}</td>
-      </tr>
+      ${(p.verkauf && p.verkauf.slots > 0) ? `<tr style="border-bottom:1px solid #eee">
+        <td style="padding:8px 0">Verkaufsberater (mit Verhandlung) — ${p.verkauf.slots} ${p.verkauf.slots === 1 ? 'Slot' : 'Slots'}</td>
+        <td style="padding:8px 0;text-align:right">${cvFmtEuro(p.verkauf.net)}</td>
+      </tr>` : ''}
+      ${(p.beratung && p.beratung.slots > 0) ? `<tr style="border-bottom:1px solid #eee">
+        <td style="padding:8px 0">Beratungsbot — ${p.beratung.slots} × ${cvFmtEuro(p.beratung.preis_pro_bot)}</td>
+        <td style="padding:8px 0;text-align:right">${cvFmtEuro(p.beratung.net)}</td>
+      </tr>` : ''}
       <tr style="border-bottom:1px solid #eee">
         <td style="padding:8px 0">Monatspreis (netto)</td>
         <td style="padding:8px 0;text-align:right">${cvFmtEuro(p.net)}</td>
@@ -3601,8 +3697,7 @@ WAS EIN SLOT BEDEUTET
 Ein Slot ist Ihr laufender Verkaufsplatz — nicht auf ein einzelnes Produkt begrenzt. Sobald ein Produkt verkauft ist, stellen Sie sofort das nächste ein. So nutzen Sie denselben Slot für beliebig viele Artikel nacheinander. Jeder Slot wird monatlich gebucht.
 
 IHR ANGEBOT
-Converdino — digitaler Verkaufsberater: ${o.slots} ${o.slots === 1 ? 'Slot' : 'Slots'}
-Monatspreis (netto): ${cvFmtEuro(p.net)}
+${(p.verkauf && p.verkauf.slots > 0) ? `Verkaufsberater (mit Verhandlung): ${p.verkauf.slots} ${p.verkauf.slots === 1 ? 'Slot' : 'Slots'} — ${cvFmtEuro(p.verkauf.net)}\n` : ''}${(p.beratung && p.beratung.slots > 0) ? `Beratungsbot: ${p.beratung.slots} × ${cvFmtEuro(p.beratung.preis_pro_bot)} — ${cvFmtEuro(p.beratung.net)}\n` : ''}Monatspreis (netto): ${cvFmtEuro(p.net)}
 zzgl. ${p.vatRate}% USt: ${cvFmtEuro(p.vat)}
 Monatspreis brutto: ${cvFmtEuro(p.gross)}
 
@@ -3643,13 +3738,15 @@ Ihr Converdino-Team`;
   app.post('/api/cv/admin/offers', async (req, res) => {
     try {
       const { company_name, address, contact_name, contact_email, salutation } = req.body;
-      const slots = parseInt(req.body.slots, 10);
+      const verkauf  = parseInt(req.body.verkauf, 10) || parseInt(req.body.slots, 10) || 0;
+      const beratung = parseInt(req.body.beratung, 10) || 0;
+      const slots = verkauf + beratung;
       if (!company_name || !contact_email) return res.status(400).json({ error: 'Firma und E-Mail sind Pflicht.' });
-      if (!slots || slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
+      if (slots < 1) return res.status(400).json({ error: 'Slot-Anzahl fehlt/ungültig.' });
       if (!/.+@.+\..+/.test(contact_email)) return res.status(400).json({ error: 'E-Mail-Adresse ungültig.' });
 
-      // Preis berechnen (gleiche Logik wie Preisrechner)
-      const p = await cvOfferBerechne(slots);
+      // Preis berechnen (Verkauf = Staffel, Beratung = Festpreis)
+      const p = await cvOfferBerechne({ verkauf, beratung });
 
       // Fortlaufende Angebotsnummer ANG-JAHR-XXXX
       const year = new Date().getFullYear();
@@ -3676,7 +3773,7 @@ Ihr Converdino-Team`;
         company_name, address: address || null,
         contact_name: contact_name || null, contact_email,
         slots, price_net: p.net, vat_rate: p.vatRate, price_vat: p.vat, price_gross: p.gross,
-        breakdown: p.detail, valid_until: validUntilStr, status: 'erstellt'
+        breakdown: { detail: p.detail, verkauf: p.verkauf, beratung: p.beratung }, valid_until: validUntilStr, status: 'erstellt'
       };
       const { data: saved, error: insErr } = await supabase
         .from('cv_offers').insert(offerRow).select().single();

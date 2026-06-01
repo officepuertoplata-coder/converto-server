@@ -259,13 +259,24 @@
       </div>
     </div>
     <div class="tier-calc">
-      <div class="tier-add-title">💡 Preisrechner (progressives Stufenmodell)</div>
-      <div class="sub" style="margin:0 0 10px;">Jeder Slot kostet den Preis der höchsten erreichten Stufe. Gesamtpreis = Summe aller Slots.</div>
-      <div class="tier-calc-row">
-        <input type="number" id="calcSlots" placeholder="Anzahl Slots" min="1" oninput="calcPrice()">
+      <div class="tier-add-title">💡 Preisrechner</div>
+      <div class="sub" style="margin:0 0 10px;">Verkaufs-Slots = progressive Staffel. Beratungsbots = Festpreis × Anzahl (ohne Mengenrabatt).</div>
+      <div class="tier-calc-row" style="gap:8px;flex-wrap:wrap;">
+        <input type="number" id="calcSlots" placeholder="Verkaufs-Slots" min="0" oninput="calcPrice()" style="flex:1;min-width:110px;">
+        <input type="number" id="calcBeratung" placeholder="Beratungsbots" min="0" oninput="calcPrice()" style="flex:1;min-width:110px;">
         <div id="calcResult" class="tier-calc-result">—</div>
       </div>
       <div id="calcDetail" class="tier-calc-detail"></div>
+    </div>
+    <div class="tier-add" style="margin-top:12px;">
+      <div class="tier-add-title">🧭 Beratungsbot-Preis (Festpreis, ohne Staffel)</div>
+      <div class="sub" style="margin:0 0 10px;">Gilt linear pro Beratungsbot: 2 Bots = 2× Preis. Netto, zzgl. USt.</div>
+      <div class="tier-calc-row" style="gap:8px;">
+        <input type="number" id="beratungPreisInput" placeholder="z. B. 190" min="0" step="0.01" style="flex:1;">
+        <span style="font-size:13px;color:var(--muted);align-self:center;">€ netto / Bot</span>
+        <button type="button" class="btn btn-g btn-sm" onclick="saveBeratungPreis()">Speichern</button>
+      </div>
+      <div id="beratungPreisMsg" class="msg" style="margin-top:8px;"></div>
     </div>
     </div>
   </div>
@@ -300,8 +311,12 @@
         <input id="o-email" placeholder="kunde@firma.at">
       </div>
       <div class="field">
-        <label>Anzahl Slots *</label>
-        <input type="number" id="o-slots" placeholder="z. B. 10" min="1" oninput="offerPreview()">
+        <label>Verkaufs-Slots (mit Verhandlung)</label>
+        <input type="number" id="o-slots" placeholder="z. B. 10" min="0" oninput="offerPreview()">
+      </div>
+      <div class="field">
+        <label>Beratungsbots (Festpreis)</label>
+        <input type="number" id="o-beratung" placeholder="z. B. 2" min="0" oninput="offerPreview()">
       </div>
     </div>
     <div class="field">
@@ -409,6 +424,9 @@ async function loadTiers() {
     const r = await fetch(API + '/api/cv/admin/price-tiers');
     const d = await r.json();
     const tiers = d.tiers || [];
+    // Beratungs-Festpreis ins Eingabefeld
+    const bpEl = document.getElementById('beratungPreisInput');
+    if (bpEl && d.beratung_preis != null) bpEl.value = d.beratung_preis;
     if (tiers.length === 0) {
       area.innerHTML = '<div class="empty">Noch keine Preisstufen. Führe das SQL-Skript aus oder füge unten eine Stufe hinzu.</div>';
       return;
@@ -481,29 +499,43 @@ async function deleteTier(id) {
   } catch(e) { showMsg('tierMsg', 'Verbindungsfehler: ' + e.message, false); }
 }
 
+async function saveBeratungPreis() {
+  const el = document.getElementById('beratungPreisInput');
+  const msg = document.getElementById('beratungPreisMsg');
+  const preis = parseFloat(el.value);
+  if (isNaN(preis) || preis < 0) { showMsg('beratungPreisMsg', 'Bitte einen gültigen Preis eingeben.', false); return; }
+  try {
+    const r = await fetch(API + '/api/cv/admin/beratung-preis', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ price_per_bot: preis })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) { showMsg('beratungPreisMsg', d.error || 'Speichern fehlgeschlagen.', false); return; }
+    showMsg('beratungPreisMsg', '✓ Beratungspreis gespeichert: ' + fmtEuro(preis) + ' netto/Bot', true);
+  } catch(e) { showMsg('beratungPreisMsg', 'Verbindungsfehler: ' + e.message, false); }
+}
+
 let calcTimer = null;
 function calcPrice() {
   clearTimeout(calcTimer);
-  const slots = parseInt(document.getElementById('calcSlots').value, 10);
+  const slots = parseInt(document.getElementById('calcSlots').value, 10) || 0;
+  const beratung = parseInt(document.getElementById('calcBeratung').value, 10) || 0;
   const resEl = document.getElementById('calcResult');
   const detEl = document.getElementById('calcDetail');
-  if (!slots || slots < 1) { resEl.textContent = '—'; detEl.textContent = ''; return; }
+  if (slots < 1 && beratung < 1) { resEl.textContent = '—'; detEl.textContent = ''; return; }
   calcTimer = setTimeout(async function() {
     try {
-      const r = await fetch(API + '/api/cv/admin/price-calc?slots=' + slots);
+      const r = await fetch(API + '/api/cv/admin/price-calc?verkauf=' + slots + '&beratung=' + beratung);
       const d = await r.json();
       if (!r.ok) { resEl.textContent = '—'; detEl.textContent = d.error || ''; return; }
-      resEl.innerHTML = fmtEuro(d.total) + ' <span style="font-size:13px;font-weight:600;">netto / Monat</span>' +
-        '<div class="calc-brutto">zzgl. ' + UST_SATZ + '% USt = ' + fmtEuro(brutto(d.total)) + ' brutto / Monat</div>';
-      // Detail: Slots nach Preis gruppieren (netto)
-      const gruppen = {};
-      (d.detail || []).forEach(function(x) { gruppen[x.preis] = (gruppen[x.preis] || 0) + 1; });
-      const teile = Object.keys(gruppen).sort((a,b)=>b-a).map(function(preis) {
-        return gruppen[preis] + '× ' + fmtEuro(preis);
-      });
-      detEl.textContent = teile.join('  +  ') + '  (netto)';
+      const net = d.total;
+      resEl.innerHTML = fmtEuro(net) + ' netto<div class="ust-sub">+ USt = ' + fmtEuro(brutto(net)) + ' brutto</div>';
+      let det = '';
+      if (d.verkauf && d.verkauf.slots > 0) det += d.verkauf.slots + ' Verkaufs-Slots: ' + fmtEuro(d.verkauf.total) + ' netto';
+      if (d.beratung && d.beratung.slots > 0) det += (det ? ' · ' : '') + d.beratung.slots + ' Beratungsbots × ' + fmtEuro(d.beratung.preis_pro_bot) + ' = ' + fmtEuro(d.beratung.total) + ' netto';
+      detEl.textContent = det;
     } catch(e) { resEl.textContent = '—'; detEl.textContent = 'Fehler: ' + e.message; }
-  }, 300);
+  }, 250);
 }
 
 // ── Angebots-Generator ──
@@ -512,12 +544,13 @@ let offerLastPreview = null; // letzte gültige Vorschau (für Sende-Check)
 
 function offerPreview() {
   clearTimeout(offerPreviewTimer);
-  const slots = parseInt(document.getElementById('o-slots').value, 10);
+  const slots = parseInt(document.getElementById('o-slots').value, 10) || 0;
+  const beratung = parseInt(document.getElementById('o-beratung').value, 10) || 0;
   const resEl = document.getElementById('offerResult');
   const detEl = document.getElementById('offerDetail');
   offerLastPreview = null;
-  if (!slots || slots < 1) {
-    resEl.innerHTML = '— <span style="font-size:13px;font-weight:600;">Slot-Anzahl eingeben</span>';
+  if (slots < 1 && beratung < 1) {
+    resEl.innerHTML = '— <span style="font-size:13px;font-weight:600;">Anzahl eingeben</span>';
     detEl.textContent = '';
     return;
   }
@@ -525,19 +558,17 @@ function offerPreview() {
     try {
       const r = await fetch(API + '/api/cv/admin/offers/preview', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slots: slots })
+        body: JSON.stringify({ verkauf: slots, beratung: beratung })
       });
       const d = await r.json();
       if (!r.ok) { resEl.textContent = '—'; detEl.textContent = d.error || ''; return; }
       offerLastPreview = d;
       resEl.innerHTML = fmtEuro(d.net) + ' <span style="font-size:13px;font-weight:600;">netto / Monat</span>' +
         '<div class="calc-brutto">zzgl. ' + d.vatRate + '% USt = ' + fmtEuro(d.gross) + ' brutto / Monat</div>';
-      const gruppen = {};
-      (d.detail || []).forEach(function(x) { gruppen[x.preis] = (gruppen[x.preis] || 0) + 1; });
-      const teile = Object.keys(gruppen).sort((a,b)=>b-a).map(function(preis) {
-        return gruppen[preis] + '× ' + fmtEuro(preis);
-      });
-      detEl.textContent = teile.join('  +  ') + '  (netto)';
+      let det = '';
+      if (d.verkauf && d.verkauf.slots > 0) det += d.verkauf.slots + ' Verkaufs-Slots: ' + fmtEuro(d.verkauf.net) + ' netto';
+      if (d.beratung && d.beratung.slots > 0) det += (det ? '  ·  ' : '') + d.beratung.slots + ' Beratungsbots × ' + fmtEuro(d.beratung.preis_pro_bot) + ' = ' + fmtEuro(d.beratung.net) + ' netto';
+      detEl.textContent = det;
     } catch(e) { resEl.textContent = '—'; detEl.textContent = 'Fehler: ' + e.message; }
   }, 300);
 }
@@ -548,14 +579,15 @@ async function sendOffer() {
   const salutation = document.getElementById('o-salutation').value;
   const email   = document.getElementById('o-email').value.trim();
   const address = document.getElementById('o-address').value.trim();
-  const slots   = parseInt(document.getElementById('o-slots').value, 10);
+  const slots   = parseInt(document.getElementById('o-slots').value, 10) || 0;
+  const beratung = parseInt(document.getElementById('o-beratung').value, 10) || 0;
   const msgEl   = document.getElementById('offerMsg');
   const btn     = document.getElementById('offerSendBtn');
 
   msgEl.className = 'msg';
   if (!company) { msgEl.className = 'msg err'; msgEl.textContent = 'Firmenname fehlt.'; return; }
   if (!email || !/.+@.+\..+/.test(email)) { msgEl.className = 'msg err'; msgEl.textContent = 'Gültige E-Mail fehlt.'; return; }
-  if (!slots || slots < 1) { msgEl.className = 'msg err'; msgEl.textContent = 'Slot-Anzahl fehlt.'; return; }
+  if (slots < 1 && beratung < 1) { msgEl.className = 'msg err'; msgEl.textContent = 'Mindestens ein Verkaufs-Slot oder Beratungsbot nötig.'; return; }
 
   if (!confirm('Angebot an ' + email + ' senden?')) return;
 
@@ -565,7 +597,7 @@ async function sendOffer() {
   try {
     const r = await fetch(API + '/api/cv/admin/offers', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company_name: company, contact_name: contact, salutation: salutation, contact_email: email, address: address, slots: slots })
+      body: JSON.stringify({ company_name: company, contact_name: contact, salutation: salutation, contact_email: email, address: address, verkauf: slots, beratung: beratung })
     });
     const d = await r.json();
     if (!r.ok) { msgEl.className = 'msg err'; msgEl.textContent = d.error || 'Fehler beim Senden.'; }
