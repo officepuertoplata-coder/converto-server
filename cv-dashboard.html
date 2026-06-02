@@ -841,6 +841,8 @@ async function showMarketing(slotId) {
 
     // Web-Chat-Widget (Chatfenster direkt auf der Webseite — eigener Kanal, nicht WhatsApp)
     const webWidgetSnippet = '<!-- Converdino Web-Chat -->\n<script src="https://converto-server-production.up.railway.app/converdino-widget.js" data-bot="' + code + '"><\/script>';
+    // Reiner Web-Chat (ohne WhatsApp-Option im Auswahl-Fenster) via data-mode="web"
+    const webOnlySnippet = '<!-- Converdino Web-Chat (nur Browser) -->\n<script src="https://converto-server-production.up.railway.app/converdino-widget.js" data-bot="' + code + '" data-mode="web"><\/script>';
 
     // Landingpage / Produktseite (teilbarer Link, keine eigene Webseite nötig)
     const landingUrl = 'https://converdino.com/cv-produkt.html?code=' + encodeURIComponent(code);
@@ -869,6 +871,15 @@ async function showMarketing(slotId) {
           Zeigt unten rechts einen Button „Mit Berater chatten · Information · Beratung · Livetest". Ein Klick öffnet die Auswahl: per WhatsApp schreiben oder direkt im Browser chatten — ohne die Seite zu verlassen. Diese eine Zeile vor dem schließenden &lt;/body&gt;-Tag Ihrer Webseite einfügen.
         </div>
         <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(webWidgetSnippet)}</textarea>
+        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Einbett-Code kopieren</button>
+      </div>
+
+      <div style="margin-bottom:22px;border:1.5px solid #1faa52;border-radius:10px;padding:14px;background:#f0fdf4;">
+        <div class="field-label" style="color:#0f6b34;">🌐 Web-Chat-Button (NUR Browser-Chat, ohne WhatsApp)</div>
+        <div style="font-size:.78rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
+          Wie oben, aber im Auswahl-Fenster erscheint nur „Hier im Browser" — keine WhatsApp-Option. Ideal, wenn der Chat ausschließlich auf der Webseite stattfinden soll. Diese eine Zeile vor dem schließenden &lt;/body&gt;-Tag einfügen.
+        </div>
+        <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(webOnlySnippet)}</textarea>
         <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Einbett-Code kopieren</button>
       </div>
 
