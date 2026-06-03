@@ -743,8 +743,9 @@ module.exports = function(app, supabase, deps) {
   // ============================================================
   app.post('/api/cv/article/:id/persona', async (req, res) => {
     try {
-      const { bot_name, berater_name, strategie, booking_url } = req.body;
+      const { title, bot_name, berater_name, strategie, booking_url } = req.body;
       const update = { updated_at: new Date().toISOString() };
+      if (title !== undefined) update.title = (title && String(title).trim()) || null;
       if (bot_name !== undefined) update.bot_name = (bot_name && String(bot_name).trim()) || null;
       if (berater_name !== undefined) update.berater_name = (berater_name && String(berater_name).trim()) || null;
       if (strategie !== undefined) update.strategie = (strategie && String(strategie).trim()) || null;

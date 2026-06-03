@@ -20,6 +20,33 @@
   var MODE = ((thisScript && thisScript.getAttribute('data-mode')) || '').toLowerCase();
   var WEB_ONLY = (MODE === 'web');
 
+  // --- Position frei konfigurierbar ---
+  // data-position: 'unten-rechts' (Standard) | 'unten-links' | 'oben-rechts' | 'oben-links'
+  //   (englische Synonyme erlaubt: bottom-right, bottom-left, top-right, top-left)
+  // data-offset-x / data-offset-y: Abstand in Pixeln zur gewählten Ecke (Standard 24)
+  var POS = ((thisScript && thisScript.getAttribute('data-position')) || 'unten-rechts').toLowerCase().trim();
+  function numAttr(name, def) {
+    var v = thisScript && thisScript.getAttribute(name);
+    if (v == null || v === '') return def;
+    var n = parseInt(v, 10);
+    return isNaN(n) ? def : n;
+  }
+  var OFF_X = numAttr('data-offset-x', 24);
+  var OFF_Y = numAttr('data-offset-y', 24);
+  // Launcher (schwebender Standard-Button): 'off' = ausblenden (für eigene Buttons via API)
+  var LAUNCHER = ((thisScript && thisScript.getAttribute('data-launcher')) || 'on').toLowerCase().trim();
+  var LAUNCHER_OFF = (LAUNCHER === 'off' || LAUNCHER === 'none' || LAUNCHER === 'false');
+  // Ecke bestimmen: ist es links? ist es oben?
+  var IS_LEFT = (POS.indexOf('links') !== -1 || POS.indexOf('left') !== -1);
+  var IS_TOP  = (POS.indexOf('oben')  !== -1 || POS.indexOf('top')  !== -1);
+  // CSS-Fragmente: horizontale + vertikale Verankerung für den Launcher
+  var POS_X_CSS = (IS_LEFT ? 'left:'   : 'right:')  + OFF_X + 'px';
+  var POS_Y_CSS = (IS_TOP  ? 'top:'    : 'bottom:') + OFF_Y + 'px';
+  // Panel/Auswahl-Fenster sitzen neben dem Launcher: gleiche horizontale Seite,
+  // vertikal vom Launcher weg (bei unten → nach oben, bei oben → nach unten).
+  var PANEL_X_CSS = (IS_LEFT ? 'left:' : 'right:') + OFF_X + 'px';
+  var PANEL_Y_CSS = (IS_TOP  ? 'top:'  : 'bottom:') + (OFF_Y + 72) + 'px';
+
   if (!BOT_CODE) { console.error('[Converdino] data-bot fehlt im Script-Tag.'); return; }
 
   // --- Farben (Converdino) ---
@@ -38,13 +65,13 @@
 
   // --- Styles injizieren ---
   var css = '' +
-  '.cvw-btn{position:fixed;bottom:24px;right:24px;z-index:2147483000;background:' + C.green + ';box-shadow:0 8px 26px -8px rgba(37,211,102,.6);cursor:pointer;display:inline-flex;align-items:center;gap:11px;border:none;padding:12px 22px;border-radius:22px;transition:transform .15s,box-shadow .2s;text-align:left;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:calc(100vw - 32px)}' +
+  '.cvw-btn{position:fixed;' + POS_Y_CSS + ';' + POS_X_CSS + ';z-index:2147483000;background:' + C.green + ';box-shadow:0 8px 26px -8px rgba(37,211,102,.6);cursor:pointer;display:inline-flex;align-items:center;gap:11px;border:none;padding:12px 22px;border-radius:22px;transition:transform .15s,box-shadow .2s;text-align:left;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:calc(100vw - 32px)}' +
   '.cvw-btn:hover{transform:translateY(-3px);box-shadow:0 16px 40px -10px rgba(37,211,102,.7)}' +
   '.cvw-btn svg{width:24px;height:24px;flex-shrink:0}' +
   '.cvw-btn .cvw-btn-txt{display:flex;flex-direction:column;line-height:1.15}' +
   '.cvw-btn .cvw-btn-main{font-weight:700;font-size:15px;color:' + C.ink + '}' +
   '.cvw-btn .cvw-btn-sub{font-weight:500;font-size:11.5px;color:' + C.ink + ';opacity:.82;letter-spacing:.01em;white-space:nowrap}' +
-  '.cvw-panel{position:fixed;bottom:96px;right:24px;z-index:2147483000;width:370px;max-width:calc(100vw - 32px);height:540px;max-height:calc(100vh - 130px);background:' + C.white + ';border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
+  '.cvw-panel{position:fixed;' + PANEL_Y_CSS + ';' + PANEL_X_CSS + ';z-index:2147483000;width:370px;max-width:calc(100vw - 32px);height:540px;max-height:calc(100vh - 130px);background:' + C.white + ';border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
   '.cvw-panel.cvw-open{display:flex}' +
   '.cvw-head{background:' + C.greenDark + ';color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}' +
   '.cvw-head-t{font-weight:800;font-size:15px;line-height:1.2}' +
@@ -72,7 +99,7 @@
   '.cvw-form-ok{font-size:13px;color:' + C.greenDark + ';font-weight:600;text-align:center;padding:6px}' +
   '.cvw-credit{font-size:10px;color:' + C.inkSoft + ';text-align:center;padding:4px 0;opacity:.7}' +
   /* Auswahl-Fenster (WhatsApp oder Web) */
-  '.cvw-choose{position:fixed;bottom:96px;right:24px;z-index:2147483000;width:340px;max-width:calc(100vw - 32px);background:' + C.white + ';border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
+  '.cvw-choose{position:fixed;' + PANEL_Y_CSS + ';' + PANEL_X_CSS + ';z-index:2147483000;width:340px;max-width:calc(100vw - 32px);background:' + C.white + ';border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
   '.cvw-choose.cvw-open{display:flex}' +
   '.cvw-choose .cvw-head{background:' + C.greenDark + ';color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}' +
   '.cvw-choose-body{padding:20px 18px;background:' + C.paper + '}' +
@@ -349,24 +376,45 @@
   var started = false;
 
   function showLauncher() {
-    btn.style.display = 'inline-flex';
+    // Bei data-launcher="off" bleibt der Standard-Button immer verborgen.
+    btn.style.display = LAUNCHER_OFF ? 'none' : 'inline-flex';
   }
   function hideLauncher() {
     btn.style.display = 'none';
   }
 
-  // Button → Auswahl-Fenster öffnen
-  btn.addEventListener('click', function () {
+  // --- Öffentliche Steuerfunktionen (für eigene Buttons / Programmierer) ---
+  // Auswahl-Fenster öffnen (WhatsApp/Web bzw. nur Web je nach data-mode)
+  function openChooser() {
+    panel.classList.remove('cvw-open');
     choose.classList.add('cvw-open');
     hideLauncher();
+  }
+  // Direkt den Web-Chat öffnen (ohne Auswahl-Fenster)
+  function openWebChat() {
+    choose.classList.remove('cvw-open');
+    panel.classList.add('cvw-open');
+    if (!started) { started = true; startChat(); }
+    try { input.focus(); } catch (e) {}
+  }
+  // Alles schließen, Launcher (falls aktiv) zurückholen
+  function closeAll() {
+    choose.classList.remove('cvw-open');
+    panel.classList.remove('cvw-open');
+    showLauncher();
+  }
+
+  // Standard-Button initial gemäß Konfiguration ein-/ausblenden
+  if (LAUNCHER_OFF) { btn.style.display = 'none'; }
+
+  // Button → Auswahl-Fenster öffnen
+  btn.addEventListener('click', function () {
+    openChooser();
   });
 
   // Auswahl: „Hier im Browser" → Web-Chat öffnen
   choose.querySelector('#cvw-go-web').addEventListener('click', function () {
-    choose.classList.remove('cvw-open');
-    panel.classList.add('cvw-open');
-    if (!started) { started = true; startChat(); }
-    input.focus();
+    openWebChat();
   });
 
   // Auswahl: „Per WhatsApp“ → öffnet WhatsApp (normaler Link). Danach Launcher zurück.
@@ -388,8 +436,7 @@
 
   // Web-Chat schließen → Launcher zurück
   closeBtn.addEventListener('click', function () {
-    panel.classList.remove('cvw-open');
-    showLauncher();
+    closeAll();
   });
   sendBtn.addEventListener('click', sendMessage);
   input.addEventListener('keydown', function (e) {
@@ -399,4 +446,37 @@
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 90) + 'px';
   });
+
+  // ============================================================
+  // ÖFFENTLICHE API  —  window.ConverdinoWidget
+  // Für Programmierer, die einen eigenen Button verwenden möchten.
+  // Beispiel: <button onclick="ConverdinoWidget.open()">Beratung</button>
+  // (Standard-Button mit data-launcher="off" ausblenden.)
+  // ============================================================
+  window.ConverdinoWidget = {
+    // Öffnet die Auswahl (WhatsApp/Web). Bei data-mode="web" erscheint dort nur Web.
+    open: function () { openChooser(); },
+    // Öffnet direkt den Browser-Chat, überspringt die Auswahl.
+    openWebChat: function () { openWebChat(); },
+    // Öffnet direkt die Auswahl (Alias zu open()).
+    openChooser: function () { openChooser(); },
+    // Schließt alle Fenster.
+    close: function () { closeAll(); },
+    // Öffnet, wenn geschlossen — schließt, wenn offen.
+    toggle: function () {
+      var isOpen = panel.classList.contains('cvw-open') || choose.classList.contains('cvw-open');
+      if (isOpen) { closeAll(); } else { openChooser(); }
+    },
+    // Der konfigurierte Bot-Code (read-only Info).
+    botCode: BOT_CODE,
+    version: '1.0'
+  };
+
+  // Signalisiert Bereitschaft — Programmierer können darauf warten:
+  //   window.addEventListener('converdino:ready', function(){ ... });
+  try {
+    window.dispatchEvent(new CustomEvent('converdino:ready', { detail: { botCode: BOT_CODE } }));
+  } catch (e) {
+    // Ältere Browser: CustomEvent-Konstruktor nicht verfügbar — unkritisch.
+  }
 })();
