@@ -843,6 +843,8 @@ async function showMarketing(slotId) {
     const webWidgetSnippet = '<!-- Converdino Web-Chat -->\n<script src="https://converto-server-production.up.railway.app/converdino-widget.js" data-bot="' + code + '"><\/script>';
     // Reiner Web-Chat (ohne WhatsApp-Option im Auswahl-Fenster) via data-mode="web"
     const webOnlySnippet = '<!-- Converdino Web-Chat (nur Browser) -->\n<script src="https://converto-server-production.up.railway.app/converdino-widget.js" data-bot="' + code + '" data-mode="web"><\/script>';
+    // Entwickler-Modus: kein eigener Button, Steuerung per API (ConverdinoWidget.open())
+    const devSnippet = '<!-- Eigener Button -->\n<button onclick="ConverdinoWidget.open()">Mit Berater chatten</button>\n\n<!-- Widget laden, ohne mitgelieferten Button -->\n<script src="https://converto-server-production.up.railway.app/converdino-widget.js" data-bot="' + code + '" data-launcher="off"><\/script>';
 
     // Landingpage / Produktseite (teilbarer Link, keine eigene Webseite nötig)
     const landingUrl = 'https://converdino.com/cv-produkt.html?code=' + encodeURIComponent(code);
@@ -853,10 +855,13 @@ async function showMarketing(slotId) {
         <div style="font-family:monospace;font-size:1.05rem;font-weight:900;color:var(--g2);background:#f0fdf4;padding:9px 14px;border-radius:8px;">${esc(code)}</div>
       </div>
 
-      <div style="margin-bottom:22px;border:1.5px solid var(--g2,#1faa52);border-radius:10px;padding:14px;background:#f0fdf4;">
-        <div class="field-label" style="color:#0f6b34;">🔗 Eigene Produktseite (zum Teilen)</div>
+      <!-- ============ BEREICH 1: TEILEN ============ -->
+      <div style="font-size:.7rem;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 10px;">🔗 Teilen — ganz ohne eigene Webseite</div>
+
+      <div style="margin-bottom:16px;border:1.5px solid var(--g2,#1faa52);border-radius:10px;padding:14px;background:#f0fdf4;">
+        <div class="field-label" style="color:#0f6b34;">Eigene Produktseite</div>
         <div style="font-size:.78rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
-          Eine fertige Seite mit Fotos, Beschreibung und WhatsApp-Knopf — ganz ohne eigene Webseite. Den Link einfach in Inserate, E-Mails, WhatsApp oder die Profil-Bio einfügen.
+          Eine fertige Seite mit Fotos, Beschreibung und Chat-Knopf. Den Link in Inserate, E-Mails, WhatsApp oder die Profil-Bio einfügen.
         </div>
         <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:.76rem;word-break:break-all;margin-bottom:6px;">${esc(landingUrl)}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -865,32 +870,17 @@ async function showMarketing(slotId) {
         </div>
       </div>
 
-      <div style="margin-bottom:22px;border:1.5px solid #25D366;border-radius:10px;padding:14px;background:#f0fdf4;">
-        <div class="field-label" style="color:#0f6b34;">💬 Web-Chat-Button (WhatsApp ODER Browser-Chat)</div>
-        <div style="font-size:.78rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
-          Zeigt unten rechts einen Button „Mit Berater chatten · Information · Beratung · Livetest". Ein Klick öffnet die Auswahl: per WhatsApp schreiben oder direkt im Browser chatten — ohne die Seite zu verlassen. Diese eine Zeile vor dem schließenden &lt;/body&gt;-Tag Ihrer Webseite einfügen.
-        </div>
-        <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(webWidgetSnippet)}</textarea>
-        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Einbett-Code kopieren</button>
-      </div>
-
-      <div style="margin-bottom:22px;border:1.5px solid #1faa52;border-radius:10px;padding:14px;background:#f0fdf4;">
-        <div class="field-label" style="color:#0f6b34;">🌐 Web-Chat-Button (NUR Browser-Chat, ohne WhatsApp)</div>
-        <div style="font-size:.78rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
-          Wie oben, aber im Auswahl-Fenster erscheint nur „Hier im Browser" — keine WhatsApp-Option. Ideal, wenn der Chat ausschließlich auf der Webseite stattfinden soll. Diese eine Zeile vor dem schließenden &lt;/body&gt;-Tag einfügen.
-        </div>
-        <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(webOnlySnippet)}</textarea>
-        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Einbett-Code kopieren</button>
-      </div>
-
-      <div style="margin-bottom:20px;">
-        <div class="field-label">💬 WhatsApp-Link</div>
+      <div style="margin-bottom:24px;">
+        <div class="field-label">💬 Direkter WhatsApp-Link</div>
         <div style="background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:.76rem;word-break:break-all;margin-bottom:6px;">${esc(waLink)}</div>
         <button class="btn btn-soft" onclick="copyText('${esc(waLink)}', this)">📋 Link kopieren</button>
       </div>
 
-      <div style="margin-bottom:20px;">
-        <div class="field-label">📱 QR-Code (druckfertige PDFs mit Ihrem Werbetext)</div>
+      <!-- ============ BEREICH 2: OFFLINE / AM PRODUKT ============ -->
+      <div style="font-size:.7rem;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 10px;border-top:1px solid var(--border);padding-top:18px;">📱 Offline — am Produkt, auf Plakat & Flyer</div>
+
+      <div style="margin-bottom:24px;">
+        <div class="field-label">QR-Code (druckfertige PDFs mit Ihrem Werbetext)</div>
         <div style="background:#f8faf9;border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center;margin-bottom:8px;">
           <img src="${esc(qrUrl)}" alt="QR" style="max-width:170px;width:100%;">
         </div>
@@ -902,23 +892,77 @@ async function showMarketing(slotId) {
         </div>
       </div>
 
-      <div style="margin-bottom:20px;">
-        <div class="field-label">🔘 WhatsApp-Button (in Webseite einfügen)</div>
-        <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(buttonSnippet)}</textarea>
-        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Button-Code kopieren</button>
+      <!-- ============ BEREICH 3: AUF IHRER WEBSEITE (Empfehlung) ============ -->
+      <div style="font-size:.7rem;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 10px;border-top:1px solid var(--border);padding-top:18px;">🌐 Auf Ihrer Webseite</div>
+
+      <div style="margin-bottom:24px;border:2px solid #25D366;border-radius:10px;padding:14px;background:#f0fdf4;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span class="field-label" style="color:#0f6b34;margin-bottom:0;">💬 Chat-Button</span>
+          <span style="font-size:.62rem;font-weight:800;background:#25D366;color:#fff;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.4px;">Empfohlen</span>
+        </div>
+        <div style="font-size:.78rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
+          Zeigt unten rechts „Mit Berater chatten". Ein Klick öffnet die Auswahl: per WhatsApp oder direkt im Browser chatten. Diese eine Zeile vor dem schließenden &lt;/body&gt;-Tag Ihrer Webseite einfügen — fertig.
+        </div>
+        <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(webWidgetSnippet)}</textarea>
+        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Einbett-Code kopieren</button>
       </div>
 
-      <div style="margin-bottom:20px;">
-        <div class="field-label">📌 Overlay statisch (fester Button unten rechts)</div>
-        <textarea readonly style="width:100%;height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(overlayStatic)}</textarea>
-        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
-      </div>
+      <!-- ============ BEREICH 4: ENTWICKLER & WEITERE OPTIONEN (eingeklappt) ============ -->
+      <details style="margin-bottom:8px;border:1px solid var(--border);border-radius:10px;background:#fafdfb;">
+        <summary style="cursor:pointer;padding:13px 14px;font-size:.82rem;font-weight:700;color:var(--ink);list-style:none;display:flex;align-items:center;justify-content:space-between;">
+          <span>⚙️ Für Entwickler &amp; weitere Optionen</span>
+          <span style="font-size:.7rem;color:var(--mu);font-weight:600;">aufklappen ▾</span>
+        </summary>
+        <div style="padding:4px 14px 16px;">
+          <div style="font-size:.76rem;color:var(--mu);margin-bottom:16px;line-height:1.5;">
+            Diese Optionen sind für Webseiten mit eigenem Design oder ein Entwicklerteam. Für die meisten genügt der empfohlene Chat-Button oben.
+          </div>
 
-      <div>
-        <div class="field-label">🎈 Overlay schwebend – WhatsApp (erscheint automatisch)</div>
-        <textarea readonly style="width:100%;height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(overlayFloat)}</textarea>
-        <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
-      </div>`;
+          <div style="margin-bottom:18px;border:1px solid var(--card-line,#d3ebda);border-radius:10px;padding:13px;background:#fff;">
+            <div class="field-label" style="color:#0f6b34;">🔌 Eigener Button per API (Headless)</div>
+            <div style="font-size:.76rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
+              Kein mitgelieferter Button — Sie öffnen den Chat aus einem eigenen Element per <code>ConverdinoWidget.open()</code>. Fügt sich nahtlos ins eigene Design ein.
+            </div>
+            <textarea readonly style="width:100%;height:110px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(devSnippet)}</textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+              <button class="btn btn-soft" onclick="copyFromPrev(this)">📋 Code kopieren</button>
+              <a class="btn btn-soft" href="https://converto-server-production.up.railway.app/converdino-widget-api.html" target="_blank" rel="noopener" style="text-decoration:none;">📄 API-Doku öffnen</a>
+            </div>
+            <div style="margin-top:12px;">
+              <div style="font-size:.74rem;color:var(--mu);margin-bottom:4px;">Link zur API-Doku (zum Weiterleiten an Ihren Programmierer):</div>
+              <input id="apiDocUrl" readonly value="https://converto-server-production.up.railway.app/converdino-widget-api.html" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.7rem;background:#fff;">
+              <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">🔗 Link kopieren</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom:18px;border:1px solid var(--card-line,#d3ebda);border-radius:10px;padding:13px;background:#fff;">
+            <div class="field-label" style="color:#0f6b34;">🌐 Chat-Button nur Browser (ohne WhatsApp)</div>
+            <div style="font-size:.76rem;color:var(--mu);margin-bottom:8px;line-height:1.5;">
+              Wie der empfohlene Button, aber im Auswahl-Fenster erscheint nur „Hier im Browser".
+            </div>
+            <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#fff;">${esc(webOnlySnippet)}</textarea>
+            <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
+          </div>
+
+          <div style="margin-bottom:18px;">
+            <div class="field-label">🔘 WhatsApp-Button (statisch in Seite)</div>
+            <textarea readonly style="width:100%;height:70px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(buttonSnippet)}</textarea>
+            <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Button-Code kopieren</button>
+          </div>
+
+          <div style="margin-bottom:18px;">
+            <div class="field-label">📌 Overlay statisch (fester WhatsApp-Button)</div>
+            <textarea readonly style="width:100%;height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(overlayStatic)}</textarea>
+            <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
+          </div>
+
+          <div>
+            <div class="field-label">🎈 Overlay schwebend – WhatsApp</div>
+            <textarea readonly style="width:100%;height:80px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:monospace;font-size:.68rem;background:#f8faf9;">${esc(overlayFloat)}</textarea>
+            <button class="btn btn-soft" onclick="copyFromPrev(this)" style="margin-top:6px;">📋 Code kopieren</button>
+          </div>
+        </div>
+      </details>`;
     document.getElementById('assetModal').classList.add('open');
   } catch(e) { toast('Fehler: ' + e.message); }
 }
@@ -1311,6 +1355,11 @@ function renderBeraterEdit() {
   document.getElementById('settingsBody').innerHTML = `
     <div style="font-size:.8rem;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px;">✏️ ${istBeratung ? 'Verhalten & Strategie' : 'Verhalten & Strategie'}</div>
     <div class="field">
+      <div class="field-label">Bezeichnung des Bots</div>
+      <input id="b-title" type="text" value="${esc(a.title || '')}" placeholder="z.B. IRI-Sys SRM und Rohmaterialien">
+      <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Interne Bezeichnung dieses Slots (im Dashboard sichtbar).</div>
+    </div>
+    <div class="field">
       <div class="field-label">Vorstellung des Bots (optional)</div>
       <input id="b-botname" type="text" value="${esc(a.bot_name || '')}" placeholder="z.B. Alexandra van de Bot — oder: Auto Müller Team">
       <div style="font-size:.75rem;color:var(--mu);margin-top:4px;">Wie der Bot sich vorstellt. Leer = neutral.</div>
@@ -1330,6 +1379,7 @@ function renderBeraterEdit() {
 }
 
 async function saveBeraterPersona() {
+  const title = document.getElementById('b-title').value.trim();
   const botName = document.getElementById('b-botname').value.trim();
   const berater = document.getElementById('b-berater').value.trim();
   const err = document.getElementById('bpErr');
@@ -1340,7 +1390,7 @@ async function saveBeraterPersona() {
     const r = await fetch(API + '/api/cv/article/' + settingsArticle.id + '/persona', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bot_name: botName, berater_name: berater })
+      body: JSON.stringify({ title: title, bot_name: botName, berater_name: berater })
     });
     const d = await r.json();
     if (!d.success) {

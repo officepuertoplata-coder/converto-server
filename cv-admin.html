@@ -1092,6 +1092,7 @@ async function toggleSlotView(subId, userLogin) {
           '<button type="button" class="btn btn-g btn-sm" onclick="openDocsModal(\'' + s.id + '\')">📂 Dokumente</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="openSettingsModal(\'' + s.id + '\')">⚙️ Einstellungen</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="openStrategieModal(\'' + s.id + '\')">🎯 Strategie</button>' +
+          '<button type="button" class="btn btn-g btn-sm" onclick="openAdminMarketing(\'' + s.id + '\')">📣 Marketing</button>' +
           '<button type="button" class="btn btn-g btn-sm" onclick="toggleSlotConvs(\'' + s.id + '\')">💬 Gespräche</button>';
       }
       // Modus-Anzeige + Umschalter (Beratung nur wenn Kunde freigeschaltet)
@@ -1345,6 +1346,10 @@ async function openStrategieModal(slotId) {
         'Die Eskalationsleiter dieses Bots. Der Bot bietet die Schritte der Reihe nach an — das Nächste, wenn der Interessent zögert. ' +
         '<b>Nur für dich bearbeitbar</b> — der Kunde sieht sie nur als Anzeige.</div>' +
       modusBlock +
+      '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">✏️ Bezeichnung des Bots</label>' +
+      '<input id="botTitle" type="text" value="' + esc(a.title || '') + '" placeholder="z.B. IRI-Sys SRM und Rohmaterialien" ' +
+        'style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:4px;">' +
+      '<div style="font-size:12px;color:#777;margin-bottom:14px;line-height:1.4;">Interne Bezeichnung dieses Slots (im Dashboard und Backoffice sichtbar). Ändert nicht den Bot-Code.</div>' +
       '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">📅 Termin-/Buchungslink (optional)</label>' +
       '<input id="bookingUrl" type="url" value="' + esc(bookingVal) + '" placeholder="https://cal.com/dein-name/termin" ' +
         'style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:4px;">' +
@@ -1370,6 +1375,8 @@ function onPaymentModeChange() {
 async function saveStrategie() {
   const txt = document.getElementById('strategieText').value;
   const booking = document.getElementById('bookingUrl').value;
+  const titleEl = document.getElementById('botTitle');
+  const title = titleEl ? titleEl.value.trim() : undefined;
   const modeSel = document.getElementById('paymentMode');
   const msg = document.getElementById('strategieMsg');
   msg.style.color = '#555'; msg.textContent = 'Speichere …';
@@ -1377,7 +1384,7 @@ async function saveStrategie() {
     const r = await fetch(API + '/api/cv/article/' + strategieArticleId + '/persona', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategie: txt, booking_url: booking })
+      body: JSON.stringify({ title: title, strategie: txt, booking_url: booking })
     });
     const d = await r.json();
     if (!r.ok || !d.success) { msg.style.color = 'var(--red)'; msg.textContent = d.error || 'Fehler beim Speichern.'; return; }
@@ -1393,6 +1400,81 @@ async function saveStrategie() {
     }
     msg.style.color = 'var(--g2)'; msg.textContent = '✅ Gespeichert. Wirkt ab dem nächsten Gespräch.';
   } catch(e) { msg.style.color = 'var(--red)'; msg.textContent = 'Verbindungsfehler: ' + e.message; }
+}
+
+// ── Marketing / Einbett-Codes eines Slots (Betreiber-Ansicht, zum Weiterleiten) ──
+function adminCopyPrev(btn) {
+  var el = btn.previousElementSibling;
+  if (!el) return;
+  var txt = (el.value != null) ? el.value : el.textContent;
+  try {
+    navigator.clipboard.writeText(txt).then(function(){
+      var t = btn.textContent; btn.textContent = '✓ Kopiert';
+      setTimeout(function(){ btn.textContent = t; }, 1500);
+    });
+  } catch(e) {
+    if (el.select) { el.select(); document.execCommand('copy'); }
+  }
+}
+
+async function openAdminMarketing(slotId) {
+  document.getElementById('convModalTitle').innerHTML = '📣 Marketing &amp; Einbett-Codes';
+  document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Lade …</div>';
+  document.getElementById('convModal').classList.add('open');
+  try {
+    const r = await fetch(API + '/api/cv/slot/' + slotId);
+    const d = await r.json();
+    const a = (d && d.article) || {};
+    const slot = (d && d.slot) || {};
+    const code = slot.bot_code || a.bot_code || '';
+    if (!code) { document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Kein Bot-Code — erst Artikel/Bot anlegen.</div>'; return; }
+    const waLink = slot.wa_deeplink || ('https://wa.me/4367764118066?text=' + encodeURIComponent(code));
+    const landingUrl = 'https://converdino.com/cv-produkt.html?code=' + encodeURIComponent(code);
+    const SRV = 'https://converto-server-production.up.railway.app';
+    const webWidgetSnippet = '<!-- Converdino Web-Chat -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '"><\/script>';
+    const webOnlySnippet = '<!-- Converdino Web-Chat (nur Browser) -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '" data-mode="web"><\/script>';
+    const devSnippet = '<!-- Eigener Button -->\n<button onclick="ConverdinoWidget.open()">Mit Berater chatten</button>\n\n<!-- Widget laden, ohne mitgelieferten Button -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '" data-launcher="off"><\/script>';
+    const apiDocUrl = SRV + '/converdino-widget-api.html';
+    const ta = 'width:100%;padding:10px;border:1px solid #d3ebda;border-radius:8px;font-family:monospace;font-size:12px;background:#fff;';
+    const lab = 'display:block;font-size:13px;font-weight:700;color:#33473b;margin:0 0 4px;';
+    const hint = 'font-size:12px;color:#777;margin-bottom:8px;line-height:1.45;';
+    const btnC = 'btn btn-g';
+    document.getElementById('convModalBody').innerHTML =
+      '<div style="font-size:13px;color:#555;margin-bottom:14px;line-height:1.5;">Einbett-Codes für <b>' + esc(code) + '</b>. Zum Kopieren und an den Kunden bzw. dessen Programmierer weiterzuleiten.</div>' +
+
+      '<label style="' + lab + '">🔗 Produktseite (zum Teilen)</label>' +
+      '<input readonly value="' + esc(landingUrl) + '" style="' + ta + '">' +
+      '<button type="button" class="' + btnC + '" style="margin:6px 0 16px;" onclick="adminCopyPrev(this)">📋 Link kopieren</button>' +
+
+      '<label style="' + lab + '">💬 WhatsApp-Link</label>' +
+      '<input readonly value="' + esc(waLink) + '" style="' + ta + '">' +
+      '<button type="button" class="' + btnC + '" style="margin:6px 0 16px;" onclick="adminCopyPrev(this)">📋 Link kopieren</button>' +
+
+      '<label style="' + lab + '">🌐 Chat-Button für die Webseite <span style="font-size:11px;background:#25D366;color:#fff;padding:1px 7px;border-radius:12px;">Empfohlen</span></label>' +
+      '<div style="' + hint + '">Eine Zeile vor &lt;/body&gt; einfügen — zeigt den Chat-Button.</div>' +
+      '<textarea readonly rows="3" style="' + ta + '">' + esc(webWidgetSnippet) + '</textarea>' +
+      '<button type="button" class="' + btnC + '" style="margin:6px 0 18px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
+
+      '<details style="border:1px solid #d3ebda;border-radius:10px;background:#fafdfb;margin-bottom:6px;">' +
+        '<summary style="cursor:pointer;padding:12px 13px;font-size:13px;font-weight:700;color:#0d1b12;">⚙️ Für Entwickler &amp; weitere Optionen</summary>' +
+        '<div style="padding:4px 13px 14px;">' +
+
+          '<label style="' + lab + '">🔌 Eigener Button per API (Headless)</label>' +
+          '<div style="' + hint + '">Kein mitgelieferter Button — Öffnen per <code>ConverdinoWidget.open()</code>.</div>' +
+          '<textarea readonly rows="5" style="' + ta + '">' + esc(devSnippet) + '</textarea>' +
+          '<button type="button" class="' + btnC + '" style="margin:6px 0 10px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
+          '<div style="font-size:12px;color:#777;margin-bottom:4px;">Link zur API-Doku (zum Weiterleiten):</div>' +
+          '<input readonly value="' + esc(apiDocUrl) + '" style="' + ta + '">' +
+          '<button type="button" class="' + btnC + '" style="margin:6px 0 16px;" onclick="adminCopyPrev(this)">🔗 Link kopieren</button>' +
+
+          '<label style="' + lab + '">🌐 Chat-Button nur Browser (ohne WhatsApp)</label>' +
+          '<textarea readonly rows="3" style="' + ta + '">' + esc(webOnlySnippet) + '</textarea>' +
+          '<button type="button" class="' + btnC + '" style="margin:6px 0 4px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
+        '</div>' +
+      '</details>';
+  } catch(e) {
+    document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
+  }
 }
 
 // ── Dokumente eines Slots ansehen (read-only) ──
