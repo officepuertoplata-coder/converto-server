@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Converdino Web-Chat — Entwickler-Dokumentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800;9..144,900&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --green:#1faa52; --green-bright:#25d366; --green-dark:#0f6b34;
+    --ink:#0d1b12; --ink-soft:#33473b; --paper:#f6f9f5; --paper-2:#eefff4;
+    --line:#dde7df; --card:#eef9f1; --card-line:#d3ebda;
+    --shadow:0 18px 50px -20px rgba(15,107,52,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Outfit',sans-serif;background:var(--paper);color:var(--ink);line-height:1.6;padding:40px 20px;}
+  .wrap{max-width:820px;margin:0 auto}
+  .brand{font-family:'Fraunces',serif;font-weight:900;font-size:1.8rem;text-align:center;margin-bottom:4px}
+  .brand .a{color:var(--green-dark)} .brand .b{color:var(--green-bright)}
+  .eyebrow{display:inline-block;background:var(--card);border:1px solid var(--card-line);color:var(--green-dark);font-weight:600;font-size:.78rem;padding:5px 13px;border-radius:30px;margin-bottom:16px}
+  .lead{text-align:center;margin-bottom:36px}
+  h1{font-family:'Fraunces',serif;font-weight:800;font-size:2rem;line-height:1.15;margin-bottom:12px}
+  .sub{color:var(--ink-soft);max-width:600px;margin:0 auto}
+  .card{background:#fff;border:1px solid var(--card-line);border-radius:16px;padding:26px;margin-bottom:20px;box-shadow:var(--shadow)}
+  h2{font-family:'Fraunces',serif;font-weight:800;font-size:1.25rem;margin-bottom:12px;color:var(--ink)}
+  h3{font-size:1rem;font-weight:700;margin:18px 0 6px;color:var(--green-dark)}
+  p{margin-bottom:10px;color:var(--ink-soft)}
+  p.t{color:var(--ink)}
+  code.inline{background:var(--card);border:1px solid var(--card-line);border-radius:6px;padding:2px 7px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.85rem;color:var(--green-dark)}
+  pre{background:var(--ink);border-radius:12px;padding:18px;overflow-x:auto;margin:10px 0}
+  pre code{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.8rem;color:#d7f5e2;white-space:pre;line-height:1.7}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.9rem}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--green-dark);font-weight:700;border-bottom:2px solid var(--card-line)}
+  td code{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:.82rem;color:var(--green-dark)}
+  .foot{text-align:center;color:var(--ink-soft);font-size:.85rem;margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
+  .foot b{color:var(--green-dark);font-family:'Fraunces',serif}
+  .note{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px;font-size:.86rem;color:#8a4b00;margin:12px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="lead">
+    <div class="brand"><span class="a">CONVER</span><span class="b">DINO</span></div>
+    <span class="eyebrow">Entwickler-Dokumentation · Web-Chat-Widget</span>
+    <h1>Eigener Button, kein Design-Bruch</h1>
+    <p class="sub">Das Converdino Web-Chat-Widget bietet eine JavaScript-API. Damit lässt sich der Chat aus einem beliebigen eigenen Element (Button, Link, Menüpunkt) öffnen — der mitgelieferte Standard-Button kann dabei abgeschaltet werden, sodass er nahtlos in Ihr eigenes Design passt.</p>
+  </div>
+
+  <div class="card">
+    <h2>1. Einbindung</h2>
+    <p class="t">Eine Zeile lädt das Widget. Mit <code class="inline">data-launcher="off"</code> erscheint <b>kein</b> eigener Button — Sie steuern das Öffnen selbst über die API.</p>
+    <pre><code>&lt;script
+  src="https://converto-server-production.up.railway.app/converdino-widget.js"
+  data-bot="IHR-BOT-CODE"
+  data-launcher="off"&gt;&lt;/script&gt;</code></pre>
+    <p>Lassen Sie <code class="inline">data-launcher</code> weg, erscheint der mitgelieferte schwebende Button wie gewohnt.</p>
+  </div>
+
+  <div class="card">
+    <h2>2. Eigenen Button anbinden</h2>
+    <p class="t">Hängen Sie einen beliebigen Klick an die API. Beispiel mit Ihrem eigenen, ins Design passenden Button:</p>
+    <pre><code>&lt;button class="meine-pille" onclick="ConverdinoWidget.open()"&gt;
+  Mit Berater chatten
+&lt;/button&gt;</code></pre>
+    <p>Das Widget-Script und Ihr Button können in beliebiger Reihenfolge im HTML stehen — die API ist verfügbar, sobald das Script geladen ist (siehe Abschnitt 5).</p>
+  </div>
+
+  <div class="card">
+    <h2>3. API-Methoden — <code class="inline">window.ConverdinoWidget</code></h2>
+    <table>
+      <tr><th>Methode</th><th>Wirkung</th></tr>
+      <tr><td><code>open()</code></td><td>Öffnet das Auswahl-Fenster (WhatsApp / Browser-Chat). Bei <code>data-mode="web"</code> erscheint dort nur der Browser-Chat.</td></tr>
+      <tr><td><code>openWebChat()</code></td><td>Öffnet direkt den Browser-Chat und überspringt die Auswahl.</td></tr>
+      <tr><td><code>openChooser()</code></td><td>Alias zu <code>open()</code> — öffnet das Auswahl-Fenster.</td></tr>
+      <tr><td><code>close()</code></td><td>Schließt alle Fenster.</td></tr>
+      <tr><td><code>toggle()</code></td><td>Öffnet, wenn geschlossen; schließt, wenn offen.</td></tr>
+      <tr><td><code>botCode</code></td><td>(Eigenschaft) Der konfigurierte Bot-Code als String.</td></tr>
+      <tr><td><code>version</code></td><td>(Eigenschaft) Versionskennung der API.</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>4. Konfiguration über data-Attribute</h2>
+    <table>
+      <tr><th>Attribut</th><th>Werte / Standard</th><th>Bedeutung</th></tr>
+      <tr><td><code>data-bot</code></td><td>z. B. <code>Anfrage-XXXX</code> · Pflicht</td><td>Bot-Code des Slots.</td></tr>
+      <tr><td><code>data-mode</code></td><td><code>web</code> · Standard: beide</td><td><code>web</code> = Auswahl zeigt nur Browser-Chat, keine WhatsApp-Option.</td></tr>
+      <tr><td><code>data-launcher</code></td><td><code>on</code> (Standard) / <code>off</code></td><td><code>off</code> = kein mitgelieferter Button; Öffnen nur per API.</td></tr>
+      <tr><td><code>data-position</code></td><td><code>unten-rechts</code> (Standard) / <code>unten-links</code> / <code>oben-rechts</code> / <code>oben-links</code></td><td>Ecke des schwebenden Buttons (nur relevant, wenn Launcher aktiv).</td></tr>
+      <tr><td><code>data-offset-x</code></td><td>Zahl · Standard <code>24</code></td><td>Seitlicher Abstand zur Ecke in Pixeln.</td></tr>
+      <tr><td><code>data-offset-y</code></td><td>Zahl · Standard <code>24</code></td><td>Abstand nach oben/unten zur Ecke in Pixeln.</td></tr>
+      <tr><td><code>data-wa</code></td><td>Telefonnummer · Standard zentrale Nummer</td><td>Überschreibt die WhatsApp-Zielnummer.</td></tr>
+      <tr><td><code>data-api</code></td><td>URL · Standard Produktiv-Server</td><td>Überschreibt die API-Basis-URL.</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>5. Bereitschaft abwarten (optional)</h2>
+    <p class="t">Wenn Ihr Code die API sofort beim Laden aufrufen will, warten Sie auf das <code class="inline">converdino:ready</code>-Event:</p>
+    <pre><code>window.addEventListener('converdino:ready', function (e) {
+  // e.detail.botCode enthält den Bot-Code
+  // Jetzt ist window.ConverdinoWidget sicher verfügbar.
+});</code></pre>
+    <p>Für gewöhnliche Klick-Handler (<code class="inline">onclick</code>) ist das nicht nötig — beim Klick ist das Script längst geladen.</p>
+  </div>
+
+  <div class="card">
+    <h2>6. Vollständiges Beispiel</h2>
+    <pre><code>&lt;!-- Eigener Button im eigenen Design --&gt;
+&lt;button class="meine-pille" onclick="ConverdinoWidget.open()"&gt;
+  💬 Beratung starten
+&lt;/button&gt;
+
+&lt;!-- Widget laden, ohne eigenen Button --&gt;
+&lt;script
+  src="https://converto-server-production.up.railway.app/converdino-widget.js"
+  data-bot="IHR-BOT-CODE"
+  data-launcher="off"&gt;&lt;/script&gt;</code></pre>
+    <div class="note"><b>Hinweis:</b> <code>IHR-BOT-CODE</code> durch den realen Bot-Code des Slots ersetzen (z. B. <code>Anfrage-45SW</code>). Das Chat-Fenster, die Engine und das Verhalten bleiben unverändert — gesteuert wird ausschließlich, wodurch und wo geöffnet wird.</div>
+  </div>
+
+  <div class="foot">
+    Technologie: <b>Converdino</b> — der digitale Verkaufsberater 24/7<br>
+    Fragen zur Integration? Wir unterstützen Ihr Entwicklerteam gern.
+  </div>
+
+</div>
+</body>
+</html>
