@@ -252,6 +252,13 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             const token = generateToken();
             try { await supabase.from('customer_sessions').insert({ token, merchant_id: merchant.id, service_type: 'order', customer_wa: '+' + from, availability_id: availId, status: 'open', expires_at: new Date(Date.now() + 4*60*60*1000).toISOString() }); } catch(e) {}
             await sendWhatsApp(merchant.id, '+' + from, `👋 Hier kannst du bestellen:\n\n${BASE_URL}/session.html?s=${token}\n\n⏰ Gültig für 4 Stunden.`);
+          } else {
+            // ── DIRIGENT (Converdino Kundencenter) ──────────────────
+            // Greift NUR wenn kein Anker (Code/Link/Session) und kein
+            // bekanntes Keyword zutrifft. Faengt freie Nachrichten auf.
+            try {
+              await dirigentHandle(from, rawText, phoneId);
+            } catch(dirErr) { console.error('Dirigent error:', dirErr.message); }
           }
         }
       }
@@ -6044,76 +6051,15 @@ Antworte NUR mit JSON, kein Markdown:
 });
 
 // ════════════════════════════════════════════════════════════════
-// DIRIGENT – SCHRITT 1: Bestandssuche über beide Bot-Welten
-// Sucht nach einem Begriff in Berater-Bots (cv) und Verkaufs-Bots (vk).
-// Gibt eine einheitliche Trefferliste zurück. Berührt nichts Bestehendes.
-// ════════════════════════════════════════════════════════════════
-async function dirigentSucheBots(suchbegriff) {
-  const begriff = (suchbegriff || '').trim();
-  if (begriff.length < 2) return [];
-
-  const treffer = [];
-
-  // ── Welt 1: Berater-Bots (cv_articles → cv_slots) ──
-  try {
-    const { data: cvArticles } = await supabase
-      .from('cv_articles')
-      .select('title, slot_id, cv_slots(bot_code, status)')
-      .ilike('title', '%' + begriff + '%');
-
-    for (const a of (cvArticles || [])) {
-      const slot = a.cv_slots;
-      if (slot && slot.status === 'active' && slot.bot_code) {
-        treffer.push({
-          welt: 'berater',
-          titel: a.title,
-          anker: slot.bot_code      // wird an handleBotStart uebergeben
-        });
-      }
-    }
-  } catch (e) { console.error('[Dirigent] cv-Suche Fehler:', e.message); }
-
-  // ── Welt 2: Verkaufs-Bots (vk_articles → vk_landingpages) ──
-  try {
-    const { data: vkArticles } = await supabase
-      .from('vk_articles')
-      .select('title, vk_landingpages(slug, status)')
-      .ilike('title', '%' + begriff + '%');
-
-    for (const a of (vkArticles || [])) {
-      const lps = Array.isArray(a.vk_landingpages) ? a.vk_landingpages : (a.vk_landingpages ? [a.vk_landingpages] : []);
-      for (const lp of lps) {
-        if (lp && lp.status === 'active' && lp.slug) {
-          treffer.push({
-            welt: 'verkauf',
-            titel: a.title,
-            anker: lp.slug          // wird an vkHandleLPBot uebergeben
-          });
-        }
-      }
-    }
-  } catch (e) { console.error('[Dirigent] vk-Suche Fehler:', e.message); }
-
-  return treffer;
-}
-
-// TEMPORAER – nur zum Testen von Schritt 1, danach wieder entfernen
-app.get('/api/dirigent/test-suche', async (req, res) => {
-  const treffer = await dirigentSucheBots(req.query.q || '');
-  res.json({ suchbegriff: req.query.q, anzahl: treffer.length, treffer });
-});
-
-// ════════════════════════════════════════════════════════════════
-// DIRIGENT – SCHRITT 2: Kundencenter-Gespraech (isoliert, Test-Modus)
-// Laedt ALLE aktiven Bots beider Welten und laesst Claude den
-// passenden auswaehlen. Noch NICHT im Webhook eingebunden.
+// DIRIGENT – SCHRITT 3: Kundencenter im Live-Webhook
+// Session-Gedaechtnis (2h wie Beraterbots), Gespraech + Uebergabe.
 // ════════════════════════════════════════════════════════════════
 
-// 2a) Volle Liste aller aktiven Bots (beide Welten)
+const dirigentSessions = new Map();
+const DIRIGENT_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 Stunden
+
 async function dirigentAlleAktivenBots() {
   const liste = [];
-
-  // Berater-Bots
   try {
     const { data: cvArticles } = await supabase
       .from('cv_articles')
@@ -6125,8 +6071,6 @@ async function dirigentAlleAktivenBots() {
       }
     }
   } catch (e) { console.error('[Dirigent] Liste cv Fehler:', e.message); }
-
-  // Verkaufs-Bots
   try {
     const { data: vkArticles } = await supabase
       .from('vk_articles')
@@ -6140,19 +6084,14 @@ async function dirigentAlleAktivenBots() {
       }
     }
   } catch (e) { console.error('[Dirigent] Liste vk Fehler:', e.message); }
-
   return liste;
 }
 
-// 2b) Ein Gespraechs-Turn des Kundencenters.
-//     Bekommt die bisherige Historie + neue Kundennachricht.
-//     Gibt zurueck: { antwort, treffer_anker|null, fertig }
-async function dirigentTurn(historie, kundenNachricht) {
+async function dirigentClaudeTurn(historie, kundenNachricht) {
   const fetch = require('node-fetch');
   const bots = await dirigentAlleAktivenBots();
-
   const botListeText = bots.length
-    ? bots.map((b, i) => (i + 1) + '. "' + b.titel + '" [ANKER:' + b.anker + ']').join('\n')
+    ? bots.map((b, i) => (i + 1) + '. "' + b.titel + '" [ANKER:' + b.anker + ' WELT:' + b.welt + ']').join('\n')
     : '(derzeit keine aktiven Angebote)';
 
   const systemPrompt = `Du bist das Converdino Kundencenter. Ein Kunde schreibt per WhatsApp, ohne einen konkreten Link oder QR-Code benutzt zu haben.
@@ -6161,19 +6100,19 @@ DEINE ROLLE:
 - Begruesse freundlich und professionell als "Converdino Kundencenter".
 - Sprich den Kunden ausschliesslich mit "Sie/Ihr/Ihnen" an. Niemals "du".
 - Weise einmal freundlich darauf hin, dass normalerweise ein Link oder QR-Code diese Auswahl abnimmt.
-- Frage, wonach der Kunde sucht (z.B. ein bestimmtes Produkt oder Anliegen).
+- Frage, wonach der Kunde sucht.
 
 VERFUEGBARE ANGEBOTE (intern, NIE die Anker-Codes dem Kunden zeigen):
 ${botListeText}
 
 REGELN FUER DIE ZUORDNUNG:
-- Wenn die Kundennennung EINDEUTIG zu genau einem Angebot passt (auch bei kleinen Tippfehlern, z.B. "Peugeot" passt zu "Peugot"), uebergib an dieses Angebot.
-- Wenn MEHRERE Angebote passen koennten, stelle GENAU EINE kurze Rueckfrage, welches gemeint ist.
+- Wenn die Kundennennung EINDEUTIG zu genau einem Angebot passt (auch bei kleinen Tippfehlern), uebergib an dieses Angebot.
+- Wenn MEHRERE Angebote passen koennten, stelle GENAU EINE kurze Rueckfrage.
 - Wenn KEIN Angebot passt, sage hoeflich, dass dazu nichts vorliegt, und frage nach.
 - Erfinde NIEMALS Angebote, die nicht in der Liste stehen.
 
 ANTWORTFORMAT – antworte IMMER nur mit reinem JSON, kein Markdown:
-{"antwort": "<dein WhatsApp-Text an den Kunden>", "anker": "<ANKER-Code wenn eindeutig zugeordnet, sonst null>", "fertig": <true wenn ein Angebot eindeutig zugeordnet wurde, sonst false>}
+{"antwort": "<dein WhatsApp-Text>", "anker": "<ANKER-Code wenn eindeutig, sonst null>", "welt": "<berater oder verkauf wenn eindeutig, sonst null>", "fertig": <true wenn eindeutig zugeordnet, sonst false>}
 
 WhatsApp-Stil: kurz, hoeflich, maximal 2-3 Saetze. Kein Markdown im Antworttext.`;
 
@@ -6188,94 +6127,45 @@ WhatsApp-Stil: kurz, hoeflich, maximal 2-3 Saetze. Kein Markdown im Antworttext.
       'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 400,
-      system: systemPrompt,
-      messages
-    })
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 400, system: systemPrompt, messages })
   });
-
   const data = await response.json();
-  const text = data.content?.[0]?.text || '{"antwort":"Entschuldigung, da ist etwas schiefgelaufen.","anker":null,"fertig":false}';
+  const text = data.content?.[0]?.text || '{"antwort":"Entschuldigung, einen Moment bitte.","anker":null,"welt":null,"fertig":false}';
   const clean = text.replace(/```json|```/g, '').trim();
   let parsed;
   try { parsed = JSON.parse(clean); }
-  catch (e) { parsed = { antwort: clean, anker: null, fertig: false }; }
+  catch (e) { parsed = { antwort: clean, anker: null, welt: null, fertig: false }; }
   return parsed;
 }
 
-// TEMPORAER – Testet einen einzelnen Kundencenter-Turn, danach entfernen.
-app.get('/api/dirigent/test-turn', async (req, res) => {
-  try {
-    const ergebnis = await dirigentTurn([], req.query.m || '');
-    res.json({ kunde_schrieb: req.query.m || '(Eroeffnung)', kundencenter: ergebnis });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+// Haupteinstieg: wird vom Webhook fuer ankerlose freie Nachrichten gerufen.
+async function dirigentHandle(from, text, phoneId) {
+  // Session holen oder neu anlegen (mit Timeout)
+  let s = dirigentSessions.get(from);
+  if (s && (Date.now() - s.startedAt > DIRIGENT_TIMEOUT_MS)) { dirigentSessions.delete(from); s = null; }
+  if (!s) { s = { historie: [], startedAt: Date.now() }; dirigentSessions.set(from, s); }
+
+  const ergebnis = await dirigentClaudeTurn(s.historie, text);
+
+  // Gespraechsverlauf fortschreiben
+  s.historie.push({ role: 'user', content: text || '(Eroeffnung)' });
+  s.historie.push({ role: 'assistant', content: ergebnis.antwort || '' });
+
+  // Eindeutig zugeordnet → an bestehende Bot-Logik uebergeben
+  if (ergebnis.fertig && ergebnis.anker) {
+    dirigentSessions.delete(from); // Kundencenter-Gespraech beenden
+    // Kurze Bestaetigung senden, dann uebergeben
+    if (ergebnis.antwort) { try { await sendWAMessage(phoneId, from, ergebnis.antwort); } catch(e) {} }
+    try {
+      if (ergebnis.welt === 'verkauf') {
+        await vkHandleLPBot(from, 'p.converdino.com/p/' + ergebnis.anker, ergebnis.anker, phoneId);
+      } else {
+        await cvAPI.handleBotStart(from, ergebnis.anker, phoneId);
+      }
+    } catch (e) { console.error('[Dirigent] Uebergabe Fehler:', e.message); }
+    return;
   }
-});
 
-// TEMPORAER – DIAGNOSE: voller Turn mit roher Antwort + Fehlerdetails.
-app.get('/api/dirigent/test-turn-diag', async (req, res) => {
-  const fetch = require('node-fetch');
-  try {
-    const bots = await dirigentAlleAktivenBots();
-    const botListeText = bots.length
-      ? bots.map((b, i) => (i + 1) + '. "' + b.titel + '" [ANKER:' + b.anker + ']').join('\n')
-      : '(derzeit keine aktiven Angebote)';
-
-    const systemPrompt = 'Du bist das Converdino Kundencenter. Antworte NUR mit reinem JSON im Format {"antwort":"...","anker":null,"fertig":false}. Verfuegbare Angebote:\n' + botListeText;
-
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 400,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: req.query.m || 'Hallo' }]
-      })
-    });
-    const status = r.status;
-    const roh = await r.json();
-    const roherText = roh.content?.[0]?.text || null;
-    res.json({
-      api_status: status,
-      anzahl_bots: bots.length,
-      roher_text_von_claude: roherText,
-      ganze_anthropic_antwort: roh
-    });
-  } catch (e) {
-    res.status(500).json({ fehler: e.message, stack: e.stack });
-  }
-});
-
-// TEMPORAER – DIAGNOSE: zeigt die ROHE Antwort von Anthropic, danach entfernen.
-app.get('/api/dirigent/test-raw', async (req, res) => {
-  const fetch = require('node-fetch');
-  try {
-    const bots = await dirigentAlleAktivenBots();
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 200,
-        messages: [{ role: 'user', content: 'Antworte nur mit dem Wort: OK' }]
-      })
-    });
-    const status = r.status;
-    const roh = await r.json();
-    res.json({ api_status: status, anzahl_bots_gefunden: bots.length, anthropic_antwort: roh });
-  } catch (e) {
-    res.status(500).json({ error: e.message, stack: e.stack });
-  }
-});
+  // Sonst: Kundencenter-Antwort senden, Gespraech laeuft weiter
+  if (ergebnis.antwort) { try { await sendWAMessage(phoneId, from, ergebnis.antwort); } catch(e) {} }
+}
