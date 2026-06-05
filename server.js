@@ -6206,12 +6206,37 @@ WhatsApp-Stil: kurz, hoeflich, maximal 2-3 Saetze. Kein Markdown im Antworttext.
 }
 
 // TEMPORAER – Testet einen einzelnen Kundencenter-Turn, danach entfernen.
-// Aufruf: /api/dirigent/test-turn?m=Ich%20suche%20einen%20Peugeot
 app.get('/api/dirigent/test-turn', async (req, res) => {
   try {
     const ergebnis = await dirigentTurn([], req.query.m || '');
     res.json({ kunde_schrieb: req.query.m || '(Eroeffnung)', kundencenter: ergebnis });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// TEMPORAER – DIAGNOSE: zeigt die ROHE Antwort von Anthropic, danach entfernen.
+app.get('/api/dirigent/test-raw', async (req, res) => {
+  const fetch = require('node-fetch');
+  try {
+    const bots = await dirigentAlleAktivenBots();
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 200,
+        messages: [{ role: 'user', content: 'Antworte nur mit dem Wort: OK' }]
+      })
+    });
+    const status = r.status;
+    const roh = await r.json();
+    res.json({ api_status: status, anzahl_bots_gefunden: bots.length, anthropic_antwort: roh });
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
   }
 });
