@@ -6042,3 +6042,63 @@ Antworte NUR mit JSON, kein Markdown:
     res.status(500).json({ error: e.message });
   }
 });
+
+// ════════════════════════════════════════════════════════════════
+// DIRIGENT – SCHRITT 1: Bestandssuche über beide Bot-Welten
+// Sucht nach einem Begriff in Berater-Bots (cv) und Verkaufs-Bots (vk).
+// Gibt eine einheitliche Trefferliste zurück. Berührt nichts Bestehendes.
+// ════════════════════════════════════════════════════════════════
+async function dirigentSucheBots(suchbegriff) {
+  const begriff = (suchbegriff || '').trim();
+  if (begriff.length < 2) return [];
+
+  const treffer = [];
+
+  // ── Welt 1: Berater-Bots (cv_articles → cv_slots) ──
+  try {
+    const { data: cvArticles } = await supabase
+      .from('cv_articles')
+      .select('title, slot_id, cv_slots(bot_code, status)')
+      .ilike('title', '%' + begriff + '%');
+
+    for (const a of (cvArticles || [])) {
+      const slot = a.cv_slots;
+      if (slot && slot.status === 'active' && slot.bot_code) {
+        treffer.push({
+          welt: 'berater',
+          titel: a.title,
+          anker: slot.bot_code      // wird an handleBotStart uebergeben
+        });
+      }
+    }
+  } catch (e) { console.error('[Dirigent] cv-Suche Fehler:', e.message); }
+
+  // ── Welt 2: Verkaufs-Bots (vk_articles → vk_landingpages) ──
+  try {
+    const { data: vkArticles } = await supabase
+      .from('vk_articles')
+      .select('title, vk_landingpages(slug, status)')
+      .ilike('title', '%' + begriff + '%');
+
+    for (const a of (vkArticles || [])) {
+      const lps = Array.isArray(a.vk_landingpages) ? a.vk_landingpages : (a.vk_landingpages ? [a.vk_landingpages] : []);
+      for (const lp of lps) {
+        if (lp && lp.status === 'active' && lp.slug) {
+          treffer.push({
+            welt: 'verkauf',
+            titel: a.title,
+            anker: lp.slug          // wird an vkHandleLPBot uebergeben
+          });
+        }
+      }
+    }
+  } catch (e) { console.error('[Dirigent] vk-Suche Fehler:', e.message); }
+
+  return treffer;
+}
+
+// TEMPORAER – nur zum Testen von Schritt 1, danach wieder entfernen
+app.get('/api/dirigent/test-suche', async (req, res) => {
+  const treffer = await dirigentSucheBots(req.query.q || '');
+  res.json({ suchbegriff: req.query.q, anzahl: treffer.length, treffer });
+});
