@@ -6215,6 +6215,45 @@ app.get('/api/dirigent/test-turn', async (req, res) => {
   }
 });
 
+// TEMPORAER – DIAGNOSE: voller Turn mit roher Antwort + Fehlerdetails.
+app.get('/api/dirigent/test-turn-diag', async (req, res) => {
+  const fetch = require('node-fetch');
+  try {
+    const bots = await dirigentAlleAktivenBots();
+    const botListeText = bots.length
+      ? bots.map((b, i) => (i + 1) + '. "' + b.titel + '" [ANKER:' + b.anker + ']').join('\n')
+      : '(derzeit keine aktiven Angebote)';
+
+    const systemPrompt = 'Du bist das Converdino Kundencenter. Antworte NUR mit reinem JSON im Format {"antwort":"...","anker":null,"fertig":false}. Verfuegbare Angebote:\n' + botListeText;
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 400,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: req.query.m || 'Hallo' }]
+      })
+    });
+    const status = r.status;
+    const roh = await r.json();
+    const roherText = roh.content?.[0]?.text || null;
+    res.json({
+      api_status: status,
+      anzahl_bots: bots.length,
+      roher_text_von_claude: roherText,
+      ganze_anthropic_antwort: roh
+    });
+  } catch (e) {
+    res.status(500).json({ fehler: e.message, stack: e.stack });
+  }
+});
+
 // TEMPORAER – DIAGNOSE: zeigt die ROHE Antwort von Anthropic, danach entfernen.
 app.get('/api/dirigent/test-raw', async (req, res) => {
   const fetch = require('node-fetch');
