@@ -6102,3 +6102,116 @@ app.get('/api/dirigent/test-suche', async (req, res) => {
   const treffer = await dirigentSucheBots(req.query.q || '');
   res.json({ suchbegriff: req.query.q, anzahl: treffer.length, treffer });
 });
+
+// ════════════════════════════════════════════════════════════════
+// DIRIGENT – SCHRITT 2: Kundencenter-Gespraech (isoliert, Test-Modus)
+// Laedt ALLE aktiven Bots beider Welten und laesst Claude den
+// passenden auswaehlen. Noch NICHT im Webhook eingebunden.
+// ════════════════════════════════════════════════════════════════
+
+// 2a) Volle Liste aller aktiven Bots (beide Welten)
+async function dirigentAlleAktivenBots() {
+  const liste = [];
+
+  // Berater-Bots
+  try {
+    const { data: cvArticles } = await supabase
+      .from('cv_articles')
+      .select('title, cv_slots(bot_code, status)');
+    for (const a of (cvArticles || [])) {
+      const slot = a.cv_slots;
+      if (slot && slot.status === 'active' && slot.bot_code && a.title) {
+        liste.push({ welt: 'berater', titel: a.title, anker: slot.bot_code });
+      }
+    }
+  } catch (e) { console.error('[Dirigent] Liste cv Fehler:', e.message); }
+
+  // Verkaufs-Bots
+  try {
+    const { data: vkArticles } = await supabase
+      .from('vk_articles')
+      .select('title, vk_landingpages(slug, status)');
+    for (const a of (vkArticles || [])) {
+      const lps = Array.isArray(a.vk_landingpages) ? a.vk_landingpages : (a.vk_landingpages ? [a.vk_landingpages] : []);
+      for (const lp of lps) {
+        if (lp && lp.status === 'active' && lp.slug && a.title) {
+          liste.push({ welt: 'verkauf', titel: a.title, anker: lp.slug });
+        }
+      }
+    }
+  } catch (e) { console.error('[Dirigent] Liste vk Fehler:', e.message); }
+
+  return liste;
+}
+
+// 2b) Ein Gespraechs-Turn des Kundencenters.
+//     Bekommt die bisherige Historie + neue Kundennachricht.
+//     Gibt zurueck: { antwort, treffer_anker|null, fertig }
+async function dirigentTurn(historie, kundenNachricht) {
+  const fetch = require('node-fetch');
+  const bots = await dirigentAlleAktivenBots();
+
+  const botListeText = bots.length
+    ? bots.map((b, i) => (i + 1) + '. "' + b.titel + '" [ANKER:' + b.anker + ']').join('\n')
+    : '(derzeit keine aktiven Angebote)';
+
+  const systemPrompt = `Du bist das Converdino Kundencenter. Ein Kunde schreibt per WhatsApp, ohne einen konkreten Link oder QR-Code benutzt zu haben.
+
+DEINE ROLLE:
+- Begruesse freundlich und professionell als "Converdino Kundencenter".
+- Sprich den Kunden ausschliesslich mit "Sie/Ihr/Ihnen" an. Niemals "du".
+- Weise einmal freundlich darauf hin, dass normalerweise ein Link oder QR-Code diese Auswahl abnimmt.
+- Frage, wonach der Kunde sucht (z.B. ein bestimmtes Produkt oder Anliegen).
+
+VERFUEGBARE ANGEBOTE (intern, NIE die Anker-Codes dem Kunden zeigen):
+${botListeText}
+
+REGELN FUER DIE ZUORDNUNG:
+- Wenn die Kundennennung EINDEUTIG zu genau einem Angebot passt (auch bei kleinen Tippfehlern, z.B. "Peugeot" passt zu "Peugot"), uebergib an dieses Angebot.
+- Wenn MEHRERE Angebote passen koennten, stelle GENAU EINE kurze Rueckfrage, welches gemeint ist.
+- Wenn KEIN Angebot passt, sage hoeflich, dass dazu nichts vorliegt, und frage nach.
+- Erfinde NIEMALS Angebote, die nicht in der Liste stehen.
+
+ANTWORTFORMAT – antworte IMMER nur mit reinem JSON, kein Markdown:
+{"antwort": "<dein WhatsApp-Text an den Kunden>", "anker": "<ANKER-Code wenn eindeutig zugeordnet, sonst null>", "fertig": <true wenn ein Angebot eindeutig zugeordnet wurde, sonst false>}
+
+WhatsApp-Stil: kurz, hoeflich, maximal 2-3 Saetze. Kein Markdown im Antworttext.`;
+
+  const messages = [];
+  for (const h of (historie || [])) messages.push(h);
+  messages.push({ role: 'user', content: kundenNachricht || '(Kunde hat das Gespraech eroeffnet)' });
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 400,
+      system: systemPrompt,
+      messages
+    })
+  });
+
+  const data = await response.json();
+  const text = data.content?.[0]?.text || '{"antwort":"Entschuldigung, da ist etwas schiefgelaufen.","anker":null,"fertig":false}';
+  const clean = text.replace(/```json|```/g, '').trim();
+  let parsed;
+  try { parsed = JSON.parse(clean); }
+  catch (e) { parsed = { antwort: clean, anker: null, fertig: false }; }
+  return parsed;
+}
+
+// TEMPORAER – Testet einen einzelnen Kundencenter-Turn, danach entfernen.
+// Aufruf: /api/dirigent/test-turn?m=Ich%20suche%20einen%20Peugeot
+app.get('/api/dirigent/test-turn', async (req, res) => {
+  try {
+    const ergebnis = await dirigentTurn([], req.query.m || '');
+    res.json({ kunde_schrieb: req.query.m || '(Eroeffnung)', kundencenter: ergebnis });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
