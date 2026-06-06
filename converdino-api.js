@@ -1698,6 +1698,23 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
         input_schema: { type: 'object', properties: {} }
       },
       {
+        name: 'get_free_slots',
+        description: 'Lies die nächsten FREIEN Termine aus dem Kalender, um sie dem Interessenten zur Auswahl anzubieten. Nutze dies, sobald der Interessent einen Termin/ein Gespräch möchte. Du bekommst echte freie Zeiten zurück — biete dem Interessenten davon einige konkret an (z.B. 2-3 zur Auswahl) und frage, welche passt. Erfinde NIEMALS selbst Zeiten.',
+        input_schema: { type: 'object', properties: {} }
+      },
+      {
+        name: 'book_appointment',
+        description: 'Bucht VERBINDLICH einen konkreten Termin, den der Interessent aus den zuvor angebotenen freien Zeiten gewählt hat. Voraussetzung: Du kennst die ISO-Zeit des gewählten Slots (aus get_free_slots), den Namen UND die E-Mail des Interessenten. Falls die E-Mail noch fehlt, frage zuerst danach (für die Terminbestätigung nötig) und buche erst danach.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            start_iso: { type: 'string', description: 'Die exakte ISO-Startzeit des gewählten Slots, genau wie in get_free_slots angezeigt (Feld ISO).' },
+            email: { type: 'string', description: 'E-Mail des Interessenten für die Terminbestätigung.' }
+          },
+          required: ['start_iso']
+        }
+      },
+      {
         name: 'confirm_commitment',
         description: 'ALLERLETZTER Schritt der das Gespräch beendet. Rufe dies erst auf nachdem du dich verabschiedet hast. Bei Erfolg (committed=true) erst nachdem der Käufer aktiv zugestimmt hat. Bei Misserfolg (committed=false) nachdem du fair abgeschlossen und die Tür offen gelassen hast.',
         input_schema: {
@@ -1748,7 +1765,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     // API-Call mit automatischem Retry (gegen transiente Fehler)
     let response, lastErr;
     // Bei Beratung: nur Lead-/Kontakt-Tools zulassen (keine Preis-/Deal-/Zahlungs-Tools)
-    const beratungToolNamen = ['flag_hot_lead', 'collect_contact', 'request_callback', 'share_document', 'send_booking_link'];
+    const beratungToolNamen = ['flag_hot_lead', 'collect_contact', 'request_callback', 'share_document', 'send_booking_link', 'get_free_slots', 'book_appointment'];
     const effectiveTools = istBeratung
       ? tools.filter(t => beratungToolNamen.indexOf(t.name) !== -1)
       : tools;
@@ -1859,13 +1876,39 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
       // vollständige Folgeantwort formulieren lassen.
       if (toolCalls.length > 0) {
         try {
-          const toolResults = toolCalls.map(tc => ({
-            type: 'tool_result',
-            tool_use_id: tc.id,
-            content: (tc.name === 'share_document')
-              ? (session._shareLink ? `Dokument wurde dem Nutzer als Download-Link bereitgestellt.` : 'Dokument bereits zuvor geteilt oder nicht gefunden.')
-              : 'Aktion ausgeführt.'
-          }));
+          const toolResults = toolCalls.map(tc => {
+            let content;
+            if (tc.name === 'share_document') {
+              content = session._shareLink ? 'Dokument wurde dem Nutzer als Download-Link bereitgestellt.' : 'Dokument bereits zuvor geteilt oder nicht gefunden.';
+            } else if (tc.name === 'get_free_slots') {
+              const r = session._calSlotsResult;
+              if (r === 'KEIN_KALENDER') {
+                content = 'Für diesen Bot ist kein Online-Kalender hinterlegt. Du kannst KEINE Zeiten anbieten oder buchen — nimm stattdessen die Wunschzeit auf und sichere den Lead (request_callback).';
+              } else if (r === 'KEINE_FREIEN_SLOTS') {
+                content = 'Aktuell sind in den nächsten Tagen keine freien Termine im Kalender. Biete an, dass sich der Berater mit einem Terminvorschlag meldet, und sichere den Kontakt.';
+              } else {
+                content = 'Diese freien Termine stehen zur Auswahl (Zeiten in Wiener Zeit). Biete dem Interessenten 2-3 davon konkret an und frage, welcher passt. Nenne dem Interessenten NUR die lesbare Zeit, NIEMALS den ISO-Code:\n' + r;
+              }
+            } else if (tc.name === 'book_appointment') {
+              const r = session._calBookResult || '';
+              if (r.startsWith('GEBUCHT:')) {
+                content = 'Termin wurde VERBINDLICH gebucht für: ' + r.slice(8) + '. Bestätige dem Interessenten freundlich und kurz, dass der Termin fix eingetragen ist und er gleich eine Bestätigung per E-Mail bekommt.';
+              } else if (r === 'EMAIL_FEHLT') {
+                content = 'Buchung noch NICHT möglich: Es fehlt die E-Mail-Adresse für die Terminbestätigung. Frage den Interessenten freundlich nach seiner E-Mail und buche danach erneut.';
+              } else if (r === 'BELEGT') {
+                content = 'Dieser Termin ist inzwischen belegt. Entschuldige dich kurz und biete andere freie Zeiten an (rufe get_free_slots erneut auf).';
+              } else if (r === 'KEINE_ZEIT') {
+                content = 'Es war keine gültige Terminzeit angegeben. Biete dem Interessenten zunächst freie Zeiten an (get_free_slots).';
+              } else if (r === 'KEIN_KALENDER') {
+                content = 'Kein Online-Kalender hinterlegt — du kannst nicht buchen. Nimm die Wunschzeit auf und sichere den Lead (request_callback).';
+              } else {
+                content = 'Die Buchung hat technisch nicht geklappt. Entschuldige dich kurz, nimm die Wunschzeit auf und sage zu, dass sich der Berater zur Bestätigung meldet (request_callback).';
+              }
+            } else {
+              content = 'Aktion ausgeführt.';
+            }
+            return { type: 'tool_result', tool_use_id: tc.id, content };
+          });
           const followMessages = messages.concat([
             { role: 'assistant', content: blocks },
             { role: 'user', content: toolResults }
@@ -2132,6 +2175,57 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
           break;
         }
 
+        case 'get_free_slots': {
+          const etid = session.article && session.article.cal_event_type_id;
+          if (etid) {
+            const slots = await cvCalFreieSlots(etid, 10);
+            session._calSlots = slots;                 // ISO merken (für Buchung)
+            session._calSlotsResult = slots.length
+              ? cvCalSlotsFuerPrompt(slots, 6)
+              : 'KEINE_FREIEN_SLOTS';
+          } else {
+            session._calSlotsResult = 'KEIN_KALENDER';  // Bot soll dann Link/Lead-Weg gehen
+          }
+          break;
+        }
+
+        case 'book_appointment': {
+          const etid = session.article && session.article.cal_event_type_id;
+          const startIso = (input.start_iso || '').trim();
+          if (input.email) session.buyerEmail = input.email;
+          // WhatsApp-Nummer als Kontakt sichern, falls noch nicht geschehen
+          if (!session.buyerPhone && phone) session.buyerPhone = phone;
+          const email = session.buyerEmail;
+          const name  = session.buyerName || 'Interessent';
+
+          if (!etid) {
+            session._calBookResult = 'KEIN_KALENDER';
+          } else if (!startIso) {
+            session._calBookResult = 'KEINE_ZEIT';
+          } else if (!email) {
+            session._calBookResult = 'EMAIL_FEHLT';
+          } else {
+            const res = await cvCalBuche(etid, startIso, name, email);
+            if (res.ok) {
+              session._calBookResult = 'GEBUCHT:' + (res.anzeige || startIso);
+              if (session.buyerName)  updates.buyer_name  = session.buyerName;
+              if (session.buyerEmail) updates.buyer_email = session.buyerEmail;
+              updates.status = 'callback';
+              await cvLogEvent(session, phone, 'callback', {
+                preferred_time: res.anzeige || startIso,
+                booked: true, cal_booking_id: res.id,
+                buyer_name: session.buyerName, buyer_phone: session.buyerPhone, buyer_email: session.buyerEmail
+              });
+              session.notified = true;
+            } else if (res.doppelt) {
+              session._calBookResult = 'BELEGT';
+            } else {
+              session._calBookResult = 'FEHLER';
+            }
+          }
+          break;
+        }
+
         case 'confirm_commitment':
           if (input.committed) {
             // Erfolg ist meist schon durch agree_deal/escalate/callback geloggt.
@@ -2187,6 +2281,130 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     const any = strategieText.match(/https?:\/\/[^\s)]+/i);
     return any ? any[0].replace(/[.,;]+$/, '') : null;
   }
+
+  // ════════════════════════════════════════════════════════════════
+  // CAL.COM – gemeinsame Helfer für beide Kanäle (WhatsApp + Web)
+  // Greifen nur, wenn der Bot eine cal_event_type_id hat. Sonst bleibt
+  // alles beim Alten (Link schicken über send_booking_link).
+  // ════════════════════════════════════════════════════════════════
+  const CAL_TZ = 'Europe/Vienna';
+
+  // Liest freie Slots der nächsten Tage. Liefert Array {iso, anzeige}.
+  async function cvCalFreieSlots(eventTypeId, tage) {
+    if (!process.env.CAL_API_KEY || !eventTypeId) return [];
+    const fetch = require('node-fetch');
+    const t = Math.min(parseInt(tage, 10) || 10, 31);
+    const jetzt = new Date();
+    const ende = new Date(jetzt.getTime() + t * 24 * 60 * 60 * 1000);
+    const url = 'https://api.cal.com/v2/slots'
+      + '?eventTypeId=' + encodeURIComponent(eventTypeId)
+      + '&start=' + jetzt.toISOString().slice(0, 10)
+      + '&end=' + ende.toISOString().slice(0, 10)
+      + '&timeZone=' + encodeURIComponent(CAL_TZ);
+    try {
+      const r = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
+          'cal-api-version': '2024-09-04',
+          'Content-Type': 'application/json'
+        }
+      });
+      const roh = await r.json();
+      const slots = [];
+      const data = roh && roh.data;
+      if (Array.isArray(data)) {
+        for (const e of data) { if (e && e.start) slots.push(e.start); }
+      } else if (data && typeof data === 'object') {
+        for (const datum of Object.keys(data)) {
+          const arr = data[datum];
+          if (Array.isArray(arr)) for (const e of arr) { if (e && e.start) slots.push(e.start); }
+        }
+      }
+      return slots.map(iso => {
+        let anzeige = iso;
+        try {
+          anzeige = new Date(iso).toLocaleString('de-AT', {
+            weekday: 'short', day: '2-digit', month: '2-digit',
+            hour: '2-digit', minute: '2-digit', timeZone: CAL_TZ
+          });
+        } catch(e) {}
+        return { iso, anzeige };
+      });
+    } catch(e) {
+      console.error('[CV cal slots]', e.message);
+      return [];
+    }
+  }
+
+  // Bucht verbindlich. Liefert {ok, doppelt, id, anzeige, fehler}.
+  async function cvCalBuche(eventTypeId, startIso, name, email) {
+    if (!process.env.CAL_API_KEY || !eventTypeId || !startIso) {
+      return { ok: false, fehler: 'fehlende Daten' };
+    }
+    const fetch = require('node-fetch');
+    const body = {
+      start: startIso,
+      eventTypeId: parseInt(eventTypeId, 10),
+      attendee: {
+        name: name || 'Interessent',
+        email: email,
+        timeZone: CAL_TZ,
+        language: 'de'
+      }
+    };
+    try {
+      const r = await fetch('https://api.cal.com/v2/bookings', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
+          'cal-api-version': '2024-08-13',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      const status = r.status;
+      const roh = await r.json();
+      if (status >= 200 && status < 300) {
+        const d = (roh && roh.data) ? roh.data : roh;
+        let anzeige = startIso;
+        try {
+          anzeige = new Date(startIso).toLocaleString('de-AT', {
+            weekday: 'long', day: '2-digit', month: '2-digit',
+            hour: '2-digit', minute: '2-digit', timeZone: CAL_TZ
+          });
+        } catch(e) {}
+        return { ok: true, id: d && (d.id || d.uid), anzeige };
+      }
+      const txt = JSON.stringify(roh || {}).toLowerCase();
+      const doppelt = txt.includes('already has booking')
+        || txt.includes('no_available_users')
+        || txt.includes('not available')
+        || txt.includes('booking_seats_full_error');
+      return { ok: false, doppelt, fehler: (roh && roh.error && roh.error.message) || 'Buchung fehlgeschlagen' };
+    } catch(e) {
+      console.error('[CV cal book]', e.message);
+      return { ok: false, fehler: e.message };
+    }
+  }
+
+  // Formatiert eine Slot-Liste als kompakte Auswahl für den Bot-Prompt.
+  // Zeigt bis zu "max" Termine, gut verteilt über die verfügbaren Tage.
+  function cvCalSlotsFuerPrompt(slots, max) {
+    if (!Array.isArray(slots) || slots.length === 0) return '';
+    const m = max || 6;
+    // Gleichmäßig über die Liste verteilt auswählen (nicht nur erster Tag)
+    let auswahl;
+    if (slots.length <= m) {
+      auswahl = slots;
+    } else {
+      auswahl = [];
+      const schritt = slots.length / m;
+      for (let i = 0; i < m; i++) auswahl.push(slots[Math.floor(i * schritt)]);
+    }
+    return auswahl.map(s => '• ' + s.anzeige + '  [ISO: ' + s.iso + ']').join('\n');
+  }
+
 
   // ── Antwortlänge je nach Gesprächsphase ("hineinwachsen") ───
   // botAntworten = wie oft der Bot in dieser Session schon geantwortet hat.
@@ -3094,6 +3312,7 @@ ${docs.map(d => '• ' + d.file_name).join('\n')}` : ''}`;
       : '(keine extrahierten Dokument-Fakten)';
     const berater = (article.berater_name && article.berater_name.trim()) ? article.berater_name.trim() : 'unser Berater';
     const strategieText = (article.strategie && article.strategie.trim()) ? article.strategie.trim() : '';
+    const hatKalender = !!(article.cal_event_type_id) && !!process.env.CAL_API_KEY;
 
     return `Du bist ein kompetenter, seriöser Berater in einem CHAT-FENSTER auf einer Unternehmens-Webseite. Das Thema ist erklärungsbedürftig und ernst (z.B. Lieferanten-Risiken, Compliance, persönliche Haftung der Geschäftsführung). Dein Ziel: dem Gegenüber das Problembewusstsein schärfen, Vertrauen durch Fachkompetenz aufbauen und einen qualifizierten Lead an unseren Berater übergeben — NICHT verkaufen, NICHT verhandeln, KEINE Preise nennen.${istWhatsApp ? '' : `
 
@@ -3148,7 +3367,7 @@ ${istWhatsApp
 - Erfinde NIEMALS Kontaktdaten.
 - Wenn ein Termin-/Buchungslink angeboten wird und der Interessent zustimmt oder danach fragt: nutze das Werkzeug send_booking_link (der konkrete Link wird automatisch angehängt). Schreibe NIE selbst eine cal.com- oder Termin-URL aus dem Gedächtnis, und kündige den Link nicht nur an, ohne ihn zu liefern.
 - WICHTIG — Link NICHT wiederholen: Wenn du den Buchungslink in diesem Gespräch bereits einmal geschickt hast, schicke ihn NICHT bei jeder weiteren Nachricht erneut. Verweise höchstens sprachlich darauf ("über den Link oben können Sie ein Zeitfenster wählen"). Stures Wiederholen desselben Links wirkt wie eine kaputte Schleife — vermeide das.
-- WICHTIG — du kannst KEINE Termine fix zusagen: Du hast keinen Kalenderzugriff und kennst keine freien Zeiten. Wenn der Interessent einen KONKRETEN Termin nennt oder fix bestätigt haben will (z.B. "Geht morgen 13:00?", "Ist das fix?", "schick mir den Termin direkt"), dann tu NICHT so, als könntest du buchen, und wirf auch nicht nochmal den Link hin. Stattdessen: nimm die Wunschzeit ehrlich auf und übergib sie an ${berater}. Sage sinngemäß: "Einen festen Termin kann ${berater} am besten direkt mit Ihnen bestätigen. Ich notiere Ihren Wunsch — morgen um 13:00 — und gebe ihn zusammen mit Ihrem Kontakt an ${berater} weiter; er bestätigt Ihnen das dann verbindlich. Unter welchem Namen und welcher Nummer erreicht er Sie am besten?" Sobald du Wunschzeit + Name + Kontakt hast, sichere den Lead mit collect_contact (bzw. request_callback) — DAS ist hier der richtige Weg, nicht der Link.
+- WICHTIG — Terminvereinbarung: ${hatKalender ? `Du HAST Kalenderzugriff und kannst Termine selbst verbindlich buchen. Wenn der Interessent ein Gespräch/einen Termin möchte: rufe get_free_slots auf, biete ihm 2-3 der zurückgegebenen freien Zeiten konkret an und frage, welche passt. Sobald er eine Zeit wählt, brauchst du seinen Namen und seine E-Mail (für die Bestätigung) — frage danach, falls du sie noch nicht hast. Dann buche mit book_appointment (die gewählte ISO-Zeit + E-Mail). Nenne dem Interessenten immer nur die lesbare Uhrzeit, niemals den technischen ISO-Code. Erfinde nie selbst Zeiten — biete nur an, was get_free_slots liefert.` : `Du kannst KEINE Termine fix zusagen: Du hast keinen Kalenderzugriff und kennst keine freien Zeiten. Wenn der Interessent einen KONKRETEN Termin nennt oder fix bestätigt haben will (z.B. "Geht morgen 13:00?", "Ist das fix?", "schick mir den Termin direkt"), dann tu NICHT so, als könntest du buchen, und wirf auch nicht nochmal den Link hin. Stattdessen: nimm die Wunschzeit ehrlich auf und übergib sie an ${berater}. Sage sinngemäß: "Einen festen Termin kann ${berater} am besten direkt mit Ihnen bestätigen. Ich notiere Ihren Wunsch — morgen um 13:00 — und gebe ihn zusammen mit Ihrem Kontakt an ${berater} weiter; er bestätigt Ihnen das dann verbindlich. Unter welchem Namen und welcher Nummer erreicht er Sie am besten?" Sobald du Wunschzeit + Name + Kontakt hast, sichere den Lead mit collect_contact (bzw. request_callback) — DAS ist hier der richtige Weg, nicht der Link.`}
 - GRUNDREGEL bei Aktionen: Wenn du mitten im Gespräch Unterlagen teilst oder einen Link/Termin-Link gibst, schreibe IMMER einen kurzen begleitenden Satz dazu — rufe nie wortlos ein Werkzeug auf. Und beende das Gespräch NACH einer solchen Aktion NICHT sofort. Frage stattdessen freundlich nach, ob noch etwas offen ist — z.B. "Soll ich sonst noch etwas für Sie klären?" oder "Haben Sie noch Fragen, bevor ich Sie an ${berater} übergebe?". Erst die Antwort darauf entscheidet, wie es weitergeht. Beantworte dabei IMMER zuerst die konkrete Frage des Interessenten, bevor du nachfragst oder abschließt — gehe nie über eine echte Frage hinweg.
 
 GESPRÄCHSENDE — erst nachfragen, dann je nach Antwort:
@@ -3228,6 +3447,27 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
         input_schema: { type: 'object', properties: {} }
       });
     }
+    const webHatKalender = !!(article && article.cal_event_type_id) && !!process.env.CAL_API_KEY;
+    if (webHatKalender) {
+      webTools.push({
+        name: 'get_free_slots',
+        description: 'Lies die nächsten FREIEN Termine aus dem Kalender, um sie dem Interessenten zur Auswahl anzubieten. Nutze dies, sobald der Interessent einen Termin/ein Gespräch möchte. Du bekommst echte freie Zeiten zurück — biete davon 2-3 konkret an und frage, welche passt. Erfinde NIEMALS selbst Zeiten.',
+        input_schema: { type: 'object', properties: {} }
+      });
+      webTools.push({
+        name: 'book_appointment',
+        description: 'Bucht VERBINDLICH einen konkreten Termin, den der Interessent aus den angebotenen freien Zeiten gewählt hat. Voraussetzung: Du kennst die ISO-Zeit des gewählten Slots (aus get_free_slots), den Namen UND die E-Mail des Interessenten. Da du im Web-Chat keine Kontaktdaten hast, frage den Interessenten vor der Buchung nach Name und E-Mail (für die Terminbestätigung) und übergib die E-Mail hier.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            start_iso: { type: 'string', description: 'Die exakte ISO-Startzeit des gewählten Slots, genau wie in get_free_slots angezeigt (Feld ISO).' },
+            name: { type: 'string', description: 'Name des Interessenten.' },
+            email: { type: 'string', description: 'E-Mail des Interessenten für die Terminbestätigung.' }
+          },
+          required: ['start_iso', 'email']
+        }
+      });
+    }
 
     function normalizeHistory(hist) {
       const out = [];
@@ -3296,6 +3536,8 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     // share_document-Aufrufe verarbeiten → passenden Link suchen
     const toolCalls = blocks.filter(b => b.type === 'tool_use');
     let shareLink = null;
+    let webSlotsResult = null;   // Ergebnis get_free_slots (Text für Folge-Prompt)
+    let webBookResult = null;    // Ergebnis book_appointment
     // Welche Links wurden in dieser Session schon geteilt? (stehen in der bisherigen Historie)
     const histText = (Array.isArray(history) ? history : []).map(m => (m && m.content) ? String(m.content) : '').join('\n');
     for (const tc of toolCalls) {
@@ -3315,6 +3557,27 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
           shareLink = { name: 'Termin buchen', url: bookingLink };
           if (!sharedLinks.some(l => l.url === bookingLink)) sharedLinks.push(shareLink);
         }
+      } else if (tc.name === 'get_free_slots') {
+        const etid = article && article.cal_event_type_id;
+        if (etid) {
+          const slots = await cvCalFreieSlots(etid, 10);
+          webSlotsResult = slots.length ? cvCalSlotsFuerPrompt(slots, 6) : 'KEINE_FREIEN_SLOTS';
+        } else {
+          webSlotsResult = 'KEIN_KALENDER';
+        }
+      } else if (tc.name === 'book_appointment') {
+        const etid = article && article.cal_event_type_id;
+        const startIso = ((tc.input && tc.input.start_iso) || '').trim();
+        const email = ((tc.input && tc.input.email) || '').trim();
+        const name  = ((tc.input && tc.input.name) || '').trim() || 'Interessent';
+        if (!etid) webBookResult = 'KEIN_KALENDER';
+        else if (!startIso) webBookResult = 'KEINE_ZEIT';
+        else if (!email) webBookResult = 'EMAIL_FEHLT';
+        else {
+          const res = await cvCalBuche(etid, startIso, name, email);
+          webBookResult = res.ok ? ('GEBUCHT:' + (res.anzeige || startIso))
+                        : (res.doppelt ? 'BELEGT' : 'FEHLER');
+        }
       }
     }
 
@@ -3324,15 +3587,40 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     // ihn eine vollständige Folgeantwort formulieren.
     if (toolCalls.length > 0) {
       try {
-        const toolResults = toolCalls.map(tc => ({
-          type: 'tool_result',
-          tool_use_id: tc.id,
-          content: (tc.name === 'share_document')
-            ? (shareLink ? `Dokument "${shareLink.name}" wurde dem Nutzer als Download-Link bereitgestellt.` : 'Dokument bereits zuvor geteilt oder nicht gefunden.')
-            : (tc.name === 'send_booking_link')
-            ? 'Der Buchungslink wurde dem Nutzer bereitgestellt (wird automatisch angehängt — wiederhole die URL nicht).'
-            : 'Aktion ausgeführt.'
-        }));
+        const toolResults = toolCalls.map(tc => {
+          let content;
+          if (tc.name === 'share_document') {
+            content = shareLink ? `Dokument "${shareLink.name}" wurde dem Nutzer als Download-Link bereitgestellt.` : 'Dokument bereits zuvor geteilt oder nicht gefunden.';
+          } else if (tc.name === 'send_booking_link') {
+            content = 'Der Buchungslink wurde dem Nutzer bereitgestellt (wird automatisch angehängt — wiederhole die URL nicht).';
+          } else if (tc.name === 'get_free_slots') {
+            if (webSlotsResult === 'KEIN_KALENDER') {
+              content = 'Für diesen Bot ist kein Online-Kalender hinterlegt. Du kannst KEINE Zeiten anbieten oder buchen — bitte stattdessen um die Kontaktdaten (Marker [[KONTAKT]]), damit sich der Berater mit einem Terminvorschlag meldet.';
+            } else if (webSlotsResult === 'KEINE_FREIEN_SLOTS') {
+              content = 'Aktuell sind in den nächsten Tagen keine freien Termine im Kalender. Biete an, dass sich der Berater mit einem Terminvorschlag meldet, und bitte um die Kontaktdaten.';
+            } else {
+              content = 'Diese freien Termine stehen zur Auswahl (Zeiten in Wiener Zeit). Biete dem Interessenten 2-3 davon konkret an und frage, welcher passt. Nenne dem Interessenten NUR die lesbare Zeit, NIEMALS den ISO-Code:\n' + webSlotsResult;
+            }
+          } else if (tc.name === 'book_appointment') {
+            const r = webBookResult || '';
+            if (r.startsWith('GEBUCHT:')) {
+              content = 'Termin wurde VERBINDLICH gebucht für: ' + r.slice(8) + '. Bestätige dem Interessenten freundlich und kurz, dass der Termin fix eingetragen ist und er gleich eine Bestätigung per E-Mail bekommt.';
+            } else if (r === 'EMAIL_FEHLT') {
+              content = 'Buchung noch NICHT möglich: Es fehlt die E-Mail-Adresse. Frage den Interessenten freundlich nach Name und E-Mail und buche danach erneut.';
+            } else if (r === 'BELEGT') {
+              content = 'Dieser Termin ist inzwischen belegt. Entschuldige dich kurz und biete andere freie Zeiten an (rufe get_free_slots erneut auf).';
+            } else if (r === 'KEINE_ZEIT') {
+              content = 'Es war keine gültige Terminzeit angegeben. Biete dem Interessenten zunächst freie Zeiten an (get_free_slots).';
+            } else if (r === 'KEIN_KALENDER') {
+              content = 'Kein Online-Kalender hinterlegt — du kannst nicht buchen. Bitte um die Kontaktdaten ([[KONTAKT]]).';
+            } else {
+              content = 'Die Buchung hat technisch nicht geklappt. Entschuldige dich kurz und bitte um die Kontaktdaten ([[KONTAKT]]), damit sich der Berater zur Terminbestätigung meldet.';
+            }
+          } else {
+            content = 'Aktion ausgeführt.';
+          }
+          return { type: 'tool_result', tool_use_id: tc.id, content };
+        });
         const followMessages = messages.concat([
           { role: 'assistant', content: blocks },
           { role: 'user', content: toolResults }
