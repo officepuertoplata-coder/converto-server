@@ -6119,9 +6119,10 @@ ${botListeText}
 
 REGELN FUER DIE ZUORDNUNG:
 - Wenn die Kundennennung EINDEUTIG zu genau einem Angebot passt (auch bei kleinen Tippfehlern), uebergib an dieses Angebot.
-- Wenn MEHRERE Angebote passen koennten, stelle GENAU EINE kurze Rueckfrage.
+- Wenn MEHRERE Angebote passen koennten, stelle GENAU EINE kurze Rueckfrage — aber stelle dabei NIEMALS zwei Firmen-, Marken- oder Angebotsnamen gegenueber (also NICHT "Meinen Sie IRI-Sys oder Supplier Risk Management?"). Frage stattdessen NEUTRAL nach dem konkreten Bedarf des Kunden (z.B. "In welchem Bereich sind Sie taetig?" oder "Worum geht es konkret — ein einzelner Lieferant, eine ganze Lieferkette, ein Audit?"). Anhand der Antwort ordnest DU intern selbst zu. Die Namen der Angebote/Firmen bleiben IMMER intern.
 - Wenn KEIN Angebot passt, sage hoeflich, dass dazu nichts vorliegt, und frage nach.
 - Erfinde NIEMALS Angebote, die nicht in der Liste stehen.
+- Nenne dem Kunden NIE die internen Anker-Codes und NIE die Anbieter-/Markennamen aus der Angebotsliste.
 
 ANTWORTFORMAT – antworte IMMER nur mit reinem JSON, kein Markdown:
 {"antwort": "<dein WhatsApp-Text>", "anker": "<ANKER-Code wenn eindeutig, sonst null>", "welt": "<berater oder verkauf wenn eindeutig, sonst null>", "fertig": <true wenn eindeutig zugeordnet, sonst false>}
@@ -6195,6 +6196,9 @@ async function dirigentHandle(from, text, phoneId) {
   if (ergebnis.fertig && ergebnis.anker) {
     try { await supabase.from('dirigent_sessions').delete().eq('phone', from); } catch(e) {}
     if (ergebnis.antwort) { try { await sendWAMessage(phoneId, from, ergebnis.antwort); } catch(e) {} }
+    // Kurze Pause, damit die Uebergabe nicht abrupt wirkt: Der Kunde liest erst
+    // die Abschiedsnachricht des Kundencenters, bevor der Fachberater "hereinkommt".
+    await new Promise(r => setTimeout(r, 7000));
     try {
       if (ergebnis.welt === 'verkauf') {
         await vkHandleLPBot(from, 'p.converdino.com/p/' + ergebnis.anker, ergebnis.anker, phoneId);
