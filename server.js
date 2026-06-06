@@ -6088,6 +6088,7 @@ async function dirigentAlleAktivenBots() {
 
 async function dirigentClaudeTurn(historie, kundenNachricht) {
   const fetch = require('node-fetch');
+  const istGespraechsbeginn = !Array.isArray(historie) || historie.length === 0;
   const bots = await dirigentAlleAktivenBots();
   const botListeText = bots.length
     ? bots.map((b, i) => (i + 1) + '. "' + b.titel + '" [ANKER:' + b.anker + ' WELT:' + b.welt + ']').join('\n')
@@ -6109,6 +6110,9 @@ async function dirigentClaudeTurn(historie, kundenNachricht) {
 
 DEINE ROLLE:
 ${verhalten}
+${istGespraechsbeginn
+  ? '\nHINWEIS: Dies ist die ALLERERSTE Nachricht — begrüße und stelle dich als "Converdino Kundencenter" vor.'
+  : '\n⚠️ WICHTIG: Dies ist NICHT der Gesprächsbeginn — ihr unterhaltet euch bereits. Stelle dich NICHT erneut vor, begrüße NICHT noch einmal ("Hallo", "Willkommen", "Herzlich willkommen" usw. sind verboten). Antworte direkt und natürlich auf die letzte Nachricht, als Fortsetzung des laufenden Gesprächs.'}
 
 VERFUEGBARE ANGEBOTE (intern, NIE die Anker-Codes dem Kunden zeigen):
 ${botListeText}
