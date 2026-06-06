@@ -6055,7 +6055,6 @@ Antworte NUR mit JSON, kein Markdown:
 // Session-Gedaechtnis (2h wie Beraterbots), Gespraech + Uebergabe.
 // ════════════════════════════════════════════════════════════════
 
-const dirigentSessions = new Map();
 const DIRIGENT_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 Stunden
 
 async function dirigentAlleAktivenBots() {
@@ -6139,22 +6138,38 @@ WhatsApp-Stil: kurz, hoeflich, maximal 2-3 Saetze. Kein Markdown im Antworttext.
 }
 
 // Haupteinstieg: wird vom Webhook fuer ankerlose freie Nachrichten gerufen.
+// Gespraechs-Gedaechtnis liegt in Supabase-Tabelle dirigent_sessions.
 async function dirigentHandle(from, text, phoneId) {
-  // Session holen oder neu anlegen (mit Timeout)
-  let s = dirigentSessions.get(from);
-  if (s && (Date.now() - s.startedAt > DIRIGENT_TIMEOUT_MS)) { dirigentSessions.delete(from); s = null; }
-  if (!s) { s = { historie: [], startedAt: Date.now() }; dirigentSessions.set(from, s); }
+  // 1) Bestehende Session laden
+  let historie = [];
+  try {
+    const { data: sess } = await supabase
+      .from('dirigent_sessions')
+      .select('historie, started_at')
+      .eq('phone', from)
+      .single();
+    if (sess) {
+      const alter = Date.now() - new Date(sess.started_at).getTime();
+      if (alter > DIRIGENT_TIMEOUT_MS) {
+        // abgelaufen: loeschen und frisch beginnen
+        await supabase.from('dirigent_sessions').delete().eq('phone', from);
+        historie = [];
+      } else {
+        historie = Array.isArray(sess.historie) ? sess.historie : [];
+      }
+    }
+  } catch (e) { historie = []; }
 
-  const ergebnis = await dirigentClaudeTurn(s.historie, text);
+  // 2) Claude-Turn
+  const ergebnis = await dirigentClaudeTurn(historie, text);
 
-  // Gespraechsverlauf fortschreiben
-  s.historie.push({ role: 'user', content: text || '(Eroeffnung)' });
-  s.historie.push({ role: 'assistant', content: ergebnis.antwort || '' });
+  // 3) Verlauf fortschreiben
+  historie.push({ role: 'user', content: text || '(Eroeffnung)' });
+  historie.push({ role: 'assistant', content: ergebnis.antwort || '' });
 
-  // Eindeutig zugeordnet → an bestehende Bot-Logik uebergeben
+  // 4) Eindeutig zugeordnet → uebergeben + Session schliessen
   if (ergebnis.fertig && ergebnis.anker) {
-    dirigentSessions.delete(from); // Kundencenter-Gespraech beenden
-    // Kurze Bestaetigung senden, dann uebergeben
+    try { await supabase.from('dirigent_sessions').delete().eq('phone', from); } catch(e) {}
     if (ergebnis.antwort) { try { await sendWAMessage(phoneId, from, ergebnis.antwort); } catch(e) {} }
     try {
       if (ergebnis.welt === 'verkauf') {
@@ -6166,6 +6181,52 @@ async function dirigentHandle(from, text, phoneId) {
     return;
   }
 
-  // Sonst: Kundencenter-Antwort senden, Gespraech laeuft weiter
+  // 5) Sonst: Session speichern (upsert) und Antwort senden
+  try {
+    await supabase.from('dirigent_sessions').upsert({
+      phone: from,
+      historie: historie,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'phone' });
+  } catch (e) { console.error('[Dirigent] Session speichern Fehler:', e.message); }
+
   if (ergebnis.antwort) { try { await sendWAMessage(phoneId, from, ergebnis.antwort); } catch(e) {} }
 }
+
+// ════════════════════════════════════════════════════════════════
+// CAL.COM – BAUSTEIN 1: Test-Anbindung (Event-Typen auflisten)
+// Isoliert, beruehrt nichts Bestehendes. Nach dem Test wieder entfernen.
+// Liefert die eventTypeId, die wir fuer Slots + Buchung brauchen.
+// ════════════════════════════════════════════════════════════════
+app.get('/api/cal/test-eventtypes', async (req, res) => {
+  const fetch = require('node-fetch');
+  if (!process.env.CAL_API_KEY) {
+    return res.json({ fehler: 'CAL_API_KEY ist nicht gesetzt (Umgebungsvariable fehlt oder Deploy noch nicht aktiv).' });
+  }
+  try {
+    const r = await fetch('https://api.cal.com/v2/event-types', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
+        'cal-api-version': '2024-08-13',
+        'Content-Type': 'application/json'
+      }
+    });
+    const status = r.status;
+    const roh = await r.json();
+
+    // Versuche, eine schlanke Liste (id + titel + slug) herauszuziehen
+    let liste = [];
+    try {
+      const arr = roh?.data || roh?.event_types || [];
+      const flat = Array.isArray(arr) ? arr : [];
+      for (const et of flat) {
+        liste.push({ id: et.id, titel: et.title || et.slug, slug: et.slug, laenge_min: et.lengthInMinutes || et.length });
+      }
+    } catch(e) {}
+
+    res.json({ api_status: status, gefundene_event_typen: liste, roh_falls_leer: liste.length ? undefined : roh });
+  } catch (e) {
+    res.status(500).json({ fehler: e.message });
+  }
+});
