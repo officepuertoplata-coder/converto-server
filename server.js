@@ -6156,22 +6156,33 @@ async function dirigentHandle(from, text, phoneId) {
   // 1) Bestehende Session laden
   let historie = [];
   try {
-    const { data: sess } = await supabase
+    const { data: sess, error: ladeFehler } = await supabase
       .from('dirigent_sessions')
-      .select('historie, started_at')
+      .select('historie, started_at, updated_at')
       .eq('phone', from)
-      .single();
+      .maybeSingle();
+    if (ladeFehler) {
+      console.error('[Dirigent] Session LADEN-Fehler:', ladeFehler.message, ladeFehler.code || '');
+    }
     if (sess) {
-      const alter = Date.now() - new Date(sess.started_at).getTime();
+      const bezug = sess.updated_at || sess.started_at;
+      const alter = Date.now() - new Date(bezug).getTime();
       if (alter > DIRIGENT_TIMEOUT_MS) {
         // abgelaufen: loeschen und frisch beginnen
         await supabase.from('dirigent_sessions').delete().eq('phone', from);
         historie = [];
+        console.log('[Dirigent] Session abgelaufen, frisch:', from);
       } else {
         historie = Array.isArray(sess.historie) ? sess.historie : [];
+        console.log('[Dirigent] Session geladen, Eintraege:', historie.length, 'phone:', from);
       }
+    } else {
+      console.log('[Dirigent] Keine Session vorhanden (Gespraechsbeginn):', from);
     }
-  } catch (e) { historie = []; }
+  } catch (e) {
+    console.error('[Dirigent] Session laden Ausnahme:', e.message);
+    historie = [];
+  }
 
   // 2) Claude-Turn
   const ergebnis = await dirigentClaudeTurn(historie, text);
@@ -6196,12 +6207,17 @@ async function dirigentHandle(from, text, phoneId) {
 
   // 5) Sonst: Session speichern (upsert) und Antwort senden
   try {
-    await supabase.from('dirigent_sessions').upsert({
+    const { error: speicherFehler } = await supabase.from('dirigent_sessions').upsert({
       phone: from,
       historie: historie,
       updated_at: new Date().toISOString()
     }, { onConflict: 'phone' });
-  } catch (e) { console.error('[Dirigent] Session speichern Fehler:', e.message); }
+    if (speicherFehler) {
+      console.error('[Dirigent] Session SPEICHERN-Fehler:', speicherFehler.message, speicherFehler.code || '');
+    } else {
+      console.log('[Dirigent] Session gespeichert, Eintraege:', historie.length, 'phone:', from);
+    }
+  } catch (e) { console.error('[Dirigent] Session speichern Ausnahme:', e.message); }
 
   if (ergebnis.antwort) { try { await sendWAMessage(phoneId, from, ergebnis.antwort); } catch(e) {} }
 }
