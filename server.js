@@ -6355,3 +6355,81 @@ app.get('/api/cal/test-slots', async (req, res) => {
     res.status(500).json({ fehler: e.message });
   }
 });
+
+// ════════════════════════════════════════════════════════════════
+// CAL.COM – BAUSTEIN D (Test): Verbindlich buchen
+// Isoliert, beruehrt nichts Bestehendes. Nach dem Test wieder entfernen.
+// Aufruf (im Browser):
+//   /api/cal/test-buchung?eventTypeId=5855728&start=2026-06-08T10:30:00.000+02:00&name=Test%20Kunde&email=test@example.com
+// Nimmt eine ISO-Startzeit (am besten direkt aus test-slots kopiert).
+// Faengt Doppelbuchung sauber ab.
+// ════════════════════════════════════════════════════════════════
+app.get('/api/cal/test-buchung', async (req, res) => {
+  const fetch = require('node-fetch');
+  if (!process.env.CAL_API_KEY) {
+    return res.json({ fehler: 'CAL_API_KEY ist nicht gesetzt.' });
+  }
+  const eventTypeId = parseInt((req.query.eventTypeId || '').toString().trim(), 10);
+  const start = (req.query.start || '').toString().trim();
+  const name  = (req.query.name  || 'Test Kunde').toString().trim();
+  const email = (req.query.email || 'test@example.com').toString().trim();
+  if (!eventTypeId || !start) {
+    return res.json({ fehler: 'Bitte eventTypeId und start angeben. Beispiel: ?eventTypeId=5855728&start=2026-06-08T10:30:00.000+02:00&name=Test&email=test@example.com' });
+  }
+
+  const body = {
+    start: start,                       // ISO-Zeit mit Offset (eindeutig) ODER UTC
+    eventTypeId: eventTypeId,
+    attendee: {
+      name: name,
+      email: email,
+      timeZone: 'Europe/Vienna',
+      language: 'de'
+    }
+  };
+
+  try {
+    const r = await fetch('https://api.cal.com/v2/bookings', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
+        'cal-api-version': '2024-08-13',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    const status = r.status;
+    const roh = await r.json();
+
+    // Doppelbuchung / Konflikt freundlich erkennen
+    const fehlerText = JSON.stringify(roh || {}).toLowerCase();
+    const istDoppelbuchung = fehlerText.includes('already has booking')
+      || fehlerText.includes('no_available_users')
+      || fehlerText.includes('not available');
+
+    if (status >= 200 && status < 300) {
+      const d = roh && roh.data ? roh.data : roh;
+      return res.json({
+        erfolg: true,
+        api_status: status,
+        buchung_id: d && (d.id || d.uid),
+        status_text: d && d.status,
+        start: d && (d.start || d.startTime),
+        gebucht_fuer: { name: name, email: email },
+        hinweis: 'Buchung angelegt. cal.com verschickt automatisch die Bestaetigungs-Mails.'
+      });
+    }
+
+    return res.json({
+      erfolg: false,
+      api_status: status,
+      doppelbuchung_erkannt: istDoppelbuchung,
+      meldung: istDoppelbuchung
+        ? 'Dieser Termin ist bereits belegt — im echten Bot wird dann der naechste freie Slot angeboten.'
+        : 'Buchung fehlgeschlagen (siehe roh).',
+      roh: roh
+    });
+  } catch (e) {
+    res.status(500).json({ fehler: e.message });
+  }
+});
