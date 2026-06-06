@@ -6093,13 +6093,22 @@ async function dirigentClaudeTurn(historie, kundenNachricht) {
     ? bots.map((b, i) => (i + 1) + '. "' + b.titel + '" [ANKER:' + b.anker + ' WELT:' + b.welt + ']').join('\n')
     : '(derzeit keine aktiven Angebote)';
 
+  // Editierbarer Verhaltensteil (Backoffice). Leer → bewaehrter Standardtext.
+  const standardVerhalten = `- Begruesse freundlich und professionell als "Converdino Kundencenter".
+- Sprich den Kunden ausschliesslich mit "Sie/Ihr/Ihnen" an. Niemals "du".
+- Weise einmal freundlich darauf hin, dass normalerweise ein Link oder QR-Code diese Auswahl abnimmt.
+- Frage, wonach der Kunde sucht.`;
+  let verhalten = standardVerhalten;
+  try {
+    const { data: cfg } = await supabase
+      .from('dirigent_config').select('verhalten').eq('id', 1).maybeSingle();
+    if (cfg && cfg.verhalten && cfg.verhalten.trim()) verhalten = cfg.verhalten.trim();
+  } catch (e) { console.error('[Dirigent] config lesen Fehler:', e.message); }
+
   const systemPrompt = `Du bist das Converdino Kundencenter. Ein Kunde schreibt per WhatsApp, ohne einen konkreten Link oder QR-Code benutzt zu haben.
 
 DEINE ROLLE:
-- Begruesse freundlich und professionell als "Converdino Kundencenter".
-- Sprich den Kunden ausschliesslich mit "Sie/Ihr/Ihnen" an. Niemals "du".
-- Weise einmal freundlich darauf hin, dass normalerweise ein Link oder QR-Code diese Auswahl abnimmt.
-- Frage, wonach der Kunde sucht.
+${verhalten}
 
 VERFUEGBARE ANGEBOTE (intern, NIE die Anker-Codes dem Kunden zeigen):
 ${botListeText}
@@ -6192,6 +6201,32 @@ async function dirigentHandle(from, text, phoneId) {
 
   if (ergebnis.antwort) { try { await sendWAMessage(phoneId, from, ergebnis.antwort); } catch(e) {} }
 }
+
+// ── Dirigent-Konfiguration lesen/speichern (fuers Backoffice) ───
+app.get('/api/dirigent/config', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('dirigent_config').select('verhalten').eq('id', 1).maybeSingle();
+    if (error) return res.status(500).json({ ok: false, fehler: error.message });
+    res.json({ ok: true, verhalten: (data && data.verhalten) || '' });
+  } catch (e) {
+    res.status(500).json({ ok: false, fehler: e.message });
+  }
+});
+
+app.post('/api/dirigent/config', async (req, res) => {
+  try {
+    const verhalten = (req.body && typeof req.body.verhalten === 'string')
+      ? req.body.verhalten.trim() : '';
+    const { error } = await supabase
+      .from('dirigent_config')
+      .upsert({ id: 1, verhalten: verhalten || null, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    if (error) return res.status(500).json({ ok: false, fehler: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, fehler: e.message });
+  }
+});
 
 // ════════════════════════════════════════════════════════════════
 // CAL.COM – BAUSTEIN 1: Test-Anbindung (Event-Typen auflisten)
