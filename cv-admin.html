@@ -1329,6 +1329,7 @@ async function openStrategieModal(slotId) {
     const payMode = slot.payment_mode || 'deposit';
     const val = a.strategie || '';
     const bookingVal = a.booking_url || '';
+    const calIdVal = (a.cal_event_type_id != null) ? a.cal_event_type_id : '';
     const modusBlock = istVerkauf
       ? '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">💳 Zahlungsmodus</label>' +
         '<select id="paymentMode" onchange="onPaymentModeChange()" ' +
@@ -1354,7 +1355,11 @@ async function openStrategieModal(slotId) {
       '<input id="bookingUrl" type="url" value="' + esc(bookingVal) + '" placeholder="https://cal.com/dein-name/termin" ' +
         'style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:4px;">' +
       '<div style="font-size:12px;color:#777;margin-bottom:14px;line-height:1.4;">Wenn hinterlegt, schickt der Bot diesen Link automatisch, sobald der Interessent einem Termin zustimmt. Leer = der Bot sucht ersatzweise einen Link in der Strategie.</div>' +
-      '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">🎯 Gesprächsstrategie</label>' +
+      '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">\uD83D\uDCC5 cal.com Termin-Typ-ID (f\u00fcr verbindliche Buchung)</label>' +
+      '<input id="calEventTypeId" type="text" inputmode="numeric" value="' + esc(String(calIdVal)) + '" placeholder="z.B. 5855728" ' +
+        'style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:4px;">' +
+      '<div style="font-size:12px;color:#777;margin-bottom:14px;line-height:1.4;">Die Zahl-ID des cal.com-Termin-Typs, den dieser Bot <b>verbindlich buchen</b> soll. Sie steht in der cal.com-Verwaltung beim jeweiligen Termin-Typ. Leer lassen, wenn der Bot nicht selbst buchen, sondern nur den Link oben schicken soll.</div>' +
+      '<label style="display:block;font-size:13px;font-weight:700;color:#33473b;margin-bottom:4px;">\uD83C\uDFAF Gespr\u00e4chsstrategie</label>' +
       '<textarea id="strategieText" rows="12" style="width:100%;padding:12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;" ' +
         'placeholder="z.B.&#10;1. Termin mit dem Berater anbieten.&#10;2. Bei Zögern: Selbsttest ynhald.com/risk empfehlen.&#10;3. 50% Gutschein fürs Webinar [Link].&#10;4. Rückruf anbieten.&#10;5. Um Newsletter-Erlaubnis bitten.&#10;6. Warm verabschieden.">' + esc(val) + '</textarea>' +
       '<div id="strategieMsg" style="font-size:13px;margin-top:8px;"></div>' +
@@ -1375,6 +1380,8 @@ function onPaymentModeChange() {
 async function saveStrategie() {
   const txt = document.getElementById('strategieText').value;
   const booking = document.getElementById('bookingUrl').value;
+  const calIdEl = document.getElementById('calEventTypeId');
+  const calId = calIdEl ? calIdEl.value.trim() : '';
   const titleEl = document.getElementById('botTitle');
   const title = titleEl ? titleEl.value.trim() : undefined;
   const modeSel = document.getElementById('paymentMode');
@@ -1384,7 +1391,7 @@ async function saveStrategie() {
     const r = await fetch(API + '/api/cv/article/' + strategieArticleId + '/persona', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, strategie: txt, booking_url: booking })
+      body: JSON.stringify({ title: title, strategie: txt, booking_url: booking, cal_event_type_id: calId === '' ? null : calId })
     });
     const d = await r.json();
     if (!r.ok || !d.success) { msg.style.color = 'var(--red)'; msg.textContent = d.error || 'Fehler beim Speichern.'; return; }
