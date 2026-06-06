@@ -348,6 +348,27 @@
     </div>
   </div>
 
+  <!-- Dirigent / Kundencenter -->
+  <div class="card">
+    <h2 class="card-toggle collapsed" onclick="toggleCard(this)">🎫 Dirigent (Kundencenter) <span class="card-arrow">▾</span></h2>
+    <div class="card-body collapsed">
+      <p style="font-size:13px;color:#555;line-height:1.5;margin:0 0 12px;">
+        Der Dirigent springt ein, wenn jemand per WhatsApp schreibt, OHNE einen Link oder QR-Code benutzt zu haben.
+        Er begrüßt als „Converdino Kundencenter“ und leitet zum passenden Angebot weiter. Hier bestimmst du sein
+        <b>Verhalten</b> (Tonfall, wie er sich vorstellt, wie er nachfragt). Das technische Antwortformat und die
+        Zuordnungslogik bleiben fest — die kannst du nicht versehentlich verändern.
+      </p>
+      <p style="font-size:12px;color:#777;line-height:1.4;margin:0 0 8px;">
+        Leer lassen = der Dirigent nutzt seinen bewährten Standardtext.
+      </p>
+      <textarea id="dirigentVerhalten" rows="8"
+        placeholder="- Begrüße freundlich und professionell als &quot;Converdino Kundencenter&quot;.&#10;- Sprich den Kunden mit &quot;Sie&quot; an.&#10;- Weise einmal freundlich darauf hin, dass normalerweise ein Link/QR-Code die Auswahl abnimmt.&#10;- Frage, wonach der Kunde sucht."
+        style="width:100%;padding:11px 12px;border:1px solid #d3ebda;border-radius:10px;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;box-sizing:border-box;"></textarea>
+      <div id="dirigentMsg" class="msg" style="margin-top:8px;"></div>
+      <button onclick="saveDirigent()" style="margin-top:10px;">💾 Verhalten speichern</button>
+    </div>
+  </div>
+
   <!-- Kundenliste -->
   <div class="card">
     <h2 class="card-toggle" onclick="toggleCard(this)">📋 Kunden <span class="card-arrow">▾</span></h2>
@@ -416,6 +437,7 @@ function preisMitUst(netto) {
   loadCustomers();
   loadTiers();
   loadOffers();
+  loadDirigent();
 })();
 
 // ── Preisstaffeln ──
@@ -871,6 +893,39 @@ async function createCustomer() {
 }
 
 // ── Kundenliste laden ──
+async function loadDirigent() {
+  try {
+    const r = await fetch(API + '/api/dirigent/config');
+    const d = await r.json();
+    if (d && d.ok) {
+      const el = document.getElementById('dirigentVerhalten');
+      if (el) el.value = d.verhalten || '';
+    }
+  } catch(e) { /* still: Standardtext greift ohnehin */ }
+}
+
+async function saveDirigent() {
+  const el = document.getElementById('dirigentVerhalten');
+  const msg = document.getElementById('dirigentMsg');
+  const verhalten = el ? el.value : '';
+  if (msg) { msg.className = 'msg'; msg.textContent = 'Speichere …'; }
+  try {
+    const r = await fetch(API + '/api/dirigent/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verhalten: verhalten })
+    });
+    const d = await r.json();
+    if (d && d.ok) {
+      if (msg) { msg.className = 'msg ok'; msg.textContent = verhalten.trim() ? '✓ Verhalten gespeichert.' : '✓ Gespeichert — Dirigent nutzt jetzt den Standardtext.'; }
+    } else {
+      if (msg) { msg.className = 'msg err'; msg.textContent = 'Fehler: ' + ((d && d.fehler) || 'unbekannt'); }
+    }
+  } catch(e) {
+    if (msg) { msg.className = 'msg err'; msg.textContent = 'Fehler: ' + e.message; }
+  }
+}
+
 async function loadCustomers() {
   clearMsg('listMsg');
   const area = document.getElementById('listArea');
