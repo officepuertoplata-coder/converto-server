@@ -6370,7 +6370,10 @@ app.get('/api/cal/test-buchung', async (req, res) => {
     return res.json({ fehler: 'CAL_API_KEY ist nicht gesetzt.' });
   }
   const eventTypeId = parseInt((req.query.eventTypeId || '').toString().trim(), 10);
-  const start = (req.query.start || '').toString().trim();
+  // Browser-Adresszeile verwandelt "+" im Zeit-Offset in ein Leerzeichen.
+  // Hier zuruecksetzen: ein Leerzeichen direkt vor "HH:MM" am Ende -> wieder "+".
+  let start = (req.query.start || '').toString().trim();
+  start = start.replace(/ (\d{2}:\d{2})$/, '+$1');
   const name  = (req.query.name  || 'Test Kunde').toString().trim();
   const email = (req.query.email || 'test@example.com').toString().trim();
   if (!eventTypeId || !start) {
