@@ -6267,3 +6267,91 @@ app.get('/api/cal/test-eventtypes', async (req, res) => {
     res.status(500).json({ fehler: e.message });
   }
 });
+
+// ════════════════════════════════════════════════════════════════
+// CAL.COM – BAUSTEIN C (Test): Freie Slots auslesen
+// Isoliert, beruehrt nichts Bestehendes. Nach dem Test wieder entfernen.
+// Aufruf:  /api/cal/test-slots?eventTypeId=5855728
+//   optional: &tage=7   (wie viele Tage vorausschauen, Standard 7)
+// Liefert die naechsten freien Termine in Wiener Zeit.
+// ════════════════════════════════════════════════════════════════
+app.get('/api/cal/test-slots', async (req, res) => {
+  const fetch = require('node-fetch');
+  if (!process.env.CAL_API_KEY) {
+    return res.json({ fehler: 'CAL_API_KEY ist nicht gesetzt.' });
+  }
+  const eventTypeId = (req.query.eventTypeId || '').toString().trim();
+  if (!eventTypeId) {
+    return res.json({ fehler: 'Bitte eventTypeId angeben, z.B. ?eventTypeId=5855728' });
+  }
+  const tage = Math.min(parseInt(req.query.tage, 10) || 7, 31);
+
+  // Zeitfenster: ab jetzt bis in "tage" Tagen (Datumsteil reicht cal.com)
+  const jetzt = new Date();
+  const ende = new Date(jetzt.getTime() + tage * 24 * 60 * 60 * 1000);
+  const startStr = jetzt.toISOString().slice(0, 10);   // YYYY-MM-DD
+  const endeStr  = ende.toISOString().slice(0, 10);
+
+  const url = 'https://api.cal.com/v2/slots'
+    + '?eventTypeId=' + encodeURIComponent(eventTypeId)
+    + '&start=' + startStr
+    + '&end=' + endeStr
+    + '&timeZone=' + encodeURIComponent('Europe/Vienna');
+
+  try {
+    const r = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
+        'cal-api-version': '2024-09-04',
+        'Content-Type': 'application/json'
+      }
+    });
+    const status = r.status;
+    const roh = await r.json();
+
+    // Antwort kann nach Datum gruppiert ({datum:[...]}) ODER flach ([...]) sein.
+    // Beides robust einsammeln.
+    const slots = [];
+    const data = roh && roh.data;
+    if (Array.isArray(data)) {
+      for (const eintrag of data) {
+        if (eintrag && eintrag.start) slots.push(eintrag.start);
+      }
+    } else if (data && typeof data === 'object') {
+      for (const datum of Object.keys(data)) {
+        const arr = data[datum];
+        if (Array.isArray(arr)) {
+          for (const eintrag of arr) {
+            if (eintrag && eintrag.start) slots.push(eintrag.start);
+          }
+        }
+      }
+    }
+
+    // Menschlich lesbare Darstellung in Wiener Zeit (z.B. "Di, 09.12. 10:00")
+    const lesbar = slots.slice(0, 40).map(iso => {
+      try {
+        const d = new Date(iso);
+        const txt = d.toLocaleString('de-AT', {
+          weekday: 'short', day: '2-digit', month: '2-digit',
+          hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Vienna'
+        });
+        return { iso: iso, anzeige: txt };
+      } catch(e) {
+        return { iso: iso, anzeige: iso };
+      }
+    });
+
+    res.json({
+      api_status: status,
+      eventTypeId: eventTypeId,
+      zeitfenster: { von: startStr, bis: endeStr },
+      anzahl_freie_slots: slots.length,
+      naechste_termine: lesbar,
+      roh_falls_leer: slots.length ? undefined : roh
+    });
+  } catch (e) {
+    res.status(500).json({ fehler: e.message });
+  }
+});
