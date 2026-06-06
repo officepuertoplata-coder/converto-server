@@ -6208,24 +6208,61 @@ app.get('/api/cal/test-eventtypes', async (req, res) => {
       method: 'GET',
       headers: {
         'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
-        'cal-api-version': '2024-08-13',
+        'cal-api-version': '2024-06-14',
         'Content-Type': 'application/json'
       }
     });
     const status = r.status;
     const roh = await r.json();
 
-    // Versuche, eine schlanke Liste (id + titel + slug) herauszuziehen
+    // Falls der Standard-Pfad nicht greift (404): zweiter Versuch mit
+    // Benutzername-Parameter (in der cal.com-Community als verlaesslich bekannt).
+    let status2, roh2;
+    if (status === 404) {
+      try {
+        const me = await fetch('https://api.cal.com/v2/me', {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
+            'cal-api-version': '2024-06-14',
+            'Content-Type': 'application/json'
+          }
+        });
+        const meData = await me.json();
+        const username = meData?.data?.username || meData?.username;
+        if (username) {
+          const r2 = await fetch('https://api.cal.com/v2/event-types?username=' + encodeURIComponent(username), {
+            method: 'GET',
+            headers: {
+              'Authorization': 'Bearer ' + process.env.CAL_API_KEY,
+              'cal-api-version': '2024-06-14',
+              'Content-Type': 'application/json'
+            }
+          });
+          status2 = r2.status;
+          roh2 = await r2.json();
+        }
+      } catch(e) { status2 = 'fehler: ' + e.message; }
+    }
+
+    // Versuche, eine schlanke Liste (id + titel + slug) herauszuziehen.
+    // Nimmt die erfolgreiche Antwort (Standard oder Fallback).
+    const quelle = (status === 404 && roh2) ? roh2 : roh;
     let liste = [];
     try {
-      const arr = roh?.data || roh?.event_types || [];
+      const arr = quelle?.data || quelle?.event_types || [];
       const flat = Array.isArray(arr) ? arr : [];
       for (const et of flat) {
         liste.push({ id: et.id, titel: et.title || et.slug, slug: et.slug, laenge_min: et.lengthInMinutes || et.length });
       }
     } catch(e) {}
 
-    res.json({ api_status: status, gefundene_event_typen: liste, roh_falls_leer: liste.length ? undefined : roh });
+    res.json({
+      api_status: status,
+      fallback_status: status2,
+      gefundene_event_typen: liste,
+      roh_falls_leer: liste.length ? undefined : (roh2 || roh)
+    });
   } catch (e) {
     res.status(500).json({ fehler: e.message });
   }
