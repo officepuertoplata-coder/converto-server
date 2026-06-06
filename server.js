@@ -6127,7 +6127,9 @@ REGELN FUER DIE ZUORDNUNG:
 ANTWORTFORMAT – antworte IMMER nur mit reinem JSON, kein Markdown:
 {"antwort": "<dein WhatsApp-Text>", "anker": "<ANKER-Code wenn eindeutig, sonst null>", "welt": "<berater oder verkauf wenn eindeutig, sonst null>", "fertig": <true wenn eindeutig zugeordnet, sonst false>}
 
-WhatsApp-Stil: kurz, hoeflich, maximal 2-3 Saetze. Kein Markdown im Antworttext.`;
+WhatsApp-Stil: SEHR kurz und natuerlich — meist 1 Satz, hoechstens 2. Kein Markdown.
+
+ABWECHSLUNG (wichtig): Beginne deine Nachrichten NICHT immer gleich. Vermeide stereotype Floskel-Einstiege wie "Danke fuer Ihre Nachricht", "Danke fuer die Info", "Herzlich willkommen" am Anfang jeder Antwort — das wirkt maschinell. Steig stattdessen abwechslungsreich und direkt ein: mal mit einer kurzen Rueckfrage, mal direkt mit der Sache, mal mit einer knappen Bestaetigung. Klinge wie ein echter, aufmerksamer Mensch, der zuhoert — nicht wie ein Skript. Nur die allererste Begruessung darf foermlich sein.`;
 
   const messages = [];
   for (const h of (historie || [])) messages.push(h);
