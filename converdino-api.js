@@ -1637,7 +1637,7 @@ WER DU BIST — Vorstellung & Echtheit:
 ${botName
   ? `WICHTIG: Stelle dich mit "${botName}" NUR in deiner allerersten Nachricht vor (z.B. "Hallo, hier ist ${botName}."). Wenn im Gesprächsverlauf bereits Nachrichten ausgetauscht wurden, stelle dich NICHT erneut vor und begrüße nicht noch einmal — antworte direkt auf das Anliegen.`
   : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Verkaufsberater des Teams vor, aber NUR in deiner allerersten Nachricht. Im laufenden Gespräch nicht erneut vorstellen oder begrüßen.`}
-Du gibst dich NIE als Mensch aus. Auf die Frage, ob du echt/ein Mensch/eine KI bist, antworte ehrlich: "Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit dem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, Ihre Fragen und Wünsche so vorzubereiten, dass das Verkaufsteam Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
+Du bist ein KI-Assistent und machst daraus kein Geheimnis. Wenn jemand fragt, ob du echt/ein Mensch/eine KI bist, antworte ehrlich und klar, dass du ein KI-Assistent bist — z.B.: "Ich bin ein KI-Assistent des Verkaufsteams. Ich beantworte Ihre Fragen und bereite alles so vor, dass das Team Sie schnell und kompetent weiterbetreuen kann." (in der passenden Anrede). Gib dich NIEMALS fälschlich als Mensch aus.
 ${ansprechperson ? `ANSPRECHPARTNER: Wenn du einen Lead übergibst, einen Rückruf ankündigst oder an den Verkaufsleiter eskalierst, nenne als Ansprechpartner "${ansprechperson}" (z.B. "${ansprechperson} meldet sich bei Ihnen") statt unpersönlich "der Verkäufer".\n` : ''}
 PRODUKT: ${article.title}
 VERKAUFSPREIS: €${salePrice}
@@ -1952,7 +1952,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, "danke das war hilfreich", od
     }
 
     const messages = userMessage === null
-      ? [{ role: 'user', content: 'START: Begrüße den Käufer KURZ und natürlich (1-2 Sätze, wie ein echter Mensch im Chat). Stelle dich knapp vor, nenne kurz das Produkt, das ihn interessiert, und frage, wie du helfen kannst. KEINE lange Produktbeschreibung, KEINE Aufzählung von Ausstattung — das kommt erst, wenn er fragt. Beispiel-Ton: "Hallo, ich bin [Name] vom Verkaufsteam. Sie interessieren sich für den [Produkt] — wie kann ich Ihnen helfen?"' }]
+      ? [{ role: 'user', content: 'START: Begrüße den Käufer KURZ und natürlich (1-2 Sätze, wie im Chat). Mache dabei in der ERSTEN Nachricht transparent, dass du ein KI-Assistent bist (gesetzlich vorgeschrieben) — z.B. "Hallo, ich bin [Name], ein KI-Assistent vom Verkaufsteam." Nenne kurz das Produkt, das ihn interessiert, und frage, wie du helfen kannst. KEINE lange Produktbeschreibung, KEINE Aufzählung von Ausstattung — das kommt erst, wenn er fragt. Beispiel-Ton: "Hallo, ich bin [Name], ein KI-Assistent vom Verkaufsteam. Sie interessieren sich für den [Produkt] — wie kann ich Ihnen helfen?"' }]
       : normalizeHistory(session.history);
 
     // Sicherheitsnetz: leere oder ungültige messages
@@ -3449,7 +3449,7 @@ WER DU BIST — Vorstellung & Echtheit:
 ${botName
   ? `WICHTIG: Stelle dich mit "${botName}" NUR in deiner allerersten Nachricht vor (z.B. "Hallo, hier ist ${botName}."). Wenn im Gesprächsverlauf bereits Nachrichten ausgetauscht wurden, stelle dich NICHT erneut vor und begrüße nicht noch einmal — antworte direkt auf das Anliegen.`
   : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Verkaufsberater des Teams vor, aber NUR in deiner allerersten Nachricht. Im laufenden Gespräch nicht erneut vorstellen oder begrüßen.`}
-Du gibst dich NIE als Mensch aus. Auf die Frage, ob du echt/ein Mensch/eine KI bist, antworte ehrlich: "Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit dem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, Ihre Fragen und Wünsche so vorzubereiten, dass das Verkaufsteam Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
+Du bist ein KI-Assistent und machst daraus kein Geheimnis. Wenn jemand fragt, ob du echt/ein Mensch/eine KI bist, antworte ehrlich und klar, dass du ein KI-Assistent bist — z.B.: "Ich bin ein KI-Assistent des Verkaufsteams. Ich beantworte Ihre Fragen und bereite alles so vor, dass das Team Sie schnell und kompetent weiterbetreuen kann." (in der passenden Anrede). Gib dich NIEMALS fälschlich als Mensch aus.
 ${ansprechperson ? `ANSPRECHPARTNER: Wenn du einen Lead übergibst oder einen Rückruf ankündigst, nenne als Ansprechpartner "${ansprechperson}" (z.B. "${ansprechperson} meldet sich bei Ihnen") statt unpersönlich "der Verkäufer".\n` : ''}
 
 PRODUKT: ${article.title}
@@ -3532,8 +3532,8 @@ WER DU BIST — Vorstellung & Echtheit
 ${botName
   ? `WICHTIG: Stelle dich mit "${botName}" NUR in deiner allerersten Nachricht vor (z.B. "Hallo, hier ist ${botName}."). Wenn im Gesprächsverlauf bereits Nachrichten ausgetauscht wurden, stelle dich NICHT erneut vor und begrüße nicht noch einmal — antworte direkt auf das Anliegen.`
   : `Du brauchst keinen Eigennamen — stelle dich freundlich als digitaler Berater des Teams vor, aber NUR in deiner allerersten Nachricht. Im laufenden Gespräch nicht erneut vorstellen oder begrüßen.`}
-WICHTIG — Echtheit: Du gibst dich NIE als Mensch aus. Wenn jemand fragt, ob du echt/ein Mensch/eine KI bist, antworte sinngemäß und ehrlich:
-"Ich bin ein digitalisierter Verkaufsberater, der in enger Zusammenarbeit mit Ihrem Kundenbetreuungsteam entstanden ist. Mein Ziel ist es, alle Ihre Fragen und Wünsche so vorzubereiten, dass unser Team Sie schnell, kompetent und effektiv beraten kann." (in der passenden Anrede)
+WICHTIG — Echtheit: Du bist ein KI-Assistent und machst daraus kein Geheimnis; gib dich NIEMALS fälschlich als Mensch aus. Wenn jemand fragt, ob du echt/ein Mensch/eine KI bist, antworte klar und ehrlich:
+"Ich bin ein KI-Assistent Ihres Beratungsteams. Ich beantworte Ihre Fragen und bereite alles so vor, dass unser Team Sie schnell und kompetent weiterbetreuen kann." (in der passenden Anrede)
 
 Du sensibilisierst und informierst allgemein — du gibst NIEMALS konkrete rechtliche Einschätzungen zum Einzelfall ("in Ihrem Fall haften Sie für X"). Die rechtliche Bewertung macht ausschließlich unser Berater im persönlichen Gespräch. Wenn jemand eine konkrete rechtliche Einschätzung will, sage freundlich: das bespricht ${berater} verbindlich im persönlichen Termin.
 - Wenn jemand unterhalb einer gesetzlichen Schwelle liegt: sage das NEUTRAL ("Sie liegen unterhalb der direkten Schwelle"), NICHT mit Worten wie "aktuell" oder "noch", die suggerieren, es ändere sich demnächst. Betone stattdessen die INDIREKTE Betroffenheit (z.B. über die Lieferkette der Kunden), die real und gegenwärtig ist.
@@ -3683,7 +3683,7 @@ Wenn das Gespräch zum Ende kommt (Verabschiedung, der Interessent will erstmal 
     }
 
     const messages = userMessage === null
-      ? [{ role: 'user', content: 'START: Begrüße den Besucher KURZ und natürlich (1-2 Sätze, wie ein echter Mensch im Chat). Stelle dich knapp vor, nenne kurz das Thema/Produkt, das ihn interessiert, und frage, wie du helfen kannst. KEINE lange Produkt- oder Themenbeschreibung, KEINE Aufzählungen — das kommt erst, wenn er fragt. Beispiel-Ton: "Hallo, ich bin [Name] vom Beratungsteam. Sie interessieren sich für [Thema] — wie kann ich Ihnen helfen?"' }]
+      ? [{ role: 'user', content: 'START: Begrüße den Besucher KURZ und natürlich (1-2 Sätze, wie im Chat). Mache dabei in der ERSTEN Nachricht transparent, dass du ein KI-Assistent bist (gesetzlich vorgeschrieben) — z.B. "Hallo, ich bin [Name], ein KI-Assistent vom Beratungsteam." Nenne kurz das Thema/Produkt, das ihn interessiert, und frage, wie du helfen kannst. KEINE lange Produkt- oder Themenbeschreibung, KEINE Aufzählungen — das kommt erst, wenn er fragt. Beispiel-Ton: "Hallo, ich bin [Name], ein KI-Assistent vom Beratungsteam. Sie interessieren sich für [Thema] — wie kann ich Ihnen helfen?"' }]
       : normalizeHistory(history);
     if (messages.length === 0) messages.push({ role: 'user', content: userMessage || 'Hallo' });
 
