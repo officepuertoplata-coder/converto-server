@@ -1228,8 +1228,11 @@ async function toggleSlotConvs(slotId) {
     }
     let html = '<div class="sc-box"><div class="sc-count">' + convs.length + ' Gespräch' + (convs.length === 1 ? '' : 'e') + '</div>';
     convs.forEach(function(c, idx) {
+      var kopf = (c.kanal === 'web')
+        ? '🌐 Web-Besucher'
+        : '📱 ' + esc(c.buyer_phone || 'Unbekannt');
       html += '<div class="sc-item" onclick="openConvModal(\'' + slotId + '\',' + idx + ')">' +
-        '<div class="sc-buyer">📱 ' + esc(c.buyer_phone || 'Unbekannt') + '</div>' +
+        '<div class="sc-buyer">' + kopf + '</div>' +
         '<div class="sc-meta">' + esc(scFmtDate(c.last_message_at || c.created_at)) + ' · ' + c.message_count + ' Nachrichten</div>' +
         '<div class="sc-badges">' + scBadges(c.events) + '</div>' +
       '</div>';
@@ -1266,7 +1269,9 @@ function openConvModal(slotId, idx) {
   const convs = scCache[slotId] || [];
   const c = convs[idx];
   if (!c) return;
-  document.getElementById('convModalTitle').innerHTML = '💬 ' + esc(c.buyer_phone || 'Gespräch');
+  document.getElementById('convModalTitle').innerHTML = (c.kanal === 'web')
+    ? '💬 🌐 Web-Besucher'
+    : '💬 ' + esc(c.buyer_phone || 'Gespräch');
   let html = '<div class="cm-result">' + scBadges(c.events) +
     '<span class="sc-meta">' + esc(scFmtDate(c.last_message_at || c.created_at)) + '</span></div>';
   if (c.messages.length === 0) {
