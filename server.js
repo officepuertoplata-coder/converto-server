@@ -1963,7 +1963,7 @@ app.post('/api/vk/admin/bot-sandbox', async (req, res) => {
     const catContextBot = vkGetCategoryContext(article.article_category || 'standard');
     const systemPrompt = `=== DEIN CHARAKTER ===
 Du bist ${botName}. ${contextMap[botConfig.context]||'Du bist ein erfahrener Verkaeufer.'}
-Du wirkst wie ein echter Mensch - kein Bot, kein Assistent.
+Du bist ein KI-Assistent und machst daraus in der ersten Nachricht transparent (gesetzlich vorgeschrieben). Wenn jemand fragt, ob du ein Mensch/eine KI bist, antworte ehrlich, dass du ein KI-Assistent bist. Gib dich NIEMALS faelschlich als Mensch aus.
 
 ANREDE: Spreche den Kaeufer ausschliesslich mit "${lp.anrede === 'du' ? 'du/dein/dir' : 'Sie/Ihr/Ihnen'}" an.
 ${lp.anrede === 'du' ? 'Niemals "Sie" verwenden.' : 'Niemals "du", "dein", "dir" verwenden. Immer "Sie", "Ihr", "Ihnen".'} Diese Regel gilt absolut fuer JEDE Nachricht.
@@ -2692,7 +2692,7 @@ BOT-VERHALTEN:
   const messages = [];
   if (userMessage === null) {
     // Erster Turn: Begrüßung
-    messages.push({ role: 'user', content: `START: Begrüße den Käufer und präsentiere das Produkt kurz und überzeugend.` });
+    messages.push({ role: 'user', content: `START: Begrüße den Käufer und mache in dieser ERSTEN Nachricht transparent, dass du ein KI-Assistent bist (gesetzlich vorgeschrieben), z.B. "Hallo, ich bin ein KI-Assistent…". Präsentiere das Produkt danach kurz und überzeugend.` });
   } else {
     // Konversationsverlauf
     session.history.forEach(m => messages.push(m));
@@ -4461,7 +4461,7 @@ async function vkHandleLPBot(phone, text, lpSlug, phoneId) {
 const botConfig = lp.bot_config || {};
 const systemPrompt = `Du bist ${botConfig.bot_name_override || botConfig.bot_name || 'ein Verkaufsassistent'}.
 ${(function(){ const ctx = botConfig.context || (lp.ai_mode !== 'sachbearbeiter' ? 'haendler' : 'privat'); return ctx === 'privat' ? 'Du verkaufst dein eigenes Stueck privat - mit echter Verbindung zum Produkt. Kein Rueckgaberecht fuer Kaeufer (Privatverkauf).' : ctx === 'haendler' ? 'Du bist ein professioneller Haendler - kennst dein Sortiment und stehst fuer Qualitaet.' : ctx === 'geschaeft' ? 'Du repraesentierst ein Unternehmen - professionell und kompetent.' : ctx === 'nachlass' ? 'Du loest einen Nachlass auf - respektvoll und sachlich.' : 'Du bist ein erfahrener Verkaeufer.'; })()}
-Du beherrschst professionelle Verkaufstechniken - wirkst aber wie ein echter Mensch.
+Du beherrschst professionelle Verkaufstechniken. Du bist ein KI-Assistent und gibst das auf Nachfrage ehrlich zu; gib dich NIEMALS faelschlich als Mensch aus.
 
 ANREDE: Spreche den Kaeufer ausschliesslich mit "${lp.anrede === 'du' ? 'du/dein/dir' : 'Sie/Ihr/Ihnen'}" an.
 ${lp.anrede === 'du' ? 'Niemals "Sie" verwenden.' : 'Niemals "du/dein/dir" verwenden. Immer "Sie/Ihr/Ihnen".'} Diese Regel gilt absolut.
@@ -6095,7 +6095,7 @@ async function dirigentClaudeTurn(historie, kundenNachricht) {
     : '(derzeit keine aktiven Angebote)';
 
   // Editierbarer Verhaltensteil (Backoffice). Leer → bewaehrter Standardtext.
-  const standardVerhalten = `- Begruesse freundlich und professionell als "Converdino Kundencenter".
+  const standardVerhalten = `- Begruesse freundlich und professionell als "Converdino Kundencenter" und mache dabei transparent, dass du ein KI-Assistent bist (z.B. "Willkommen beim Converdino Kundencenter — ich bin der KI-Assistent und helfe Ihnen weiter.").
 - Sprich den Kunden ausschliesslich mit "Sie/Ihr/Ihnen" an. Niemals "du".
 - Weise einmal freundlich darauf hin, dass normalerweise ein Link oder QR-Code diese Auswahl abnimmt.
 - Frage, wonach der Kunde sucht.`;
@@ -6111,7 +6111,7 @@ async function dirigentClaudeTurn(historie, kundenNachricht) {
 DEINE ROLLE:
 ${verhalten}
 ${istGespraechsbeginn
-  ? '\nHINWEIS: Dies ist die ALLERERSTE Nachricht — begrüße und stelle dich als "Converdino Kundencenter" vor.'
+  ? '\nHINWEIS: Dies ist die ALLERERSTE Nachricht — begrüße und stelle dich als "Converdino Kundencenter" vor. Mache dabei IMMER transparent, dass du ein KI-Assistent bist (gesetzlich vorgeschrieben), z.B. "…ich bin der KI-Assistent des Kundencenters."'
   : '\n⚠️ WICHTIG: Dies ist NICHT der Gesprächsbeginn — ihr unterhaltet euch bereits. Stelle dich NICHT erneut vor, begrüße NICHT noch einmal ("Hallo", "Willkommen", "Herzlich willkommen" usw. sind verboten). Antworte direkt und natürlich auf die letzte Nachricht, als Fortsetzung des laufenden Gesprächs.'}
 
 VERFUEGBARE ANGEBOTE (intern, NIE die Anker-Codes dem Kunden zeigen):
