@@ -183,7 +183,7 @@
   .co-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
   .co-filters input[type=text] { flex: 1; min-width: 180px; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; font-family: inherit; }
   .co-filters select { padding: 10px 11px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; font-family: inherit; background: #fff; }
-  .co-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .co-list { border: 1px solid var(--border); border-radius: 10px; overflow-y: auto; max-height: 460px; }
   .co-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid #eef3f0; cursor: pointer; }
   .co-row:last-child { border-bottom: none; }
   .co-row:hover { background: #f4f8f6; }
@@ -214,8 +214,8 @@
 
   <!-- Alle Gespräche (Gesamtübersicht) -->
   <div class="card">
-    <h2 class="card-toggle" onclick="toggleCard(this)">💬 Alle Gespräche <span class="card-arrow">▾</span></h2>
-    <div class="card-body">
+    <h2 class="card-toggle collapsed" onclick="toggleCard(this)">💬 Alle Gespräche <span class="card-arrow">▾</span></h2>
+    <div class="card-body collapsed">
       <div class="co-filters">
         <input type="text" id="coSuche" placeholder="🔍 Suchen (Bot, Kunde, Nummer) …" oninput="renderConvOverview()">
         <select id="coKanal" onchange="renderConvOverview()">
