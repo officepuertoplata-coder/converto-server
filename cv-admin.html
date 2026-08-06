@@ -179,6 +179,22 @@
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (max-width: 720px) { .grid, .grid-3 { grid-template-columns: 1fr; } .wrap { padding: 20px 14px 50px; } .kc-head { flex-direction: column; } }
+  /* Gesprächs-Gesamtübersicht */
+  .co-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+  .co-filters input[type=text] { flex: 1; min-width: 180px; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; font-family: inherit; }
+  .co-filters select { padding: 10px 11px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; font-family: inherit; background: #fff; }
+  .co-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .co-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid #eef3f0; cursor: pointer; }
+  .co-row:last-child { border-bottom: none; }
+  .co-row:hover { background: #f4f8f6; }
+  .co-chan { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
+  .co-main { flex: 1; min-width: 0; }
+  .co-bot { font-weight: 700; font-size: 14px; color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .co-sub { font-size: 12px; color: var(--mu); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .co-right { text-align: right; flex-shrink: 0; }
+  .co-time { font-size: 12px; color: var(--mu); white-space: nowrap; }
+  .co-badges { display: flex; gap: 4px; margin-top: 3px; justify-content: flex-end; flex-wrap: wrap; }
+  @media (max-width: 600px) { .co-sub { white-space: normal; } }
 </style>
 </head>
 <body>
@@ -195,6 +211,30 @@
 <div class="wrap">
   <h1>Kundenverwaltung</h1>
   <div class="sub">Neue Converdino-Kunden anlegen und Bot-Slots zuweisen.</div>
+
+  <!-- Alle Gespräche (Gesamtübersicht) -->
+  <div class="card">
+    <h2 class="card-toggle" onclick="toggleCard(this)">💬 Alle Gespräche <span class="card-arrow">▾</span></h2>
+    <div class="card-body">
+      <div class="co-filters">
+        <input type="text" id="coSuche" placeholder="🔍 Suchen (Bot, Kunde, Nummer) …" oninput="renderConvOverview()">
+        <select id="coKanal" onchange="renderConvOverview()">
+          <option value="">Alle Kanäle</option>
+          <option value="web">🌐 Nur Web</option>
+          <option value="whatsapp">📱 Nur WhatsApp</option>
+        </select>
+        <select id="coZeit" onchange="renderConvOverview()">
+          <option value="">Ganze Zeit</option>
+          <option value="1">Heute</option>
+          <option value="7">Letzte 7 Tage</option>
+          <option value="30">Letzte 30 Tage</option>
+        </select>
+        <button type="button" class="btn btn-sm" onclick="loadConvOverview()">↻ Aktualisieren</button>
+      </div>
+      <div id="coCount" class="suche-count" style="display:block;margin-bottom:8px;"></div>
+      <div id="coArea"><div class="empty">Lade Gespräche …</div></div>
+    </div>
+  </div>
 
   <!-- Neuer Kunde -->
   <div class="card">
@@ -438,6 +478,7 @@ function preisMitUst(netto) {
   loadTiers();
   loadOffers();
   loadDirigent();
+  loadConvOverview();
 })();
 
 // ── Preisstaffeln ──
@@ -923,6 +964,109 @@ async function saveDirigent() {
     }
   } catch(e) {
     if (msg) { msg.className = 'msg err'; msg.textContent = 'Fehler: ' + e.message; }
+  }
+}
+
+// ── Gesprächs-Gesamtübersicht (alle Bots, beide Kanäle) ──
+let convOverviewCache = [];
+
+async function loadConvOverview() {
+  const area = document.getElementById('coArea');
+  if (area) area.innerHTML = '<div class="empty">Lade Gespräche …</div>';
+  try {
+    const r = await fetch(API + '/api/cv/admin/conversations?limit=300');
+    const d = await r.json();
+    convOverviewCache = (d && d.conversations) || [];
+    renderConvOverview();
+  } catch(e) {
+    if (area) area.innerHTML = '<div class="empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderConvOverview() {
+  const area = document.getElementById('coArea');
+  const countEl = document.getElementById('coCount');
+  if (!area) return;
+  const q = (document.getElementById('coSuche').value || '').toLowerCase().trim();
+  const kanal = document.getElementById('coKanal').value;
+  const zeit = document.getElementById('coZeit').value;
+
+  let list = convOverviewCache.slice();
+
+  if (kanal) list = list.filter(function(c){ return c.kanal === kanal; });
+
+  if (zeit) {
+    const tage = parseInt(zeit, 10);
+    const grenze = Date.now() - tage * 24 * 60 * 60 * 1000;
+    list = list.filter(function(c){
+      const t = new Date(c.last_message_at || c.created_at || 0).getTime();
+      return t >= grenze;
+    });
+  }
+
+  if (q) {
+    list = list.filter(function(c){
+      return (c.bot || '').toLowerCase().indexOf(q) !== -1
+          || (c.kunde || '').toLowerCase().indexOf(q) !== -1
+          || (c.wer || '').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  if (countEl) countEl.textContent = list.length + (list.length === 1 ? ' Gespräch' : ' Gespräche');
+
+  if (list.length === 0) {
+    area.innerHTML = '<div class="empty">' + (q || kanal || zeit ? 'Keine Treffer mit diesen Filtern.' : 'Noch keine Gespräche.') + '</div>';
+    return;
+  }
+
+  let html = '<div class="co-list">';
+  list.forEach(function(c, idx) {
+    const chan = (c.kanal === 'web') ? '🌐' : '📱';
+    const werLine = (c.kanal === 'web') ? 'Web-Besucher' : esc(c.wer || 'Unbekannt');
+    const kundeLine = c.kunde ? (' · ' + esc(c.kunde)) : '';
+    html += '<div class="co-row" onclick="openOverviewConv(' + idx + ')">' +
+      '<div class="co-chan">' + chan + '</div>' +
+      '<div class="co-main">' +
+        '<div class="co-bot">' + esc(c.bot || '—') + '</div>' +
+        '<div class="co-sub">' + werLine + kundeLine + ' · ' + c.message_count + ' Nachr.</div>' +
+      '</div>' +
+      '<div class="co-right">' +
+        '<div class="co-time">' + esc(scFmtDate(c.last_message_at || c.created_at)) + '</div>' +
+      '</div>' +
+    '</div>';
+  });
+  html += '</div>';
+  area.innerHTML = html;
+  // Für den Modal-Zugriff die aktuell gefilterte Liste merken
+  convOverviewFiltered = list;
+}
+
+let convOverviewFiltered = [];
+
+async function openOverviewConv(idx) {
+  const c = convOverviewFiltered[idx];
+  if (!c) return;
+  document.getElementById('convModalTitle').innerHTML = (c.kanal === 'web' ? '💬 🌐 Web-Besucher' : '💬 📱 ' + esc(c.wer || 'Gespräch')) +
+    ' <span style="font-size:12px;font-weight:600;color:var(--mu);">— ' + esc(c.bot || '') + '</span>';
+  document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Lade Verlauf …</div>';
+  document.getElementById('convModal').classList.add('open');
+  try {
+    const r = await fetch(API + '/api/cv/admin/conversation/' + c.kanal + '/' + c.id);
+    const d = await r.json();
+    const conv = d && d.conversation;
+    if (!conv) { document.getElementById('convModalBody').innerHTML = '<div class="sc-empty">Gespräch nicht gefunden.</div>'; return; }
+    let html = '<div class="cm-result">' + scBadges(conv.events || []) +
+      '<span class="sc-meta">' + esc(scFmtDate(conv.last_message_at || conv.created_at)) + '</span></div>';
+    if (!conv.messages || conv.messages.length === 0) {
+      html += '<div class="sc-empty">Keine Nachrichten.</div>';
+    } else {
+      conv.messages.forEach(function(m){
+        html += '<div class="cm-row ' + m.role + '"><div class="cm-bubble">' + esc(m.text) + '</div></div>';
+      });
+    }
+    document.getElementById('convModalBody').innerHTML = html;
+  } catch(e) {
+    document.getElementById('convModalBody').innerHTML = '<div class="sc-empty" style="color:var(--red);">Fehler: ' + esc(e.message) + '</div>';
   }
 }
 
