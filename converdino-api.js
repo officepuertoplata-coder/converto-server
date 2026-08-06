@@ -660,6 +660,7 @@ module.exports = function(app, supabase, deps) {
           .filter(function(m) { return m.text && m.text.length > 0; });
         return {
           id: s.id,
+          kanal: 'whatsapp',
           buyer_phone: s.buyer_phone,
           status: s.status,
           phase: s.phase,
@@ -669,6 +670,54 @@ module.exports = function(app, supabase, deps) {
           messages: cleanMsgs,
           events: eventsByBuyer[s.buyer_phone] || []
         };
+      });
+
+      // Web-Chats desselben Slots dazuholen (eigene Tabelle cv_web_sessions).
+      // Web-Besucher sind anonym (kein buyer_phone, identifiziert über session_token).
+      try {
+        const { data: webSessions, error: wErr } = await supabase
+          .from('cv_web_sessions')
+          .select('id, session_token, messages, status, created_at, last_message_at')
+          .eq('slot_id', slotId)
+          .order('last_message_at', { ascending: false, nullsFirst: false });
+        if (wErr) {
+          console.error('[CV conversations] Web-Sessions Fehler:', wErr.message);
+        } else {
+          for (const w of (webSessions || [])) {
+            const msgs = Array.isArray(w.messages) ? w.messages : [];
+            const cleanMsgs = msgs
+              .map(function(m) {
+                return { role: m.role === 'user' ? 'buyer' : 'bot', text: normContent(m.content) };
+              })
+              .filter(function(m) { return m.text && m.text.length > 0; });
+            // Nur echte Gespräche zeigen (mind. eine Käufer-Nachricht),
+            // sonst erscheinen reine Begrüßungen ohne Interaktion.
+            const hatBuyer = cleanMsgs.some(function(m){ return m.role === 'buyer'; });
+            if (!hatBuyer) continue;
+            conversations.push({
+              id: w.id,
+              kanal: 'web',
+              buyer_phone: null,
+              web_besucher: 'Web-Besucher',
+              status: w.status,
+              phase: null,
+              created_at: w.created_at,
+              last_message_at: w.last_message_at,
+              message_count: cleanMsgs.length,
+              messages: cleanMsgs,
+              events: []
+            });
+          }
+        }
+      } catch (e) {
+        console.error('[CV conversations] Web-Sessions Ausnahme:', e.message);
+      }
+
+      // Beide Kanäle gemeinsam nach letzter Aktivität sortieren (neueste zuerst)
+      conversations.sort(function(a, b) {
+        const ta = new Date(a.last_message_at || a.created_at || 0).getTime();
+        const tb = new Date(b.last_message_at || b.created_at || 0).getTime();
+        return tb - ta;
       });
 
       res.json({ conversations });
