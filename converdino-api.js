@@ -727,6 +727,155 @@ module.exports = function(app, supabase, deps) {
     }
   });
 
+  // ============================================================
+  // GET /api/cv/admin/conversations
+  //    Gesamtübersicht: alle Gespräche ALLER Slots, beide Kanäle,
+  //    neueste zuerst. Für die Backoffice-Übersicht bei viel Traffic.
+  //    Query optional: ?limit=200 (Standard 200, max 500)
+  // ============================================================
+  app.get('/api/cv/admin/conversations', async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+
+      // Alle Slots mit Artikel-Titel + Besitzer laden (für Bot-Name in der Liste)
+      const { data: slots } = await supabase
+        .from('cv_slots')
+        .select('id, slot_number, bot_code, subscription_id, cv_articles(title), cv_subscriptions(company_name, user_login)');
+
+      const slotInfo = {};
+      for (const s of (slots || [])) {
+        const art = Array.isArray(s.cv_articles) ? s.cv_articles[0] : s.cv_articles;
+        const sub = Array.isArray(s.cv_subscriptions) ? s.cv_subscriptions[0] : s.cv_subscriptions;
+        slotInfo[s.id] = {
+          bot: (art && art.title) || ('Slot ' + (s.slot_number || '?')),
+          kunde: (sub && (sub.company_name || sub.user_login)) || '',
+          bot_code: s.bot_code || ''
+        };
+      }
+
+      const normContent = function(c) {
+        if (typeof c === 'string') return c;
+        if (Array.isArray(c)) {
+          return c.map(function(p){ return (typeof p === 'string') ? p : (p && typeof p.text === 'string' ? p.text : ''); }).join(' ').trim();
+        }
+        return '';
+      };
+      const zaehleMsgs = function(msgs) {
+        if (!Array.isArray(msgs)) return 0;
+        return msgs.filter(function(m){ return m && normContent(m.content).trim().length > 0; }).length;
+      };
+      const hatBuyerMsg = function(msgs) {
+        if (!Array.isArray(msgs)) return false;
+        return msgs.some(function(m){ return m && m.role === 'user' && normContent(m.content).trim().length > 0; });
+      };
+
+      const alle = [];
+
+      // WhatsApp-Gespräche (cv_bot_sessions)
+      const { data: waSessions } = await supabase
+        .from('cv_bot_sessions')
+        .select('id, slot_id, buyer_phone, messages, status, created_at, last_message_at')
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .limit(limit);
+      for (const s of (waSessions || [])) {
+        const info = slotInfo[s.slot_id] || {};
+        alle.push({
+          id: s.id, slot_id: s.slot_id, kanal: 'whatsapp',
+          bot: info.bot || '—', kunde: info.kunde || '',
+          wer: s.buyer_phone || 'Unbekannt',
+          status: s.status, message_count: zaehleMsgs(s.messages),
+          created_at: s.created_at, last_message_at: s.last_message_at
+        });
+      }
+
+      // Web-Gespräche (cv_web_sessions) — nur mit echter Besucher-Nachricht
+      const { data: webSessions } = await supabase
+        .from('cv_web_sessions')
+        .select('id, slot_id, messages, status, created_at, last_message_at')
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .limit(limit);
+      for (const w of (webSessions || [])) {
+        if (!hatBuyerMsg(w.messages)) continue;
+        const info = slotInfo[w.slot_id] || {};
+        alle.push({
+          id: w.id, slot_id: w.slot_id, kanal: 'web',
+          bot: info.bot || '—', kunde: info.kunde || '',
+          wer: 'Web-Besucher',
+          status: w.status, message_count: zaehleMsgs(w.messages),
+          created_at: w.created_at, last_message_at: w.last_message_at
+        });
+      }
+
+      // Beide Kanäle gemeinsam nach letzter Aktivität sortieren
+      alle.sort(function(a, b) {
+        const ta = new Date(a.last_message_at || a.created_at || 0).getTime();
+        const tb = new Date(b.last_message_at || b.created_at || 0).getTime();
+        return tb - ta;
+      });
+
+      res.json({ conversations: alle.slice(0, limit), total: alle.length });
+    } catch (e) {
+      console.error('[CV /admin/conversations]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
+
+  // ============================================================
+  // GET /api/cv/admin/conversation/:kanal/:id
+  //    Einzelnes Gespräch mit vollem Verlauf (für die Übersicht-Modal).
+  //    kanal = 'whatsapp' | 'web'
+  // ============================================================
+  app.get('/api/cv/admin/conversation/:kanal/:id', async (req, res) => {
+    try {
+      const kanal = req.params.kanal;
+      const id = req.params.id;
+      const tabelle = (kanal === 'web') ? 'cv_web_sessions' : 'cv_bot_sessions';
+
+      const { data: s, error } = await supabase
+        .from(tabelle)
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) return res.status(500).json({ error: error.message });
+      if (!s) return res.status(404).json({ error: 'Gespräch nicht gefunden.' });
+
+      const normContent = function(c) {
+        if (typeof c === 'string') return c;
+        if (Array.isArray(c)) {
+          return c.map(function(p){ return (typeof p === 'string') ? p : (p && typeof p.text === 'string' ? p.text : ''); }).join(' ').trim();
+        }
+        return '';
+      };
+      const msgs = Array.isArray(s.messages) ? s.messages : [];
+      const cleanMsgs = msgs
+        .map(function(m){ return { role: m.role === 'user' ? 'buyer' : 'bot', text: normContent(m.content) }; })
+        .filter(function(m){ return m.text && m.text.length > 0; });
+
+      // Events (nur WhatsApp hat buyer_phone; Web bleibt ohne)
+      let events = [];
+      if (kanal !== 'web' && s.buyer_phone) {
+        const { data: evs } = await supabase
+          .from('cv_events')
+          .select('type')
+          .eq('slot_id', s.slot_id)
+          .eq('buyer_phone', s.buyer_phone);
+        events = (evs || []).map(function(e){ return e.type; });
+      }
+
+      res.json({
+        conversation: {
+          id: s.id, kanal: kanal,
+          wer: (kanal === 'web') ? 'Web-Besucher' : (s.buyer_phone || 'Unbekannt'),
+          status: s.status,
+          created_at: s.created_at, last_message_at: s.last_message_at,
+          messages: cleanMsgs, events: events
+        }
+      });
+    } catch (e) {
+      console.error('[CV /admin/conversation/:kanal/:id]', e);
+      res.status(500).json({ error: 'Unerwartet: ' + e.message });
+    }
+  });
 
   // ============================================================
   // 5. DELETE /api/cv/upload/:id
