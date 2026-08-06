@@ -1642,9 +1642,14 @@ async function openAdminMarketing(slotId) {
     const waLink = slot.wa_deeplink || ('https://wa.me/4367764118066?text=' + encodeURIComponent(code));
     const landingUrl = 'https://converdino.com/cv-produkt.html?code=' + encodeURIComponent(code);
     const SRV = 'https://converto-server-production.up.railway.app';
-    const webWidgetSnippet = '<!-- Converdino Web-Chat -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '"><\/script>';
-    const webOnlySnippet = '<!-- Converdino Web-Chat (nur Browser) -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '" data-mode="web"><\/script>';
-    const devSnippet = '<!-- Eigener Button -->\n<button onclick="ConverdinoWidget.open()">Mit Berater chatten</button>\n\n<!-- Widget laden, ohne mitgelieferten Button -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '" data-launcher="off"><\/script>';
+    // Drei klar getrennte Einbett-Varianten fuer Entwickler:
+    // 1) nur Web  2) nur WhatsApp  3) beide (Auswahl-Fenster / Standard)
+    const embedWeb = '<!-- Converdino: nur Web-Chat (Browser, kein WhatsApp) -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '" data-mode="web"><\/script>';
+    const embedWa = '<!-- Converdino: nur WhatsApp -->\n<a href="' + waLink + '" target="_blank" rel="noopener"\n   style="display:inline-flex;align-items:center;gap:8px;background:#25D366;color:#0d1b12;font-weight:700;text-decoration:none;padding:12px 20px;border-radius:22px;font-family:sans-serif;">\n  Mit KI-Berater ueber WhatsApp chatten\n</a>';
+    const embedBoth = '<!-- Converdino: WhatsApp + Web (Besucher waehlt selbst) -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '"><\/script>';
+    const webWidgetSnippet = embedBoth;
+    const webOnlySnippet = embedWeb;
+    const devSnippet = '<!-- Eigener Button -->\n<button onclick="ConverdinoWidget.open()">Mit KI-Berater chatten</button>\n\n<!-- Widget laden, ohne mitgelieferten Button -->\n<script src="' + SRV + '/converdino-widget.js" data-bot="' + code + '" data-launcher="off"><\/script>';
     const apiDocUrl = SRV + '/converdino-widget-api.html';
     const ta = 'width:100%;padding:10px;border:1px solid #d3ebda;border-radius:8px;font-family:monospace;font-size:12px;background:#fff;';
     const lab = 'display:block;font-size:13px;font-weight:700;color:#33473b;margin:0 0 4px;';
@@ -1670,17 +1675,32 @@ async function openAdminMarketing(slotId) {
         '<summary style="cursor:pointer;padding:12px 13px;font-size:13px;font-weight:700;color:#0d1b12;">⚙️ Für Entwickler &amp; weitere Optionen</summary>' +
         '<div style="padding:4px 13px 14px;">' +
 
-          '<label style="' + lab + '">🔌 Eigener Button per API (Headless)</label>' +
+          '<div style="font-size:13px;font-weight:800;color:#0d1b12;margin:2px 0 12px;">Drei fertige Einbett-Varianten — je nach Wunsch des Kunden:</div>' +
+
+          '<label style="' + lab + '">1) 🌐 Nur Web-Chat (im Browser, ohne WhatsApp)</label>' +
+          '<div style="' + hint + '">Zeigt einen Chat-Button, der direkt im Browser chattet. Eine Zeile vor &lt;/body&gt; einfügen.</div>' +
+          '<textarea readonly rows="3" style="' + ta + '">' + esc(embedWeb) + '</textarea>' +
+          '<button type="button" class="' + btnC + '" style="margin:6px 0 16px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
+
+          '<label style="' + lab + '">2) 💬 Nur WhatsApp (öffnet den Chat in WhatsApp)</label>' +
+          '<div style="' + hint + '">Ein einfacher Button-Link — kein Script nötig. Öffnet WhatsApp mit dem passenden Bot-Code.</div>' +
+          '<textarea readonly rows="4" style="' + ta + '">' + esc(embedWa) + '</textarea>' +
+          '<button type="button" class="' + btnC + '" style="margin:6px 0 16px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
+
+          '<label style="' + lab + '">3) 🔀 WhatsApp + Web (Besucher wählt selbst) <span style="font-size:11px;background:#25D366;color:#fff;padding:1px 7px;border-radius:12px;">Empfohlen</span></label>' +
+          '<div style="' + hint + '">Zeigt einen Button, der ein Auswahl-Fenster öffnet: WhatsApp oder Browser-Chat. Eine Zeile vor &lt;/body&gt; einfügen.</div>' +
+          '<textarea readonly rows="3" style="' + ta + '">' + esc(embedBoth) + '</textarea>' +
+          '<button type="button" class="' + btnC + '" style="margin:6px 0 18px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
+
+          '<div style="border-top:1px solid #d3ebda;margin:4px 0 14px;"></div>' +
+
+          '<label style="' + lab + '">🔌 Eigener Button per API (Headless, für Programmierer)</label>' +
           '<div style="' + hint + '">Kein mitgelieferter Button — Öffnen per <code>ConverdinoWidget.open()</code>.</div>' +
           '<textarea readonly rows="5" style="' + ta + '">' + esc(devSnippet) + '</textarea>' +
           '<button type="button" class="' + btnC + '" style="margin:6px 0 10px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
           '<div style="font-size:12px;color:#777;margin-bottom:4px;">Link zur API-Doku (zum Weiterleiten):</div>' +
           '<input readonly value="' + esc(apiDocUrl) + '" style="' + ta + '">' +
-          '<button type="button" class="' + btnC + '" style="margin:6px 0 16px;" onclick="adminCopyPrev(this)">🔗 Link kopieren</button>' +
-
-          '<label style="' + lab + '">🌐 Chat-Button nur Browser (ohne WhatsApp)</label>' +
-          '<textarea readonly rows="3" style="' + ta + '">' + esc(webOnlySnippet) + '</textarea>' +
-          '<button type="button" class="' + btnC + '" style="margin:6px 0 4px;" onclick="adminCopyPrev(this)">📋 Code kopieren</button>' +
+          '<button type="button" class="' + btnC + '" style="margin:6px 0 4px;" onclick="adminCopyPrev(this)">🔗 Link kopieren</button>' +
         '</div>' +
       '</details>';
   } catch(e) {
